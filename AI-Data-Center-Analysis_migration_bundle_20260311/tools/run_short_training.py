@@ -41,6 +41,9 @@ def main() -> None:
     parser.add_argument('--status-every-steps', type=int, default=500)
     parser.add_argument('--probe-step-sample-interval', type=int, default=12)
     parser.add_argument('--probe-recent-window', type=int, default=192)
+    parser.add_argument('--wandb', action='store_true', help='Enable Weights & Biases logging')
+    parser.add_argument('--wandb-project', default='dc-cooling-optimization')
+    parser.add_argument('--wandb-group', default=None, help='W&B group name (e.g. E0-nanjing)')
     args = parser.parse_args()
 
     if 'Eplus-DC-Cooling' not in get_ids():
@@ -111,7 +114,26 @@ def main() -> None:
                 update_every_steps=args.status_every_steps,
             )
         )
-    model.learn(total_timesteps=timesteps, log_interval=500, callback=CallbackList(callbacks))
+    if args.wandb:
+        from tools.wandb_callback import WandbCallback
+        wandb_name = f"{args.wandb_group or 'E0'}-seed{args.seed}"
+        callbacks.append(
+            WandbCallback(
+                project=args.wandb_project,
+                name=wandb_name,
+                group=args.wandb_group,
+                tags=['E0', 'nanjing', f'seed{args.seed}'],
+                config={
+                    'seed': args.seed,
+                    'episodes': episodes,
+                    'weather': weather_files,
+                    'building': building_file,
+                    'timesteps_per_episode': timesteps_per_episode,
+                },
+                log_interval=1000,
+            )
+        )
+    model.learn(total_timesteps=timesteps, log_interval=1, callback=CallbackList(callbacks))
     elapsed = time.perf_counter() - started
 
     model_path = workspace_path / args.model_name

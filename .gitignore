@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pkl
+runs/train/*/episode-*/
+runs/eval/*/
+*.log
+tmp/
+Eplus-env-*/
+vendor/EnergyPlus-*/
+*.7z
+training_jobs/

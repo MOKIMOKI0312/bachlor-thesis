@@ -1112,28 +1112,10 @@
                     "program_line": "SET min_value_HVAC = @Max CT_Pump_Now-100 300"
                 },
                 {
-                    "program_line": "SET max_value_HVAC = @Min CT_Pump_Now+100 5000"
+                    "program_line": "SET max_value_HVAC = @Min CT_Pump_Now+100 3300"
                 },
                 {
                     "program_line": "SET CT_Pump = (max_value_HVAC-min_value_HVAC)*CT_Pump_S + min_value_HVAC"
-                },
-                {
-                    "program_line": "IF Zone_Air_Now > 30"
-                },
-                {
-                    "program_line": "SET CRAH_T=10"
-                },
-                {
-                    "program_line": "SET CRAH_Fan=2000"
-                },
-                {
-                    "program_line": "SET Chiller_T= 5.6"
-                },
-                {
-                    "program_line": "SET CT_Pump = 5000"
-                },
-                {
-                    "program_line": "ENDIF"
                 }
             ]
         },

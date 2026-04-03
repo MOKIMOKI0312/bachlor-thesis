@@ -1022,6 +1022,57 @@
             "zone_or_space_name": "DataCenter ZN"
         }
     },
+    "ElectricLoadCenter:Distribution": {
+        "Load Center": {
+            "electrical_buss_type": "AlternatingCurrentWithStorage",
+            "electrical_storage_object_name": "LiIonBattery",
+            "generator_demand_limit_scheme_purchased_electric_demand_limit": 0,
+            "generator_list_name": "Generator List",
+            "generator_operation_scheme_type": "TrackElectrical",
+            "maximum_storage_state_of_charge_fraction": 0.95,
+            "minimum_storage_state_of_charge_fraction": 0.2,
+            "Design_storage_Control_Charge_Power": 3200000.0,
+            "Design_storage_Control_Discharge_Power": 3200000.0,
+            "storage_operation_scheme": "TrackFacilityElectricDemandStoreExcessOnSite"
+        }
+    },
+    "ElectricLoadCenter:Generators": {
+        "Generator List": {
+            "generator_outputs": [
+                {
+                    "generator_availability_schedule_name": "Always On Continuous",
+                    "generator_name": "PV_farm",
+                    "generator_object_type": "Generator:PVWatts",
+                    "generator_rated_electric_power_output": 0.001
+                },
+                {
+                    "generator_availability_schedule_name": "Always On Continuous",
+                    "generator_name": "WT1",
+                    "generator_object_type": "Generator:WindTurbine",
+                    "generator_rated_electric_power_output": 0.001
+                }
+            ]
+        }
+    },
+    "ElectricLoadCenter:Inverter:PVWatts": {
+        "PV Inverter": {
+            "dc_to_ac_size_ratio": 1.1,
+            "inverter_efficiency": 0.96
+        }
+    },
+    "ElectricLoadCenter:Storage:LiIonNMCBattery": {
+        "LiIonBattery": {
+            "availability_schedule_name": "Always On Discrete",
+            "battery_mass": 342,
+            "battery_surface_area": 4.26,
+            "dc_to_dc_charging_efficiency": 0.95,
+            "initial_fractional_state_of_charge": 0,
+            "lifetime_model": "None",
+            "number_of_cells_in_series": 139,
+            "number_of_strings_in_parallel": 3450,
+            "radiative_fraction": 0
+        }
+    },
     "EnergyManagementSystem:Actuator": {
         "CRAH_Fan": {
             "actuated_component_control_type": "Fan Air Mass Flow Rate",
@@ -1038,6 +1089,11 @@
             "actuated_component_type": "Pump",
             "actuated_component_unique_name": "Condenser Water Loop Constant Pump"
         },
+        "Charge_rate": {
+            "actuated_component_control_type": "Power Charge Rate",
+            "actuated_component_type": "Electrical Storage",
+            "actuated_component_unique_name": "LOAD CENTER"
+        },
         "Chiller_Pump": {
             "actuated_component_control_type": "Pump Mass Flow Rate",
             "actuated_component_type": "Pump",
@@ -1048,10 +1104,25 @@
             "actuated_component_type": "Schedule:Year",
             "actuated_component_unique_name": "Chilled Water Loop Temp - 44F"
         },
+        "Discharge_rate": {
+            "actuated_component_control_type": "Power Draw Rate",
+            "actuated_component_type": "Electrical Storage",
+            "actuated_component_unique_name": "LOAD CENTER"
+        },
         "ITE_rate": {
             "actuated_component_control_type": "Schedule Value",
             "actuated_component_type": "Schedule:Year",
             "actuated_component_unique_name": "DataCenter Equipment_SCH"
+        },
+        "min_v": {
+            "actuated_component_control_type": "Schedule Value",
+            "actuated_component_type": "Schedule:Constant",
+            "actuated_component_unique_name": "min_v"
+        },
+        "max_v": {
+            "actuated_component_control_type": "Schedule Value",
+            "actuated_component_type": "Schedule:Constant",
+            "actuated_component_unique_name": "max_v"
         }
     },
     "EnergyManagementSystem:GlobalVariable": {
@@ -1062,6 +1133,12 @@
                 },
                 {
                     "erl_variable_name": "ITE_value"
+                },
+                {
+                    "erl_variable_name": "min_value"
+                },
+                {
+                    "erl_variable_name": "max_value"
                 },
                 {
                     "erl_variable_name": "min_value_HVAC"
@@ -1122,7 +1199,120 @@
         "P_2": {
             "lines": [
                 {
-                    "program_line": "SET ITE_rate = ITE_S"
+                    "program_line": "SET ITE_rate = 0.5"
+                },
+                {
+                    "program_line": "IF Hour >= 0"
+                },
+                {
+                    "program_line": "SET min_value_ITE = @RandomUniform ITE_Now-0.1 ITE_Now-0.01"
+                },
+                {
+                    "program_line": "SET max_value_ITE = @RandomUniform ITE_Now+0.01 ITE_Now+0.1"
+                },
+                {
+                    "program_line": "SET min_value_ITE = @Max min_value_ITE 0.05"
+                },
+                {
+                    "program_line": "SET max_value_ITE = @Min max_value_ITE 0.80"
+                },
+                {
+                    "program_line": "SET ITE_rate = @RandomUniform min_value_ITE max_value_ITE"
+                },
+                {
+                    "program_line": "ENDIF"
+                }
+            ]
+        },
+        "P_3": {
+            "lines": [
+                {
+                    "program_line": "SET max_value = -B_V*SoC + 6400000 "
+                },
+                {
+                    "program_line": "SET min_value = (-B_V*SoC + 1280000)"
+                },
+                {
+                    "program_line": "IF ((max_value-min_value)*Charge_S + min_value) < 0"
+                },
+                {
+                    "program_line": "SET Discharge_rate = -((max_value-min_value)*Charge_S + min_value)"
+                },
+                {
+                    "program_line": "SET Charge_rate = 0"
+                },
+                {
+                    "program_line": "ENDIF"
+                },
+                {
+                    "program_line": "IF ((max_value-min_value)*Charge_S + min_value) >= 0"
+                },
+                {
+                    "program_line": "SET Discharge_rate = 0"
+                },
+                {
+                    "program_line": "SET Charge_rate = ((max_value-min_value)*Charge_S + min_value)"
+                },
+                {
+                    "program_line": "ENDIF"
+                },
+                {
+                    "program_line": "IF Charge_Def == 0"
+                },
+                {
+                    "program_line": "SET Discharge_rate = 0"
+                },
+                {
+                    "program_line": "SET Charge_rate = 0"
+                },
+                {
+                    "program_line": "ENDIF"
+                },
+                {
+                    "program_line": "IF Charge_Def == -1"
+                },
+                {
+                    "program_line": "SET Discharge_rate = @Max 0 Discharge_rate"
+                },
+                {
+                    "program_line": "SET Charge_rate = 0"
+                },
+                {
+                    "program_line": "ENDIF"
+                },
+                {
+                    "program_line": "IF Charge_Def == 1"
+                },
+                {
+                    "program_line": "SET Discharge_rate = 0"
+                },
+                {
+                    "program_line": "SET Charge_rate = @Max 0 Charge_rate"
+                },
+                {
+                    "program_line": "ENDIF"
+                }
+            ]
+        },
+        "P_4": {
+            "lines": [
+                {
+                    "program_line": "SET max_v = Pro"
+                },
+                {
+                    "program_line": "SET min_v = Dem"
+                },
+                {
+                    "program_line": "IF Wind_Pro1 + Wind_Pro2 + Wind_Pro3 + Solar_Pro > Dem"
+                },
+                {
+                    "program_line": "SET Charge_rate = Null"
+                },
+                {
+                    "program_line": "SET Discharge_rate = Null"
+                },
+                {
+                    "program_line": "ENDIF"
                 }
             ]
         }
@@ -1133,9 +1323,6 @@
             "programs": [
                 {
                     "program_name": "P_2"
-                },
-                {
-                    "program_name": "P_1"
                 }
             ]
         }
@@ -1189,6 +1376,22 @@
             "output_variable_or_output_meter_index_key_name": "ITE_Set",
             "output_variable_or_output_meter_name": "Schedule Value"
         },
+        "SoC": {
+            "output_variable_or_output_meter_index_key_name": "LIIONBATTERY",
+            "output_variable_or_output_meter_name": "Electric Storage Battery Charge State"
+        },
+        "Charge_S": {
+            "output_variable_or_output_meter_index_key_name": "Charge_Set",
+            "output_variable_or_output_meter_name": "Schedule Value"
+        },
+        "Charge_Def": {
+            "output_variable_or_output_meter_index_key_name": "Charge_Def_Set",
+            "output_variable_or_output_meter_name": "Schedule Value"
+        },
+        "Discharge_S": {
+            "output_variable_or_output_meter_index_key_name": "Discharge_Set",
+            "output_variable_or_output_meter_name": "Schedule Value"
+        },
         "Wet_T": {
             "output_variable_or_output_meter_index_key_name": "Environment",
             "output_variable_or_output_meter_name": "Site Outdoor Air WetBulb Temperature"
@@ -1196,6 +1399,34 @@
         "Zone_Air_Now": {
             "output_variable_or_output_meter_index_key_name": "DataCenter ZN",
             "output_variable_or_output_meter_name": "Zone Air Temperature"
+        },
+        "B_V": {
+            "output_variable_or_output_meter_index_key_name": "LIIONBATTERY",
+            "output_variable_or_output_meter_name": "Electric Storage Total Voltage"
+        },
+        "Pro": {
+            "output_variable_or_output_meter_index_key_name": "Whole Building",
+            "output_variable_or_output_meter_name": "Facility Total Produced Electricity Rate"
+        },
+        "Wind_Pro1": {
+            "output_variable_or_output_meter_index_key_name": "WT1",
+            "output_variable_or_output_meter_name": "Generator Produced AC Electricity Rate"
+        },
+        "Wind_Pro2": {
+            "output_variable_or_output_meter_index_key_name": "WT2",
+            "output_variable_or_output_meter_name": "Generator Produced AC Electricity Rate"
+        },
+        "Wind_Pro3": {
+            "output_variable_or_output_meter_index_key_name": "WT3",
+            "output_variable_or_output_meter_name": "Generator Produced AC Electricity Rate"
+        },
+        "Solar_Pro": {
+            "output_variable_or_output_meter_index_key_name": "PV_FARM",
+            "output_variable_or_output_meter_name": "Generator Produced DC Electricity Rate"
+        },
+        "Dem": {
+            "output_variable_or_output_meter_index_key_name": "Whole Building",
+            "output_variable_or_output_meter_name": "Facility Total Electricity Demand Rate"
         }
     },
     "Fan:VariableVolume": {
@@ -1217,6 +1448,75 @@
             "motor_efficiency": 0.962,
             "motor_in_airstream_fraction": 1,
             "pressure_rise": 300
+        }
+    },
+    "Generator:PVWatts": {
+        "PV_farm": {
+            "array_geometry_type": "TiltAzimuth",
+            "array_type": "TwoAxis",
+            "azimuth_angle": 180,
+            "dc_system_capacity": 0.001,
+            "ground_coverage_ratio": 0.4,
+            "module_type": "Standard",
+            "pvwatts_version": "5",
+            "system_losses": 0.14,
+            "tilt_angle": 20
+        }
+    },
+    "Generator:WindTurbine": {
+        "WT1": {
+            "annual_local_average_wind_speed": 6.4,
+            "availability_schedule_name": "Always On Continuous",
+            "cut_in_wind_speed": 3.5,
+            "cut_out_wind_speed": 25,
+            "fraction_system_efficiency": 0.835,
+            "height_for_local_average_wind_speed": 10,
+            "maximum_power_coefficient": 0.23,
+            "maximum_tip_speed_ratio": 7,
+            "number_of_blades": 3,
+            "overall_height": 164,
+            "power_control": "FixedSpeedFixedPitch",
+            "rated_power": 0.001,
+            "rated_rotor_speed": 59,
+            "rated_wind_speed": 14.5,
+            "rotor_diameter": 132,
+            "rotor_type": "HorizontalAxisWindTurbine"
+        },
+        "WT2": {
+            "annual_local_average_wind_speed": 6.4,
+            "availability_schedule_name": "Always On Continuous",
+            "cut_in_wind_speed": 3.5,
+            "cut_out_wind_speed": 25,
+            "fraction_system_efficiency": 0.835,
+            "height_for_local_average_wind_speed": 10,
+            "maximum_power_coefficient": 0.23,
+            "maximum_tip_speed_ratio": 7,
+            "number_of_blades": 3,
+            "overall_height": 164,
+            "power_control": "FixedSpeedFixedPitch",
+            "rated_power": 0.001,
+            "rated_rotor_speed": 59,
+            "rated_wind_speed": 14.5,
+            "rotor_diameter": 132,
+            "rotor_type": "HorizontalAxisWindTurbine"
+        },
+        "WT3": {
+            "annual_local_average_wind_speed": 6.4,
+            "availability_schedule_name": "Always On Continuous",
+            "cut_in_wind_speed": 3.5,
+            "cut_out_wind_speed": 25,
+            "fraction_system_efficiency": 0.835,
+            "height_for_local_average_wind_speed": 10,
+            "maximum_power_coefficient": 0.23,
+            "maximum_tip_speed_ratio": 7,
+            "number_of_blades": 3,
+            "overall_height": 164,
+            "power_control": "FixedSpeedFixedPitch",
+            "rated_power": 0.001,
+            "rated_rotor_speed": 59,
+            "rated_wind_speed": 14.5,
+            "rotor_diameter": 132,
+            "rotor_type": "HorizontalAxisWindTurbine"
         }
     },
     "GlobalGeometryRules": {
@@ -2535,6 +2835,21 @@
             "variable_name": "Pump Mass Flow Rate",
             "reporting_frequency": "Timestep"
         },
+        "Output:Variable 16": {
+            "key_value": "LiIonBattery",
+            "variable_name": "Electric Storage Battery Charge State",
+            "reporting_frequency": "Timestep"
+        },
+        "Output:Variable 17": {
+            "key_value": "LiIonBattery",
+            "variable_name": "Electric Storage Charge Power",
+            "reporting_frequency": "Timestep"
+        },
+        "Output:Variable 18": {
+            "key_value": "LiIonBattery",
+            "variable_name": "Electric Storage Discharge Power",
+            "reporting_frequency": "Timestep"
+        },
         "Output:Variable 19": {
             "key_value": "DataCenter Equipment_SCH",
             "variable_name": "Schedule Value",
@@ -2840,7 +3155,22 @@
             "hourly_value": 0
         },
         "ITE_Set": {
-            "hourly_value": 1
+            "hourly_value": 0.45
+        },
+        "Charge_Def_Set": {
+            "hourly_value": 0
+        },
+        "Charge_Set": {
+            "hourly_value": 0
+        },
+        "Discharge_Set": {
+            "hourly_value": 0
+        },
+        "min_v": {
+            "hourly_value": 0
+        },
+        "max_v": {
+            "hourly_value": 0
         }
     },
     "Schedule:Day:Interval": {

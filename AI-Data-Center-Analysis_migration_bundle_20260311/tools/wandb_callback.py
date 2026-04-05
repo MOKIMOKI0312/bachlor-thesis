@@ -66,21 +66,30 @@ class WandbCallback(BaseCallback):
 
     def _init_callback(self) -> None:
         if wandb is None:
-            raise ImportError("wandb is not installed. Run: pip install wandb")
+            print("[WandbCallback] wandb not installed, logging disabled")
+            self._wandb_active = False
+            return
 
-        wandb.init(
-            project=self.project,
-            name=self.run_name,
-            group=self.group,
-            tags=self.tags,
-            config={
-                "algorithm": "SAC",
-                "policy": "MlpPolicy",
-                "total_timesteps": self.locals.get("total_timesteps", 0),
-                **self.wandb_config,
-            },
-            reinit=True,
-        )
+        try:
+            wandb.init(
+                project=self.project,
+                name=self.run_name,
+                group=self.group,
+                tags=self.tags,
+                config={
+                    "algorithm": "SAC",
+                    "policy": "MlpPolicy",
+                    "total_timesteps": self.locals.get("total_timesteps", 0),
+                    **self.wandb_config,
+                },
+                reinit=True,
+            )
+            self._wandb_active = True
+        except Exception as e:
+            print(f"[WandbCallback] wandb.init() failed: {e}")
+            print("[WandbCallback] Training will continue without wandb logging")
+            self._wandb_active = False
+            return
 
         # Log model architecture
         if hasattr(self.model, "policy"):
@@ -96,6 +105,8 @@ class WandbCallback(BaseCallback):
             })
 
     def _on_step(self) -> bool:
+        if not getattr(self, '_wandb_active', False):
+            return True
         # Accumulate episode metrics from info
         infos = self.locals.get("infos", [])
         if infos:
@@ -164,6 +175,8 @@ class WandbCallback(BaseCallback):
         return True
 
     def _on_training_end(self) -> None:
+        if not getattr(self, '_wandb_active', False):
+            return
         if wandb.run is not None:
             # Log final summary
             wandb.summary["total_episodes"] = self._episode_count

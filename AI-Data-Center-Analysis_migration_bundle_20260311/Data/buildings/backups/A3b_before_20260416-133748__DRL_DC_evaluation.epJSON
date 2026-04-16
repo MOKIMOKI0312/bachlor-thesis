@@ -1110,31 +1110,6 @@
       "actuated_component_unique_name": "TES_SOC_Obs",
       "actuated_component_type": "Schedule:Constant",
       "actuated_component_control_type": "Schedule Value"
-    },
-    "Chiller_Branch_Avail": {
-      "actuated_component_unique_name": "Chilled Water Loop Supply Branch 1",
-      "actuated_component_type": "Supply Side Branch",
-      "actuated_component_control_type": "On/Off Supervisory"
-    },
-    "Chiller_Component_Avail": {
-      "actuated_component_unique_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton",
-      "actuated_component_type": "Plant Component Chiller:Electric:EIR",
-      "actuated_component_control_type": "On/Off Supervisory"
-    },
-    "Chiller_Out_T_SP": {
-      "actuated_component_unique_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Outlet Water Node",
-      "actuated_component_type": "System Node Setpoint",
-      "actuated_component_control_type": "Temperature Setpoint"
-    },
-    "Chiller_In_MFlow_Max": {
-      "actuated_component_unique_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Inlet Water Node",
-      "actuated_component_type": "System Node Setpoint",
-      "actuated_component_control_type": "Mass Flow Rate Maximum Available Setpoint"
-    },
-    "Chiller_Avail_Obs": {
-      "actuated_component_unique_name": "Chiller_Avail_Sch",
-      "actuated_component_type": "Schedule:Constant",
-      "actuated_component_control_type": "Schedule Value"
     }
   },
   "EnergyManagementSystem:GlobalVariable": {
@@ -1300,48 +1275,6 @@
         },
         {
           "program_line": "ENDIF"
-        },
-        {
-          "program_line": "SET Chiller_Branch_Avail = 1"
-        },
-        {
-          "program_line": "SET Chiller_Component_Avail = 1"
-        },
-        {
-          "program_line": "SET Chiller_Out_T_SP = 6.67"
-        },
-        {
-          "program_line": "SET Chiller_In_MFlow_Max = 9999.0"
-        },
-        {
-          "program_line": "SET Chiller_Avail_Obs = 1"
-        },
-        {
-          "program_line": "IF TES_Action < 0.0 - 0.05"
-        },
-        {
-          "program_line": "IF SOC > 0.02"
-        },
-        {
-          "program_line": "SET Chiller_Branch_Avail = 0"
-        },
-        {
-          "program_line": "SET Chiller_Component_Avail = 0"
-        },
-        {
-          "program_line": "SET Chiller_Out_T_SP = 30.0"
-        },
-        {
-          "program_line": "SET Chiller_In_MFlow_Max = 0.0"
-        },
-        {
-          "program_line": "SET Chiller_Avail_Obs = 0"
-        },
-        {
-          "program_line": "ENDIF"
-        },
-        {
-          "program_line": "ENDIF"
         }
       ]
     },
@@ -1375,34 +1308,6 @@
           "program_line": "SET TES_SOC_Actuator = SOC"
         }
       ]
-    },
-    "P_7": {
-      "lines": [
-        {
-          "program_line": "IF TES_Set_Sensor < 0.0 - 0.05"
-        },
-        {
-          "program_line": "IF SOC > 0.02"
-        },
-        {
-          "program_line": "SET Chiller_Branch_Avail = 0"
-        },
-        {
-          "program_line": "SET Chiller_Component_Avail = 0"
-        },
-        {
-          "program_line": "SET Chiller_In_MFlow_Max = 0.0"
-        },
-        {
-          "program_line": "SET Chiller_Out_T_SP = 30.0"
-        },
-        {
-          "program_line": "ENDIF"
-        },
-        {
-          "program_line": "ENDIF"
-        }
-      ]
     }
   },
   "EnergyManagementSystem:ProgramCallingManager": {
@@ -1425,14 +1330,6 @@
       "programs": [
         {
           "program_name": "P_6"
-        }
-      ]
-    },
-    "P3": {
-      "energyplus_model_calling_point": "InsideHVACSystemIterationLoop",
-      "programs": [
-        {
-          "program_name": "P_7"
         }
       ]
     }
@@ -2920,21 +2817,6 @@
       "key_value": "TES_Source_Avail_Sch",
       "variable_name": "Schedule Value",
       "reporting_frequency": "Timestep"
-    },
-    "Output:Variable 25": {
-      "key_value": "Chiller_Avail_Sch",
-      "variable_name": "Schedule Value",
-      "reporting_frequency": "Timestep"
-    },
-    "Output:Variable 26": {
-      "key_value": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton",
-      "variable_name": "Chiller Electricity Rate",
-      "reporting_frequency": "Timestep"
-    },
-    "Output:Variable 27": {
-      "key_value": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton",
-      "variable_name": "Chiller Evaporator Cooling Rate",
-      "reporting_frequency": "Timestep"
     }
   },
   "Output:VariableDictionary": {
@@ -3260,10 +3142,6 @@
     "TES_SOC_Obs": {
       "hourly_value": 0.5,
       "schedule_type_limits_name": "Fractional"
-    },
-    "Chiller_Avail_Sch": {
-      "hourly_value": 1.0,
-      "schedule_type_limits_name": "Always On Discrete Limits"
     }
   },
   "Schedule:Day:Interval": {

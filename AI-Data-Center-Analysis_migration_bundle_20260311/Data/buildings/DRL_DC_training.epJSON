@@ -1090,6 +1090,51 @@
       "actuated_component_control_type": "Schedule Value",
       "actuated_component_type": "Schedule:Year",
       "actuated_component_unique_name": "DataCenter Equipment_SCH"
+    },
+    "TES_DRL": {
+      "actuated_component_unique_name": "TES_Set",
+      "actuated_component_type": "Schedule:Constant",
+      "actuated_component_control_type": "Schedule Value"
+    },
+    "TES_Use_Avail": {
+      "actuated_component_unique_name": "TES_Use_Avail_Sch",
+      "actuated_component_type": "Schedule:Constant",
+      "actuated_component_control_type": "Schedule Value"
+    },
+    "TES_Source_Avail": {
+      "actuated_component_unique_name": "TES_Source_Avail_Sch",
+      "actuated_component_type": "Schedule:Constant",
+      "actuated_component_control_type": "Schedule Value"
+    },
+    "TES_SOC_Actuator": {
+      "actuated_component_unique_name": "TES_SOC_Obs",
+      "actuated_component_type": "Schedule:Constant",
+      "actuated_component_control_type": "Schedule Value"
+    },
+    "Chiller_Branch_Avail": {
+      "actuated_component_unique_name": "Chilled Water Loop Supply Branch 1",
+      "actuated_component_type": "Supply Side Branch",
+      "actuated_component_control_type": "On/Off Supervisory"
+    },
+    "Chiller_Component_Avail": {
+      "actuated_component_unique_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton",
+      "actuated_component_type": "Plant Component Chiller:Electric:EIR",
+      "actuated_component_control_type": "On/Off Supervisory"
+    },
+    "Chiller_Out_T_SP": {
+      "actuated_component_unique_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Outlet Water Node",
+      "actuated_component_type": "System Node Setpoint",
+      "actuated_component_control_type": "Temperature Setpoint"
+    },
+    "Chiller_In_MFlow_Max": {
+      "actuated_component_unique_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Inlet Water Node",
+      "actuated_component_type": "System Node Setpoint",
+      "actuated_component_control_type": "Mass Flow Rate Maximum Available Setpoint"
+    },
+    "Chiller_Avail_Obs": {
+      "actuated_component_unique_name": "Chiller_Avail_Sch",
+      "actuated_component_type": "Schedule:Constant",
+      "actuated_component_control_type": "Schedule Value"
     }
   },
   "EnergyManagementSystem:GlobalVariable": {
@@ -1112,6 +1157,15 @@
         },
         {
           "erl_variable_name": "max_value_ITE"
+        },
+        {
+          "erl_variable_name": "SOC"
+        },
+        {
+          "erl_variable_name": "T_tank_avg"
+        },
+        {
+          "erl_variable_name": "TES_Action"
         }
       ]
     }
@@ -1184,6 +1238,192 @@
           "program_line": "ENDIF"
         }
       ]
+    },
+    "P_5": {
+      "lines": [
+        {
+          "program_line": "SET TES_Action = TES_Set_Sensor"
+        },
+        {
+          "program_line": "IF SOC < 0.02"
+        },
+        {
+          "program_line": "SET TES_Use_Avail = 0"
+        },
+        {
+          "program_line": "IF TES_Action > 0.05"
+        },
+        {
+          "program_line": "SET TES_Source_Avail = 1"
+        },
+        {
+          "program_line": "ELSE"
+        },
+        {
+          "program_line": "SET TES_Source_Avail = 0"
+        },
+        {
+          "program_line": "ENDIF"
+        },
+        {
+          "program_line": "ELSEIF SOC > 0.98"
+        },
+        {
+          "program_line": "SET TES_Source_Avail = 0"
+        },
+        {
+          "program_line": "IF TES_Action < 0.0 - 0.05"
+        },
+        {
+          "program_line": "SET TES_Use_Avail = 1"
+        },
+        {
+          "program_line": "ELSE"
+        },
+        {
+          "program_line": "SET TES_Use_Avail = 0"
+        },
+        {
+          "program_line": "ENDIF"
+        },
+        {
+          "program_line": "ELSE"
+        },
+        {
+          "program_line": "IF TES_Action > 0.05"
+        },
+        {
+          "program_line": "SET TES_Source_Avail = 1"
+        },
+        {
+          "program_line": "SET TES_Use_Avail = 0"
+        },
+        {
+          "program_line": "ELSEIF TES_Action < 0.0 - 0.05"
+        },
+        {
+          "program_line": "SET TES_Source_Avail = 0"
+        },
+        {
+          "program_line": "SET TES_Use_Avail = 1"
+        },
+        {
+          "program_line": "ELSE"
+        },
+        {
+          "program_line": "SET TES_Source_Avail = 0"
+        },
+        {
+          "program_line": "SET TES_Use_Avail = 0"
+        },
+        {
+          "program_line": "ENDIF"
+        },
+        {
+          "program_line": "ENDIF"
+        },
+        {
+          "program_line": "SET Chiller_Branch_Avail = 1"
+        },
+        {
+          "program_line": "SET Chiller_Component_Avail = 1"
+        },
+        {
+          "program_line": "SET Chiller_Out_T_SP = 6.67"
+        },
+        {
+          "program_line": "SET Chiller_In_MFlow_Max = 9999.0"
+        },
+        {
+          "program_line": "SET Chiller_Avail_Obs = 1"
+        },
+        {
+          "program_line": "IF TES_Action < 0.0 - 0.05"
+        },
+        {
+          "program_line": "IF SOC > 0.02"
+        },
+        {
+          "program_line": "SET Chiller_Branch_Avail = 0"
+        },
+        {
+          "program_line": "SET Chiller_Component_Avail = 0"
+        },
+        {
+          "program_line": "SET Chiller_Out_T_SP = 30.0"
+        },
+        {
+          "program_line": "SET Chiller_In_MFlow_Max = 0.0"
+        },
+        {
+          "program_line": "SET Chiller_Avail_Obs = 0"
+        },
+        {
+          "program_line": "ENDIF"
+        },
+        {
+          "program_line": "ENDIF"
+        }
+      ]
+    },
+    "P_6": {
+      "lines": [
+        {
+          "program_line": "SET T_tank_avg = (T_node_1 + T_node_2 + T_node_3 + T_node_4 + T_node_5 + T_node_6 + T_node_7 + T_node_8 + T_node_9 + T_node_10) / 10.0"
+        },
+        {
+          "program_line": "SET SOC = (12.0 - T_tank_avg) / 6.0"
+        },
+        {
+          "program_line": "IF SOC < 0.0"
+        },
+        {
+          "program_line": "SET SOC = 0.0"
+        },
+        {
+          "program_line": "ENDIF"
+        },
+        {
+          "program_line": "IF SOC > 1.0"
+        },
+        {
+          "program_line": "SET SOC = 1.0"
+        },
+        {
+          "program_line": "ENDIF"
+        },
+        {
+          "program_line": "SET TES_SOC_Actuator = SOC"
+        }
+      ]
+    },
+    "P_7": {
+      "lines": [
+        {
+          "program_line": "IF TES_Set_Sensor < 0.0 - 0.05"
+        },
+        {
+          "program_line": "IF SOC > 0.02"
+        },
+        {
+          "program_line": "SET Chiller_Branch_Avail = 0"
+        },
+        {
+          "program_line": "SET Chiller_Component_Avail = 0"
+        },
+        {
+          "program_line": "SET Chiller_In_MFlow_Max = 0.0"
+        },
+        {
+          "program_line": "SET Chiller_Out_T_SP = 30.0"
+        },
+        {
+          "program_line": "ENDIF"
+        },
+        {
+          "program_line": "ENDIF"
+        }
+      ]
     }
   },
   "EnergyManagementSystem:ProgramCallingManager": {
@@ -1195,6 +1435,25 @@
         },
         {
           "program_name": "P_1"
+        },
+        {
+          "program_name": "P_5"
+        }
+      ]
+    },
+    "P2": {
+      "energyplus_model_calling_point": "EndOfZoneTimestepAfterZoneReporting",
+      "programs": [
+        {
+          "program_name": "P_6"
+        }
+      ]
+    },
+    "P3": {
+      "energyplus_model_calling_point": "InsideHVACSystemIterationLoop",
+      "programs": [
+        {
+          "program_name": "P_7"
         }
       ]
     }
@@ -1255,6 +1514,50 @@
     "Zone_Air_Now": {
       "output_variable_or_output_meter_index_key_name": "DataCenter ZN",
       "output_variable_or_output_meter_name": "Zone Air Temperature"
+    },
+    "T_node_1": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 1"
+    },
+    "T_node_2": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 2"
+    },
+    "T_node_3": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 3"
+    },
+    "T_node_4": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 4"
+    },
+    "T_node_5": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 5"
+    },
+    "T_node_6": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 6"
+    },
+    "T_node_7": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 7"
+    },
+    "T_node_8": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 8"
+    },
+    "T_node_9": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 9"
+    },
+    "T_node_10": {
+      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 10"
+    },
+    "TES_Set_Sensor": {
+      "output_variable_or_output_meter_index_key_name": "TES_Set",
+      "output_variable_or_output_meter_name": "Schedule Value"
     }
   },
   "Fan:VariableVolume": {
@@ -2618,6 +2921,41 @@
       "key_value": "Chilled Water Tank",
       "variable_name": "Chilled Water Thermal Storage Tank Heat Loss Rate",
       "reporting_frequency": "Timestep"
+    },
+    "Output:Variable 21": {
+      "key_value": "TES_SOC_Obs",
+      "variable_name": "Schedule Value",
+      "reporting_frequency": "Timestep"
+    },
+    "Output:Variable 22": {
+      "key_value": "TES_Set",
+      "variable_name": "Schedule Value",
+      "reporting_frequency": "Timestep"
+    },
+    "Output:Variable 23": {
+      "key_value": "TES_Use_Avail_Sch",
+      "variable_name": "Schedule Value",
+      "reporting_frequency": "Timestep"
+    },
+    "Output:Variable 24": {
+      "key_value": "TES_Source_Avail_Sch",
+      "variable_name": "Schedule Value",
+      "reporting_frequency": "Timestep"
+    },
+    "Output:Variable 25": {
+      "key_value": "Chiller_Avail_Sch",
+      "variable_name": "Schedule Value",
+      "reporting_frequency": "Timestep"
+    },
+    "Output:Variable 26": {
+      "key_value": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton",
+      "variable_name": "Chiller Electricity Rate",
+      "reporting_frequency": "Timestep"
+    },
+    "Output:Variable 27": {
+      "key_value": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton",
+      "variable_name": "Chiller Evaporator Cooling Rate",
+      "reporting_frequency": "Timestep"
     }
   },
   "Output:VariableDictionary": {
@@ -2928,6 +3266,25 @@
     "TES_Charge_Setpoint": {
       "hourly_value": 6.0,
       "schedule_type_limits_name": "Temperature"
+    },
+    "TES_Set": {
+      "hourly_value": 0.0
+    },
+    "TES_Use_Avail_Sch": {
+      "hourly_value": 0.0,
+      "schedule_type_limits_name": "Always On Discrete Limits"
+    },
+    "TES_Source_Avail_Sch": {
+      "hourly_value": 0.0,
+      "schedule_type_limits_name": "Always On Discrete Limits"
+    },
+    "TES_SOC_Obs": {
+      "hourly_value": 0.5,
+      "schedule_type_limits_name": "Fractional"
+    },
+    "Chiller_Avail_Sch": {
+      "hourly_value": 1.0,
+      "schedule_type_limits_name": "Always On Discrete Limits"
     }
   },
   "Schedule:Day:Interval": {
@@ -5567,14 +5924,14 @@
       "use_side_inlet_node_name": "CW Tank Use Inlet Node",
       "use_side_outlet_node_name": "CW Tank Use Outlet Node",
       "use_side_heat_transfer_effectiveness": 1.0,
-      "use_side_availability_schedule_name": "Always On Discrete",
+      "use_side_availability_schedule_name": "TES_Use_Avail_Sch",
       "use_side_inlet_height": 21.5,
       "use_side_outlet_height": 0.5,
       "use_side_design_flow_rate": "Autosize",
       "source_side_inlet_node_name": "CW Tank Source Inlet Node",
       "source_side_outlet_node_name": "CW Tank Source Outlet Node",
       "source_side_heat_transfer_effectiveness": 1.0,
-      "source_side_availability_schedule_name": "Always On Discrete",
+      "source_side_availability_schedule_name": "TES_Source_Avail_Sch",
       "source_side_inlet_height": 0.5,
       "source_side_outlet_height": 21.5,
       "source_side_design_flow_rate": "Autosize",

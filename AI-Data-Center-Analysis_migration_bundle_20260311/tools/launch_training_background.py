@@ -30,6 +30,8 @@ def main() -> None:
     parser.add_argument('--job-name', required=True)
     parser.add_argument('--conda-exe', type=Path, required=False, help='(deprecated, ignored)')
     parser.add_argument('--python-exe', type=Path, required=False, help='Python executable path')
+    parser.add_argument('--resume', type=str, default=None, help='Checkpoint .zip path to resume from')
+    parser.add_argument('--algo', default='dsac_t', choices=['sac', 'dsac_t'])
     parser.add_argument('--wandb', action='store_true', help='Enable wandb logging')
     parser.add_argument('--wandb-project', default='dc-cooling-optimization')
     parser.add_argument('--wandb-group', default=None)
@@ -70,6 +72,9 @@ def main() -> None:
     ]
     if args.timesteps is not None:
         command.extend(['--timesteps', str(args.timesteps)])
+    if args.resume:
+        command.extend(['--resume', args.resume])
+    command.extend(['--algo', args.algo])
     if args.wandb:
         command.append('--wandb')
         command.extend(['--wandb-project', args.wandb_project])

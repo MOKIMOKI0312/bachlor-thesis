@@ -41,6 +41,8 @@ def main() -> None:
     parser.add_argument('--status-every-steps', type=int, default=500)
     parser.add_argument('--probe-step-sample-interval', type=int, default=12)
     parser.add_argument('--probe-recent-window', type=int, default=192)
+    parser.add_argument('--algo', default='dsac_t', choices=['sac', 'dsac_t'], help='Algorithm (default: dsac_t)')
+    parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint .zip to resume from')
     parser.add_argument('--wandb', action='store_true', help='Enable Weights & Biases logging')
     parser.add_argument('--wandb-project', default='dc-cooling-optimization')
     parser.add_argument('--wandb-group', default=None, help='W&B group name (e.g. E0-nanjing)')
@@ -75,18 +77,39 @@ def main() -> None:
     )
 
     policy_kwargs = dict(net_arch=[512])
-    model = SAC(
-        'MlpPolicy',
-        env,
-        batch_size=512,
-        learning_rate=5e-5,
-        learning_starts=8760,
-        gamma=0.99,
-        policy_kwargs=policy_kwargs,
-        verbose=1,
-        seed=args.seed,
-        device=args.device,
-    )
+    if args.algo == 'dsac_t':
+        from tools.dsac_t import DSAC_T
+        AlgoClass = DSAC_T
+    else:
+        AlgoClass = SAC
+
+    if args.resume:
+        # Resume from checkpoint
+        print(f'Resuming from: {args.resume}')
+        model = AlgoClass.load(
+            args.resume,
+            env=env,
+            device=args.device,
+        )
+        # Restore replay buffer if exists
+        replay_path = args.resume.replace('.zip', '_replay_buffer.pkl')
+        import os
+        if os.path.exists(replay_path):
+            model.load_replay_buffer(replay_path)
+            print(f'Replay buffer loaded: {replay_path}')
+    else:
+        model = AlgoClass(
+            'MlpPolicy',
+            env,
+            batch_size=512,
+            learning_rate=5e-5,
+            learning_starts=8760,
+            gamma=0.99,
+            policy_kwargs=policy_kwargs,
+            verbose=1,
+            seed=args.seed,
+            device=args.device,
+        )
     episodes = args.episodes
     timesteps_per_episode = env.get_wrapper_attr('timestep_per_episode') - 1
     timesteps = int(args.timesteps) if args.timesteps is not None else episodes * timesteps_per_episode

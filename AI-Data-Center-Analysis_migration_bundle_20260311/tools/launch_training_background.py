@@ -32,6 +32,8 @@ def main() -> None:
     parser.add_argument('--python-exe', type=Path, required=False, help='Python executable path')
     parser.add_argument('--resume', type=str, default=None, help='Checkpoint .zip path to resume from')
     parser.add_argument('--algo', default='dsac_t', choices=['sac', 'dsac_t'])
+    parser.add_argument('--training-script', default='tools/run_short_training.py',
+                        help='Path to training entrypoint (default: run_short_training.py; use run_tes_training.py for M1 TES)')
     parser.add_argument('--wandb', action='store_true', help='Enable wandb logging')
     parser.add_argument('--wandb-project', default='dc-cooling-optimization')
     parser.add_argument('--wandb-group', default=None)
@@ -56,7 +58,7 @@ def main() -> None:
     python_exe = args.python_exe or sys.executable
     command = [
         str(python_exe),
-        'tools/run_short_training.py',
+        args.training_script,
         '--episodes',
         str(args.episodes),
         '--seed',

@@ -1,0 +1,16 @@
+{
+  "seed": "03",
+  "checkpoint": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\train\\run-142\\checkpoints\\e03_nanjing_seed03_262770_steps.zip",
+  "trace": "Earth",
+  "steps": 8760,
+  "total_reward": -5994.565567347211,
+  "total_facility_MWh": 88537.2326533611,
+  "total_ite_MWh": 65687.62126483333,
+  "pue": 1.347852623501235,
+  "comfort_violation_pct": 1.381120876612259,
+  "mean_temperature_C": 22.128694164935506,
+  "max_temperature_C": 40.558334,
+  "p95_temperature_C": 24.116707,
+  "monitor_csv": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\eval\\run-025\\episode-001\\monitor.csv",
+  "elapsed_seconds": 11.976098999999522
+}

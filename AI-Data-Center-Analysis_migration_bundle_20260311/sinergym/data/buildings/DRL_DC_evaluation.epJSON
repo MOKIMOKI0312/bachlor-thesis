@@ -1130,6 +1130,31 @@
       "actuated_component_unique_name": "Chiller_Avail_Sch",
       "actuated_component_type": "Schedule:Constant",
       "actuated_component_control_type": "Schedule Value"
+    },
+    "TES_Use_MFlow_Max": {
+      "actuated_component_unique_name": "CW Tank Use Inlet Node",
+      "actuated_component_type": "System Node Setpoint",
+      "actuated_component_control_type": "Mass Flow Rate Maximum Available Setpoint"
+    },
+    "TES_Use_MFlow_Min": {
+      "actuated_component_unique_name": "CW Tank Use Inlet Node",
+      "actuated_component_type": "System Node Setpoint",
+      "actuated_component_control_type": "Mass Flow Rate Minimum Available Setpoint"
+    },
+    "TES_Source_MFlow_Max": {
+      "actuated_component_unique_name": "CW Tank Source Inlet Node",
+      "actuated_component_type": "System Node Setpoint",
+      "actuated_component_control_type": "Mass Flow Rate Maximum Available Setpoint"
+    },
+    "TES_Source_MFlow_Min": {
+      "actuated_component_unique_name": "CW Tank Source Inlet Node",
+      "actuated_component_type": "System Node Setpoint",
+      "actuated_component_control_type": "Mass Flow Rate Minimum Available Setpoint"
+    },
+    "TES_Avg_Temp_Actuator": {
+      "actuated_component_unique_name": "TES_Avg_Temp_Obs",
+      "actuated_component_type": "Schedule:Constant",
+      "actuated_component_control_type": "Schedule Value"
     }
   },
   "EnergyManagementSystem:GlobalVariable": {
@@ -1216,82 +1241,61 @@
     "P_5": {
       "lines": [
         {
-          "program_line": "SET TES_Action = TES_Set_Sensor"
+          "program_line": "SET TES_Signal = TES_Set_Sensor"
         },
         {
-          "program_line": "IF SOC < 0.02"
+          "program_line": "SET Max_Flow = 97.2"
         },
         {
-          "program_line": "SET TES_Use_Avail = 0"
+          "program_line": "SET Flow = @Abs TES_Signal * Max_Flow"
         },
         {
-          "program_line": "IF TES_Action > 0.05"
+          "program_line": "SET TES_Use_MFlow_Max = 0.0"
         },
         {
-          "program_line": "SET TES_Source_Avail = 1"
+          "program_line": "SET TES_Use_MFlow_Min = 0.0"
         },
         {
-          "program_line": "ELSE"
+          "program_line": "SET TES_Source_MFlow_Max = 0.0"
         },
         {
-          "program_line": "SET TES_Source_Avail = 0"
-        },
-        {
-          "program_line": "ENDIF"
-        },
-        {
-          "program_line": "ELSEIF SOC > 0.98"
-        },
-        {
-          "program_line": "SET TES_Source_Avail = 0"
-        },
-        {
-          "program_line": "IF TES_Action < 0.0 - 0.05"
-        },
-        {
-          "program_line": "SET TES_Use_Avail = 1"
-        },
-        {
-          "program_line": "ELSE"
+          "program_line": "SET TES_Source_MFlow_Min = 0.0"
         },
         {
           "program_line": "SET TES_Use_Avail = 0"
         },
         {
-          "program_line": "ENDIF"
-        },
-        {
-          "program_line": "ELSE"
-        },
-        {
-          "program_line": "IF TES_Action > 0.05"
-        },
-        {
-          "program_line": "SET TES_Source_Avail = 1"
-        },
-        {
-          "program_line": "SET TES_Use_Avail = 0"
-        },
-        {
-          "program_line": "ELSEIF TES_Action < 0.0 - 0.05"
-        },
-        {
           "program_line": "SET TES_Source_Avail = 0"
         },
         {
-          "program_line": "SET TES_Use_Avail = 1"
+          "program_line": "IF TES_Signal > 0.01"
         },
         {
-          "program_line": "ELSE"
+          "program_line": "  SET TES_Use_Avail = 1"
         },
         {
-          "program_line": "SET TES_Source_Avail = 0"
+          "program_line": "  SET TES_Use_MFlow_Max = Flow"
         },
         {
-          "program_line": "SET TES_Use_Avail = 0"
+          "program_line": "  SET TES_Use_MFlow_Min = Flow"
         },
         {
-          "program_line": "ENDIF"
+          "program_line": "  SET TES_Source_Avail = 0"
+        },
+        {
+          "program_line": "ELSEIF TES_Signal < 0.0 - 0.01"
+        },
+        {
+          "program_line": "  SET TES_Source_Avail = 1"
+        },
+        {
+          "program_line": "  SET TES_Source_MFlow_Max = Flow"
+        },
+        {
+          "program_line": "  SET TES_Source_MFlow_Min = Flow"
+        },
+        {
+          "program_line": "  SET TES_Use_Avail = 0"
         },
         {
           "program_line": "ENDIF"
@@ -1312,28 +1316,28 @@
           "program_line": "SET Chiller_Avail_Obs = 1"
         },
         {
-          "program_line": "IF TES_Action < 0.0 - 0.05"
+          "program_line": "IF TES_Signal < 0.0 - 0.01"
         },
         {
-          "program_line": "IF SOC > 0.02"
+          "program_line": "  IF SOC > 0.02"
         },
         {
-          "program_line": "SET Chiller_Branch_Avail = 0"
+          "program_line": "    SET Chiller_Branch_Avail = 0"
         },
         {
-          "program_line": "SET Chiller_Component_Avail = 0"
+          "program_line": "    SET Chiller_Component_Avail = 0"
         },
         {
-          "program_line": "SET Chiller_Out_T_SP = 30.0"
+          "program_line": "    SET Chiller_Out_T_SP = 30.0"
         },
         {
-          "program_line": "SET Chiller_In_MFlow_Max = 0.0"
+          "program_line": "    SET Chiller_In_MFlow_Max = 0.0"
         },
         {
-          "program_line": "SET Chiller_Avail_Obs = 0"
+          "program_line": "    SET Chiller_Avail_Obs = 0"
         },
         {
-          "program_line": "ENDIF"
+          "program_line": "  ENDIF"
         },
         {
           "program_line": "ENDIF"
@@ -1368,31 +1372,37 @@
         },
         {
           "program_line": "SET TES_SOC_Actuator = SOC"
+        },
+        {
+          "program_line": "SET TES_Avg_Temp_Actuator = T_tank_avg"
         }
       ]
     },
     "P_7": {
       "lines": [
         {
-          "program_line": "IF TES_Set_Sensor < 0.0 - 0.05"
+          "program_line": "IF TES_Set_Sensor < 0.0 - 0.01"
         },
         {
-          "program_line": "IF SOC > 0.02"
+          "program_line": "  IF SOC > 0.02"
         },
         {
-          "program_line": "SET Chiller_Branch_Avail = 0"
+          "program_line": "    SET Chiller_Branch_Avail = 0"
         },
         {
-          "program_line": "SET Chiller_Component_Avail = 0"
+          "program_line": "    SET Chiller_Component_Avail = 0"
         },
         {
-          "program_line": "SET Chiller_In_MFlow_Max = 0.0"
+          "program_line": "    SET Chiller_Out_T_SP = 30.0"
         },
         {
-          "program_line": "SET Chiller_Out_T_SP = 30.0"
+          "program_line": "    SET Chiller_In_MFlow_Max = 0.0"
         },
         {
-          "program_line": "ENDIF"
+          "program_line": "    SET Chiller_Avail_Obs = 0"
+        },
+        {
+          "program_line": "  ENDIF"
         },
         {
           "program_line": "ENDIF"
@@ -2930,6 +2940,11 @@
       "key_value": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton",
       "variable_name": "Chiller Evaporator Cooling Rate",
       "reporting_frequency": "Timestep"
+    },
+    "TES_Avg_Temp_Output": {
+      "key_value": "TES_Avg_Temp_Obs",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Schedule Value"
     }
   },
   "Output:VariableDictionary": {
@@ -3259,6 +3274,9 @@
     "Chiller_Avail_Sch": {
       "hourly_value": 1.0,
       "schedule_type_limits_name": "Always On Discrete Limits"
+    },
+    "TES_Avg_Temp_Obs": {
+      "hourly_value": 10.0
     }
   },
   "Schedule:Day:Interval": {
@@ -5884,14 +5902,14 @@
   },
   "ThermalStorage:ChilledWater:Stratified": {
     "Chilled Water Tank": {
-      "tank_volume": 4300.0,
-      "tank_height": 22.0,
+      "tank_volume": 1400.0,
+      "tank_height": 15.89,
       "tank_shape": "VerticalCylinder",
       "setpoint_temperature_schedule_name": "TES_Charge_Setpoint",
       "deadband_temperature_difference": 0.5,
-      "temperature_sensor_height": 11.0,
+      "temperature_sensor_height": 7.9,
       "minimum_temperature_limit": 1.0,
-      "nominal_cooling_capacity": 30000000.0,
+      "nominal_cooling_capacity": 9767442,
       "ambient_temperature_indicator": "Zone",
       "ambient_temperature_zone_name": "DataCenter ZN",
       "uniform_skin_loss_coefficient_per_unit_area_to_ambient_temperature": 0.4,
@@ -5899,7 +5917,7 @@
       "use_side_outlet_node_name": "CW Tank Use Outlet Node",
       "use_side_heat_transfer_effectiveness": 1.0,
       "use_side_availability_schedule_name": "TES_Use_Avail_Sch",
-      "use_side_inlet_height": 21.5,
+      "use_side_inlet_height": 15.4,
       "use_side_outlet_height": 0.5,
       "use_side_design_flow_rate": "Autosize",
       "source_side_inlet_node_name": "CW Tank Source Inlet Node",
@@ -5907,7 +5925,7 @@
       "source_side_heat_transfer_effectiveness": 1.0,
       "source_side_availability_schedule_name": "TES_Source_Avail_Sch",
       "source_side_inlet_height": 0.5,
-      "source_side_outlet_height": 21.5,
+      "source_side_outlet_height": 15.4,
       "source_side_design_flow_rate": "Autosize",
       "tank_recovery_time": 4.0,
       "inlet_mode": "Seeking",

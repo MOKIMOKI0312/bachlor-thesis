@@ -19,6 +19,7 @@ import torch
 from sinergym.utils.common import get_ids
 from sinergym.utils.training_monitor import StatusCallback, make_probe_logger_factory
 from sinergym.utils.wrappers import LoggerWrapper, NormalizeObservation
+from sinergym.envs.tes_wrapper import TESIncrementalWrapper
 
 
 def set_global_seed(seed: int) -> None:
@@ -64,16 +65,19 @@ def main() -> None:
 
     env = gym.make(environment, env_name=experiment_name, building_file=building_file, weather_files=weather_files, config_params=config_params)
     env.action_space.seed(args.seed)
+    env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
     env = NormalizeObservation(env)
+    obs_vars = env.get_wrapper_attr('observation_variables') + ['TES_valve_position']
+    act_vars = env.get_wrapper_attr('action_variables')
     env = LoggerWrapper(
         env,
         logger_class=make_probe_logger_factory(
-            observation_variables=env.get_wrapper_attr('observation_variables'),
-            action_variables=env.get_wrapper_attr('action_variables'),
+            observation_variables=obs_vars,
+            action_variables=act_vars,
             step_sample_interval=args.probe_step_sample_interval,
             recent_step_window=args.probe_recent_window,
         ),
-        monitor_header=['timestep'] + env.get_wrapper_attr('observation_variables') + env.get_wrapper_attr('action_variables') + ['time (hours)', 'reward', 'energy_term', 'ITE_term', 'comfort_term', 'terminated', 'truncated'],
+        monitor_header=['timestep'] + obs_vars + act_vars + ['time (hours)', 'reward', 'energy_term', 'ITE_term', 'comfort_term', 'terminated', 'truncated'],
     )
 
     policy_kwargs = dict(net_arch=[512])

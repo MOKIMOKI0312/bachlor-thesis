@@ -171,18 +171,9 @@ _register_if_missing(
             'TES_SOC': (
                 'Schedule Value',
                 'TES_SOC_Obs'),
-            'TES_tank_T': (
-                'Chilled Water Thermal Storage Final Tank Temperature',
-                'Chilled Water Tank'),
-            'TES_use_HT': (
-                'Chilled Water Thermal Storage Use Side Heat Transfer Rate',
-                'Chilled Water Tank'),
-            'TES_src_HT': (
-                'Chilled Water Thermal Storage Source Side Heat Transfer Rate',
-                'Chilled Water Tank'),
-            'chiller_avail': (
+            'TES_avg_temp': (
                 'Schedule Value',
-                'Chiller_Avail_Sch'),
+                'TES_Avg_Temp_Obs'),
         },
         "meters": {
             "Electricity:Facility": "Electricity:Facility",
@@ -224,12 +215,7 @@ _register_if_missing(
             'range_comfort_summer': (18.0, 25.0),
             'energy_weight': 1/2,
             'lambda_energy': 1,
-            # M1: sqrt comfort penalty multiplier raised from 1.0 to 3.0 to counter
-            # agent over-discharging TES into zone overtemperature (46°C observed in smoke test).
             'lambda_temperature': 3.0,
-            # SOC penalties:
-            # - Forward-looking quadratic: smooth gradient from soc=0.20/0.80 outward
-            # - Sharp soft barrier: linear penalty inside [0.05, 0.95] if agent persists
             'soc_variable': 'TES_SOC',
             'soc_low': 0.05,
             'soc_high': 0.95,

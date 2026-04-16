@@ -224,10 +224,19 @@ _register_if_missing(
             'range_comfort_summer': (18.0, 25.0),
             'energy_weight': 1/2,
             'lambda_energy': 1,
+            # M1: sqrt comfort penalty multiplier raised from 1.0 to 3.0 to counter
+            # agent over-discharging TES into zone overtemperature (46°C observed in smoke test).
+            'lambda_temperature': 3.0,
+            # SOC penalties:
+            # - Forward-looking quadratic: smooth gradient from soc=0.20/0.80 outward
+            # - Sharp soft barrier: linear penalty inside [0.05, 0.95] if agent persists
             'soc_variable': 'TES_SOC',
             'soc_low': 0.05,
             'soc_high': 0.95,
+            'soc_forward_low': 0.20,
+            'soc_forward_high': 0.80,
             'lambda_soc': 5.0,
+            'lambda_soc_forward': 3.0,
         },
         'env_name': 'DC-DRL-TES',
         'config_params': {

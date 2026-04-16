@@ -343,26 +343,6 @@
           "component_outlet_node_name": "Condenser Water Loop Supply Outlet Node"
         }
       ]
-    },
-    "Chilled Water Loop Supply Branch 3": {
-      "components": [
-        {
-          "component_object_type": "ThermalStorage:ChilledWater:Stratified",
-          "component_name": "Chilled Water Tank",
-          "component_inlet_node_name": "CW Tank Use Inlet Node",
-          "component_outlet_node_name": "CW Tank Use Outlet Node"
-        }
-      ]
-    },
-    "Chilled Water Loop Demand Branch 3": {
-      "components": [
-        {
-          "component_object_type": "ThermalStorage:ChilledWater:Stratified",
-          "component_name": "Chilled Water Tank",
-          "component_inlet_node_name": "CW Tank Source Inlet Node",
-          "component_outlet_node_name": "CW Tank Source Outlet Node"
-        }
-      ]
     }
   },
   "BranchList": {
@@ -388,9 +368,6 @@
           "branch_name": "Chilled Water Loop Demand Bypass Branch"
         },
         {
-          "branch_name": "Chilled Water Loop Demand Branch 3"
-        },
-        {
           "branch_name": "Chilled Water Loop Demand Outlet Branch"
         }
       ]
@@ -405,9 +382,6 @@
         },
         {
           "branch_name": "Chilled Water Loop Supply Branch 2"
-        },
-        {
-          "branch_name": "Chilled Water Loop Supply Branch 3"
         },
         {
           "branch_name": "Chilled Water Loop Supply Outlet Branch"
@@ -700,9 +674,6 @@
         },
         {
           "inlet_branch_name": "Chilled Water Loop Demand Bypass Branch"
-        },
-        {
-          "inlet_branch_name": "Chilled Water Loop Demand Branch 3"
         }
       ],
       "outlet_branch_name": "Chilled Water Loop Demand Outlet Branch"
@@ -714,9 +685,6 @@
         },
         {
           "inlet_branch_name": "Chilled Water Loop Supply Branch 2"
-        },
-        {
-          "inlet_branch_name": "Chilled Water Loop Supply Branch 3"
         }
       ],
       "outlet_branch_name": "Chilled Water Loop Supply Outlet Branch"
@@ -761,9 +729,6 @@
         },
         {
           "outlet_branch_name": "Chilled Water Loop Demand Bypass Branch"
-        },
-        {
-          "outlet_branch_name": "Chilled Water Loop Demand Branch 3"
         }
       ],
       "inlet_branch_name": "Chilled Water Loop Demand Inlet Branch"
@@ -775,9 +740,6 @@
         },
         {
           "outlet_branch_name": "Chilled Water Loop Supply Branch 2"
-        },
-        {
-          "outlet_branch_name": "Chilled Water Loop Supply Branch 3"
         }
       ],
       "inlet_branch_name": "Chilled Water Loop Supply Inlet Branch"
@@ -1160,28 +1122,7 @@
     "P_2": {
       "lines": [
         {
-          "program_line": "SET ITE_rate = 0.5"
-        },
-        {
-          "program_line": "IF Hour >= 0"
-        },
-        {
-          "program_line": "SET min_value_ITE = @RandomUniform ITE_Now-0.1 ITE_Now-0.01"
-        },
-        {
-          "program_line": "SET max_value_ITE = @RandomUniform ITE_Now+0.01 ITE_Now+0.1"
-        },
-        {
-          "program_line": "SET min_value_ITE = @Max min_value_ITE 0.05"
-        },
-        {
-          "program_line": "SET max_value_ITE = @Min max_value_ITE 0.80"
-        },
-        {
-          "program_line": "SET ITE_rate = @RandomUniform min_value_ITE max_value_ITE"
-        },
-        {
-          "program_line": "ENDIF"
+          "program_line": "SET ITE_rate = ITE_S"
         }
       ]
     }
@@ -2691,10 +2632,6 @@
         {
           "equipment_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton",
           "equipment_object_type": "Chiller:Electric:EIR"
-        },
-        {
-          "equipment_object_type": "ThermalStorage:ChilledWater:Stratified",
-          "equipment_name": "Chilled Water Tank"
         }
       ]
     },
@@ -2923,7 +2860,7 @@
       "hourly_value": 0
     },
     "ITE_Set": {
-      "hourly_value": 0.45
+      "hourly_value": 1
     },
     "TES_Charge_Setpoint": {
       "hourly_value": 6.0,

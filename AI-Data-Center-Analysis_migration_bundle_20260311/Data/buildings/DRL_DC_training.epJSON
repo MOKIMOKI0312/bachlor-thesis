@@ -1091,11 +1091,6 @@
       "actuated_component_type": "Schedule:Year",
       "actuated_component_unique_name": "DataCenter Equipment_SCH"
     },
-    "TES_DRL": {
-      "actuated_component_unique_name": "TES_Set",
-      "actuated_component_type": "Schedule:Constant",
-      "actuated_component_control_type": "Schedule Value"
-    },
     "TES_Use_Avail": {
       "actuated_component_unique_name": "TES_Use_Avail_Sch",
       "actuated_component_type": "Schedule:Constant",

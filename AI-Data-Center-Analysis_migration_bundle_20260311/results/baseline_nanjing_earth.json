@@ -1,0 +1,17 @@
+{
+  "label": "rule_based_baseline",
+  "building": "Baseline_DC.epJSON",
+  "trace": "Earth",
+  "steps": 8760,
+  "total_reward": -6177.191984455563,
+  "total_facility_MWh": 86282.90619138889,
+  "total_ite_MWh": 61749.12874777778,
+  "pue": 1.3973137425763926,
+  "comfort_violation_pct": 0.0,
+  "mean_temperature_C": 22.74583332237443,
+  "max_temperature_C_with_warmup": 23.5264,
+  "max_temperature_C_stable": 23.5264,
+  "p95_temperature_C": 23.2627433,
+  "monitor_csv": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\eval\\run-034\\episode-001\\monitor.csv",
+  "elapsed_seconds": 7.262982799999008
+}

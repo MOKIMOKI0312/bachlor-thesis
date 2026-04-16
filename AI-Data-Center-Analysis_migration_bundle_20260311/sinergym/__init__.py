@@ -117,6 +117,126 @@ _register_if_missing(
         'evaluation_flag': 0})
 
 _register_if_missing(
+    'Eplus-DC-Cooling-TES',
+    entry_point='sinergym.envs:EplusEnv',
+    kwargs={
+        'building_file': 'DRL_DC_evaluation.epJSON',
+        'weather_files': 'AUS_NSW_Sydney.Intl.AP.947670_TMYx.2009-2023.epw',
+        'action_space': gym.spaces.Box(
+            low=np.array([0, 0, 0, 0, 0, -1], dtype=np.float32),
+            high=np.array([1, 1, 1, 1, 1, 1], dtype=np.float32),
+            shape=(6,),
+            dtype=np.float32),
+        'time_variables': ['month', 'day_of_month', 'hour'],
+        'variables': {
+            'outdoor_temperature': (
+                'Site Outdoor Air DryBulb Temperature',
+                'Environment'),
+            'outdoor_wet_temperature': (
+                'Site Outdoor Air WetBulb Temperature',
+                'Environment'),
+            'air_temperature': (
+                'Zone Air Temperature',
+                'DataCenter ZN'),
+            'air_humidity': (
+                'Zone Air Relative Humidity',
+                'DataCenter ZN'),
+            'CT_temperature': (
+                'System Node Temperature',
+                'Condenser Water Loop Supply Outlet Node'),
+            'CW_temperature': (
+                'System Node Temperature',
+                '90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Outlet Water Node'),
+            'CRAH_temperature_1': (
+                'System Node Temperature',
+                'CRAH Supply Outlet Node'),
+            'CRAH_temperature_2': (
+                'System Node Temperature',
+                'CRAH Supply Inlet Node'),
+            'act_Fan': (
+                'Fan Air Mass Flow Rate',
+                'CRAH FAN'),
+            'act_Chiller_T': (
+                'Schedule Value',
+                'Chilled Water Loop Temp - 44F'),
+            'act_Chiller_Pump': (
+                'Pump Mass Flow Rate',
+                'Chilled Water Loop Secondary Pump'),
+            'act_CT_Pump': (
+                'Pump Mass Flow Rate',
+                'CONDENSER WATER LOOP CONSTANT PUMP'),
+            'act_ITE': (
+                'Schedule Value',
+                'DataCenter Equipment_SCH'),
+            'TES_SOC': (
+                'Schedule Value',
+                'TES_SOC_Obs'),
+            'TES_tank_T': (
+                'Chilled Water Thermal Storage Final Tank Temperature',
+                'Chilled Water Tank'),
+            'TES_use_HT': (
+                'Chilled Water Thermal Storage Use Side Heat Transfer Rate',
+                'Chilled Water Tank'),
+            'TES_src_HT': (
+                'Chilled Water Thermal Storage Source Side Heat Transfer Rate',
+                'Chilled Water Tank'),
+            'chiller_avail': (
+                'Schedule Value',
+                'Chiller_Avail_Sch'),
+        },
+        "meters": {
+            "Electricity:Facility": "Electricity:Facility",
+            "ITE-CPU:InteriorEquipment:Electricity": "ITE-CPU:InteriorEquipment:Electricity",
+            "Water:Facility": "Water:Facility"
+        },
+        'actuators': {
+            'CRAH_Fan_DRL': (
+                'Schedule:Constant',
+                'Schedule Value',
+                'CRAH_Fan_Set'),
+            'CT_Pump_DRL': (
+                'Schedule:Constant',
+                'Schedule Value',
+                'CT_Pump_Set'),
+            'CRAH_T_DRL': (
+                'Schedule:Constant',
+                'Schedule Value',
+                'CRAH_T_Set'),
+            'Chiller_T_DRL': (
+                'Schedule:Constant',
+                'Schedule Value',
+                'Chiller_T_Set'),
+            'ITE_DRL': (
+                'Schedule:Constant',
+                'Schedule Value',
+                'ITE_Set'),
+            'TES_DRL': (
+                'Schedule:Constant',
+                'Schedule Value',
+                'TES_Set'),
+        },
+        'reward': PUE_TES_Reward,
+        'reward_kwargs': {
+            'temperature_variables': ['air_temperature'],
+            'energy_variables': ["Electricity:Facility"],
+            'ITE_variables': ["ITE-CPU:InteriorEquipment:Electricity"],
+            'range_comfort_winter': (18.0, 25.0),
+            'range_comfort_summer': (18.0, 25.0),
+            'energy_weight': 1/2,
+            'lambda_energy': 1,
+            'soc_variable': 'TES_SOC',
+            'soc_low': 0.05,
+            'soc_high': 0.95,
+            'lambda_soc': 5.0,
+        },
+        'env_name': 'DC-DRL-TES',
+        'config_params': {
+            'runperiod': (1, 1, 2025, 31, 12, 2025),
+            'timesteps_per_hour': 1
+        },
+        'evaluation_flag': 0})
+
+_register_if_missing(
     'Eplus-DC-Grid',
     entry_point='sinergym.envs:EplusEnv',
     kwargs={

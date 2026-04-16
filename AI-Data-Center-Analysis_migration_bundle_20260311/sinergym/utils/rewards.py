@@ -1655,3 +1655,58 @@ class Grid_Reward(BaseReward):
             (1 - self.W_energy - self.W_ITE) * comfort_penalty
         reward = energy_term + ITE_term + comfort_term
         return reward, energy_term, ITE_term, comfort_term
+
+
+class PUE_TES_Reward(PUE_Reward):
+    """PUE reward augmented with a SOC soft-barrier penalty for TES training.
+
+    Inherits energy and sqrt comfort logic from PUE_Reward (M1 baseline).
+    Adds a soft penalty when SOC drifts outside [soc_low, soc_high].
+    """
+
+    def __init__(
+        self,
+        temperature_variables: List[str],
+        energy_variables: List[str],
+        ITE_variables: List[str],
+        range_comfort_winter: Tuple[int, int],
+        range_comfort_summer: Tuple[int, int],
+        soc_variable: str = 'TES_SOC',
+        soc_low: float = 0.05,
+        soc_high: float = 0.95,
+        lambda_soc: float = 5.0,
+        **kwargs,
+    ):
+        super().__init__(
+            temperature_variables=temperature_variables,
+            energy_variables=energy_variables,
+            ITE_variables=ITE_variables,
+            range_comfort_winter=range_comfort_winter,
+            range_comfort_summer=range_comfort_summer,
+            **kwargs,
+        )
+        self.soc_variable = soc_variable
+        self.soc_low = soc_low
+        self.soc_high = soc_high
+        self.lambda_soc = lambda_soc
+
+    def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
+        reward, terms = super().__call__(obs_dict)
+
+        soc = obs_dict.get(self.soc_variable)
+        if soc is None:
+            terms['soc_penalty'] = 0.0
+            return reward, terms
+
+        soc_val = float(soc)
+        if soc_val < self.soc_low:
+            soc_penalty = -(self.soc_low - soc_val) * self.lambda_soc
+        elif soc_val > self.soc_high:
+            soc_penalty = -(soc_val - self.soc_high) * self.lambda_soc
+        else:
+            soc_penalty = 0.0
+
+        reward = reward + soc_penalty
+        terms['soc_penalty'] = soc_penalty
+        terms['soc_value'] = soc_val
+        return reward, terms

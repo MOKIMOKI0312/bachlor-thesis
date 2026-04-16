@@ -1,9 +1,14 @@
 """检查 12 seed 训练状态"""
+import argparse
 import json
 import numpy as np
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--prefix', default='e02_nanjing', help='Job name prefix')
+args = parser.parse_args()
 
 header = f"{'Seed':<8} {'Ep':<5} {'Last Reward':<14} {'Best Reward':<14} {'Best@Ep':<8} {'Comfort%':<10} {'Trend(10ep)':<14}"
 print(header)
@@ -12,7 +17,7 @@ print('-' * 80)
 all_rewards = {}
 for seed in range(1, 13):
     sp = f'{seed:02d}'
-    status_path = ROOT / 'training_jobs' / f'e01_nanjing-seed{sp}' / 'status.json'
+    status_path = ROOT / 'training_jobs' / f'{args.prefix}-seed{sp}' / 'status.json'
     if not status_path.exists():
         print(f'seed{sp:<4} NO DATA')
         continue

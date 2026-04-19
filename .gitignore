@@ -9,3 +9,5 @@ Eplus-env-*/
 vendor/EnergyPlus-*/
 *.7z
 training_jobs/
+.claude/
+.playwright-mcp/

@@ -119,14 +119,53 @@ def main():
         obs, r, term, trunc, info = env.step(a)
         assert obs.shape == (expected_dim,)
         assert np.isfinite(r)
+        # M5 fix (2026-04-19): EplusEnv.step does `info.update(rw_terms)`, so
+        # reward terms are flattened into info (not nested under `terms`).  We
+        # snapshot the known-M2 keys here to verify TES SoC is live.  If the
+        # TES_SOC Schedule Value is not exported to obs_dict, PUE_TES_Reward
+        # silently returns soc_value=None and the reward degrades to PUE+cost
+        # only (losing the TES SoC guard).  Fail loudly here instead.
+        reward_term_keys = (
+            "soc_value", "soc_term", "soc_warn_term",
+            "cost_term", "cost_usd_step", "mwh_step", "lmp_usd_per_mwh",
+            "comfort_term", "comfort_extra_term", "effective_price_usd_per_mwh",
+            "pv_kw",
+        )
+        terms_flat = {k: info[k] for k in reward_term_keys if k in info}
+        soc_value = info.get("soc_value", None)
+
         summary = {
             "step": i + 1, "reward": round(float(r), 3),
             "wl_util": round(float(info.get("workload_utilization", 0)), 3),
             "wl_action": int(info.get("workload_action", 1)),
             "pv_kw": round(float(info.get("current_pv_kw", 0)), 1),
             "lmp": round(float(info.get("current_price_usd_per_mwh", 0)), 2),
+            "soc": None if soc_value is None else round(float(soc_value), 4),
+            "cost_usd": (None if "cost_usd_step" not in info
+                         else round(float(info["cost_usd_step"]), 4)),
+            "mwh": (None if "mwh_step" not in info
+                    else round(float(info["mwh_step"]), 6)),
+            "comfort_term": (None if "comfort_term" not in info
+                             else round(float(info["comfort_term"]), 4)),
         }
         print(f"  {summary}")
+        print(f"    reward_terms={terms_flat}")
+
+        # Hard assertion — do not let a silent SoC-drop slip through.
+        assert soc_value is not None, (
+            "info['soc_value'] is None — TES SoC Schedule Value may not be "
+            "exported to obs_dict.  Check TES wrapper + E+ output variables."
+        )
+        soc_float = float(soc_value)
+        assert np.isfinite(soc_float) and 0.0 <= soc_float <= 1.0, (
+            f"info['soc_value']={soc_float!r} out of [0,1] or non-finite; "
+            "TES_SOC Schedule Value likely mis-scaled."
+        )
+        # Warn (not fail) on exactly-0 — SOC rarely legitimately hits 0 on step
+        # 1 but might transiently; a persistent 0 across steps is the real red
+        # flag and will show up as identical prints.
+        if soc_float == 0.0:
+            print("    [warn] soc_value == 0.0 — verify TES isn't empty at init.")
 
     env.close()
     print("=" * 60)

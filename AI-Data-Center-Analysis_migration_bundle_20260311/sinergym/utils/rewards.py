@@ -1829,6 +1829,7 @@ class RL_Cost_Reward(PUE_TES_Reward):
         reward = reward + cost_term + comfort_extra
         terms['cost_term'] = cost_term
         terms['cost_usd_step'] = cost_usd
+        terms['mwh_step'] = mwh
         terms['lmp_usd_per_mwh'] = price
         terms['comfort_extra_term'] = comfort_extra
         return reward, terms
@@ -1898,9 +1899,15 @@ class RL_Green_Reward(RL_Cost_Reward):
         # Compute base reward with market price (super().__call__)
         reward, terms = super().__call__(obs_dict)
 
-        # Swap the cost term from market-only to virtual-green
+        # Swap the cost term from market-only to virtual-green.
+        # M1 fix (2026-04-19): read energy directly from obs_dict instead of
+        # reverse-dividing cost_usd_step by market_price — the latter silently
+        # drops to 0 MWh when market_price == 0 (CAISO negative/near-zero price
+        # hours, ~1.6%/yr), which would zero out new_cost_usd regardless of the
+        # actual facility electricity.  `mwh_step` is also stashed by the parent
+        # RL_Cost_Reward into `terms` so downstream consumers can reuse it.
         market_price = terms['lmp_usd_per_mwh']
-        mwh = terms['cost_usd_step'] / market_price if market_price else 0.0
+        mwh = terms.get('mwh_step', self._energy_MWh(obs_dict))
         pv_kw = self._lookup_pv(obs_dict)
 
         if pv_kw > self.pv_threshold_kw:

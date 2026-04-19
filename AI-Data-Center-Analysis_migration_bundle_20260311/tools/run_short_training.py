@@ -42,6 +42,9 @@ def main() -> None:
     parser.add_argument('--probe-step-sample-interval', type=int, default=12)
     parser.add_argument('--probe-recent-window', type=int, default=192)
     parser.add_argument('--algo', default='dsac_t', choices=['sac', 'dsac_t'], help='Algorithm (default: dsac_t)')
+    parser.add_argument('--xi', type=float, default=3.0, help='DSAC-T R3 expected sigma scaling (default: 3.0)')
+    parser.add_argument('--eps-sigma', type=float, default=0.1, help='DSAC-T R3 critic variance epsilon (default: 0.1)')
+    parser.add_argument('--eps-omega', type=float, default=0.1, help='DSAC-T R3 omega epsilon (default: 0.1)')
     parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint .zip to resume from')
     parser.add_argument('--wandb', action='store_true', help='Enable Weights & Biases logging')
     parser.add_argument('--wandb-project', default='dc-cooling-optimization')
@@ -98,6 +101,9 @@ def main() -> None:
             model.load_replay_buffer(replay_path)
             print(f'Replay buffer loaded: {replay_path}')
     else:
+        extra = {}
+        if args.algo == 'dsac_t':
+            extra = {'xi': args.xi, 'eps_sigma': args.eps_sigma, 'eps_omega': args.eps_omega}
         model = AlgoClass(
             'MlpPolicy',
             env,
@@ -109,10 +115,20 @@ def main() -> None:
             verbose=1,
             seed=args.seed,
             device=args.device,
+            **extra,
         )
     episodes = args.episodes
     timesteps_per_episode = env.get_wrapper_attr('timestep_per_episode') - 1
-    timesteps = int(args.timesteps) if args.timesteps is not None else episodes * timesteps_per_episode
+    if args.resume:
+        # reset_num_timesteps=False 下 SB3 把 total_timesteps 视为累计目标，
+        # 故需 = 已训步数 + 本次增量；用户显式传 --timesteps 时视为累计目标覆盖
+        if args.timesteps is not None:
+            timesteps = int(args.timesteps)
+        else:
+            timesteps = int(model.num_timesteps) + episodes * timesteps_per_episode
+        print(f'Resume: already_done={model.num_timesteps}, cumulative_target={timesteps}')
+    else:
+        timesteps = int(args.timesteps) if args.timesteps is not None else episodes * timesteps_per_episode
     workspace_path = Path(env.get_wrapper_attr('workspace_path'))
     checkpoints_path = workspace_path / 'checkpoints'
     checkpoints_path.mkdir(parents=True, exist_ok=True)
@@ -156,7 +172,12 @@ def main() -> None:
                 log_interval=1000,
             )
         )
-    model.learn(total_timesteps=timesteps, log_interval=1, callback=CallbackList(callbacks))
+    model.learn(
+        total_timesteps=timesteps,
+        log_interval=1,
+        callback=CallbackList(callbacks),
+        reset_num_timesteps=not bool(args.resume),
+    )
     elapsed = time.perf_counter() - started
 
     model_path = workspace_path / args.model_name

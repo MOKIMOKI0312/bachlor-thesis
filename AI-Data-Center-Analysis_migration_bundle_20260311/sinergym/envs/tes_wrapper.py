@@ -55,3 +55,8 @@ class TESIncrementalWrapper(gym.Wrapper):
 
         info['tes_valve_position'] = self._valve
         return obs, reward, terminated, truncated, info
+
+    @property
+    def observation_variables(self):
+        base = self.env.get_wrapper_attr('observation_variables')
+        return list(base) + ['TES_valve_position']

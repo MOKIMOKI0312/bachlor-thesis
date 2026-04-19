@@ -1662,8 +1662,9 @@ class PUE_TES_Reward(PUE_Reward):
 
     Inherits energy and sqrt comfort logic from PUE_Reward (M1 baseline).
     Adds two SOC penalty terms:
-      - **Forward-looking quadratic**: smooth penalty starting at soc_forward_low/high
-        so agent feels gradient as SOC approaches saturation
+      - **Warning-zone quadratic**: soft gradient outside [soc_warn_low, soc_warn_high]
+        buffer zone. NOT time-forward prediction; true lookahead deferred to M3
+        with PV/price signals.
       - **Sharp soft barrier**: linear penalty inside soc_low/high band (near absolute limits)
 
     The parent class's ``lambda_temperature`` multiplier is used to scale the
@@ -1679,12 +1680,12 @@ class PUE_TES_Reward(PUE_Reward):
         range_comfort_winter: Tuple[int, int],
         range_comfort_summer: Tuple[int, int],
         soc_variable: str = 'TES_SOC',
-        soc_low: float = 0.05,
-        soc_high: float = 0.95,
-        soc_forward_low: float = 0.20,
-        soc_forward_high: float = 0.80,
+        soc_low: float = 0.15,
+        soc_high: float = 0.85,
+        soc_warn_low: float = 0.30,
+        soc_warn_high: float = 0.70,
         lambda_soc: float = 5.0,
-        lambda_soc_forward: float = 3.0,
+        lambda_soc_warn: float = 3.0,
         **kwargs,
     ):
         super().__init__(
@@ -1698,10 +1699,10 @@ class PUE_TES_Reward(PUE_Reward):
         self.soc_variable = soc_variable
         self.soc_low = soc_low
         self.soc_high = soc_high
-        self.soc_forward_low = soc_forward_low
-        self.soc_forward_high = soc_forward_high
+        self.soc_warn_low = soc_warn_low
+        self.soc_warn_high = soc_warn_high
         self.lambda_soc = lambda_soc
-        self.lambda_soc_forward = lambda_soc_forward
+        self.lambda_soc_warn = lambda_soc_warn
 
     def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
         reward, terms = super().__call__(obs_dict)
@@ -1709,23 +1710,22 @@ class PUE_TES_Reward(PUE_Reward):
         soc = obs_dict.get(self.soc_variable)
         if soc is None:
             terms['soc_penalty'] = 0.0
-            terms['soc_forward_penalty'] = 0.0
+            terms['soc_warn_penalty'] = 0.0
             terms['soc_sharp_penalty'] = 0.0
             return reward, terms
 
         soc_val = float(soc)
 
-        # Forward-looking quadratic penalty: smooth gradient outside [soc_forward_low, soc_forward_high].
-        # Normalized by distance to forward threshold so penalty saturates at 1.0 * lambda_forward
-        # when soc hits 0 (lower) or 1 (upper).
-        if soc_val < self.soc_forward_low:
-            norm = (self.soc_forward_low - soc_val) / max(self.soc_forward_low, 1e-6)
-            forward_penalty = -norm ** 2 * self.lambda_soc_forward
-        elif soc_val > self.soc_forward_high:
-            norm = (soc_val - self.soc_forward_high) / max(1.0 - self.soc_forward_high, 1e-6)
-            forward_penalty = -norm ** 2 * self.lambda_soc_forward
+        # Warning-zone quadratic penalty: soft gradient outside [soc_warn_low, soc_warn_high].
+        # Normalized so penalty saturates at 1.0 * lambda_soc_warn when soc hits 0 (lower) or 1 (upper).
+        if soc_val < self.soc_warn_low:
+            norm = (self.soc_warn_low - soc_val) / max(self.soc_warn_low, 1e-6)
+            warn_penalty = -norm ** 2 * self.lambda_soc_warn
+        elif soc_val > self.soc_warn_high:
+            norm = (soc_val - self.soc_warn_high) / max(1.0 - self.soc_warn_high, 1e-6)
+            warn_penalty = -norm ** 2 * self.lambda_soc_warn
         else:
-            forward_penalty = 0.0
+            warn_penalty = 0.0
 
         # Sharp soft barrier: linear penalty only when SOC is very close to physical limit
         if soc_val < self.soc_low:
@@ -1735,10 +1735,10 @@ class PUE_TES_Reward(PUE_Reward):
         else:
             sharp_penalty = 0.0
 
-        soc_penalty = forward_penalty + sharp_penalty
+        soc_penalty = warn_penalty + sharp_penalty
         reward = reward + soc_penalty
         terms['soc_penalty'] = soc_penalty
-        terms['soc_forward_penalty'] = forward_penalty
+        terms['soc_warn_penalty'] = warn_penalty
         terms['soc_sharp_penalty'] = sharp_penalty
         terms['soc_value'] = soc_val
         return reward, terms

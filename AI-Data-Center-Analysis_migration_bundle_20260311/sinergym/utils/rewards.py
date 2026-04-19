@@ -1742,3 +1742,180 @@ class PUE_TES_Reward(PUE_Reward):
         terms['soc_sharp_penalty'] = sharp_penalty
         terms['soc_value'] = soc_val
         return reward, terms
+
+
+# ---------------------------------------------------------------------------
+# M2 reward classes: RL-Cost and RL-Green (tech route §5.2 / §5.3)
+# ---------------------------------------------------------------------------
+
+# Cumulative days before each month (non-leap year, aligns with 8760 CSVs)
+_DAYS_BEFORE_MONTH = (0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
+
+
+def _hour_of_year(month: int, day: int, hour: int) -> int:
+    """Map calendar triple → non-leap-year hour index ∈ [0, 8759]."""
+    return (_DAYS_BEFORE_MONTH[int(month) - 1] + int(day) - 1) * 24 + int(hour)
+
+
+class RL_Cost_Reward(PUE_TES_Reward):
+    """M2 RL-Cost reward (tech route §5.2).
+
+    Adds a cost term to the PUE+TES baseline:
+        r = r_PUE_TES  - alpha * E_facility_MWh * price_usd_per_mwh
+                       - beta  * comfort_penalty_extra   (optional multiplier)
+
+    Note: the parent class already applies `lambda_temperature` to the comfort
+    term; `beta` here acts as an *additional* multiplier on the parent's
+    comfort_term. Set beta=1.0 to leave M1 comfort weighting unchanged, or
+    raise it to tilt the agent toward comfort.
+    """
+
+    def __init__(
+        self,
+        temperature_variables,
+        energy_variables,
+        ITE_variables,
+        range_comfort_winter,
+        range_comfort_summer,
+        price_series,
+        alpha: float = 1e-6,
+        beta: float = 1.0,
+        **kwargs,
+    ):
+        super().__init__(
+            temperature_variables=temperature_variables,
+            energy_variables=energy_variables,
+            ITE_variables=ITE_variables,
+            range_comfort_winter=range_comfort_winter,
+            range_comfort_summer=range_comfort_summer,
+            **kwargs,
+        )
+        import numpy as np
+
+        self.price_series = np.asarray(price_series, dtype=np.float32)
+        if len(self.price_series) != 8760:
+            raise ValueError(
+                f"RL_Cost_Reward price_series must be 8760 hourly values, got {len(self.price_series)}"
+            )
+        self.alpha = float(alpha)
+        self.beta = float(beta)
+
+    def _lookup_price(self, obs_dict: Dict[str, Any]) -> float:
+        m = obs_dict.get('month')
+        d = obs_dict.get('day_of_month')
+        h = obs_dict.get('hour')
+        if m is None or d is None or h is None:
+            return 0.0
+        idx = _hour_of_year(m, d, h) % 8760
+        return float(self.price_series[idx])
+
+    def _energy_MWh(self, obs_dict: Dict[str, Any]) -> float:
+        """Electricity:Facility meter is J accumulated over the last timestep.
+        At 1 step/hour cadence, divide by 3.6e9 to get MWh."""
+        e_joule = float(obs_dict.get(self.energy_names[0], 0.0))
+        return e_joule / 3.6e9
+
+    def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
+        reward, terms = super().__call__(obs_dict)
+
+        price = self._lookup_price(obs_dict)
+        mwh = self._energy_MWh(obs_dict)
+        cost_usd = mwh * price
+        cost_term = -self.alpha * cost_usd
+
+        # beta scales parent's comfort_term as an extra multiplier (idempotent if beta=1)
+        comfort_extra = (self.beta - 1.0) * terms.get('comfort_term', 0.0)
+
+        reward = reward + cost_term + comfort_extra
+        terms['cost_term'] = cost_term
+        terms['cost_usd_step'] = cost_usd
+        terms['lmp_usd_per_mwh'] = price
+        terms['comfort_extra_term'] = comfort_extra
+        return reward, terms
+
+
+class RL_Green_Reward(RL_Cost_Reward):
+    """M2 RL-Green reward (tech route §5.3).
+
+    Uses a virtual effective price:
+        c_eff(t) = min(c_market(t), c_pv)   when PV output > pv_threshold_kw
+                 = c_market(t)              otherwise
+
+    The virtual price is lower during PV hours (typically c_pv = 0 USD/MWh),
+    so the energy charged in those hours contributes less to the cost term →
+    agent learns to shift load toward PV peak.
+
+    PV data is not injected into observation here (the PVSignalWrapper does
+    that). This class only reads it as an exogenous series for the reward.
+    """
+
+    def __init__(
+        self,
+        temperature_variables,
+        energy_variables,
+        ITE_variables,
+        range_comfort_winter,
+        range_comfort_summer,
+        price_series,
+        pv_series,
+        c_pv: float = 0.0,
+        pv_threshold_kw: float = 100.0,
+        alpha: float = 1e-6,
+        beta: float = 1.0,
+        **kwargs,
+    ):
+        super().__init__(
+            temperature_variables=temperature_variables,
+            energy_variables=energy_variables,
+            ITE_variables=ITE_variables,
+            range_comfort_winter=range_comfort_winter,
+            range_comfort_summer=range_comfort_summer,
+            price_series=price_series,
+            alpha=alpha,
+            beta=beta,
+            **kwargs,
+        )
+        import numpy as np
+
+        self.pv_series = np.asarray(pv_series, dtype=np.float32)
+        if len(self.pv_series) != 8760:
+            raise ValueError(
+                f"RL_Green_Reward pv_series must be 8760 hourly values, got {len(self.pv_series)}"
+            )
+        self.c_pv = float(c_pv)
+        self.pv_threshold_kw = float(pv_threshold_kw)
+
+    def _lookup_pv(self, obs_dict: Dict[str, Any]) -> float:
+        m = obs_dict.get('month')
+        d = obs_dict.get('day_of_month')
+        h = obs_dict.get('hour')
+        if m is None or d is None or h is None:
+            return 0.0
+        idx = _hour_of_year(m, d, h) % 8760
+        return float(self.pv_series[idx])
+
+    def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
+        # Compute base reward with market price (super().__call__)
+        reward, terms = super().__call__(obs_dict)
+
+        # Swap the cost term from market-only to virtual-green
+        market_price = terms['lmp_usd_per_mwh']
+        mwh = terms['cost_usd_step'] / market_price if market_price else 0.0
+        pv_kw = self._lookup_pv(obs_dict)
+
+        if pv_kw > self.pv_threshold_kw:
+            effective_price = min(market_price, self.c_pv)
+        else:
+            effective_price = market_price
+        new_cost_usd = mwh * effective_price
+        new_cost_term = -self.alpha * new_cost_usd
+
+        # Undo market cost, apply virtual-green cost
+        old_cost_term = terms['cost_term']
+        reward = reward - old_cost_term + new_cost_term
+
+        terms['cost_term'] = new_cost_term
+        terms['cost_usd_step'] = new_cost_usd
+        terms['effective_price_usd_per_mwh'] = effective_price
+        terms['pv_kw'] = pv_kw
+        return reward, terms

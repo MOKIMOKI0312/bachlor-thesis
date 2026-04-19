@@ -30,6 +30,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# Torch + EnergyPlus both ship libiomp5md.dll on Windows; allow duplicate
+# (unsafe but universally used workaround — same as M1 env setup).
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))

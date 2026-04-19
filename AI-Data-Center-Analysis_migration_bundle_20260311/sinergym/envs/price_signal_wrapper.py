@@ -50,10 +50,19 @@ class PriceSignalWrapper(gym.Wrapper):
                 f"Price CSV must have 8760 rows, got {len(prices)} from {price_csv_path}"
             )
         self._price_raw = prices
+        # M2 fix (2026-04-19): CAISO NP15 2023 has mean=$61 but max=$1091 (rare
+        # spikes), so global min-max compresses the typical $40-$80 peak-valley
+        # band to near-zero variance. Use 5th/95th percentile clip instead so
+        # the policy can perceive the day-to-day arbitrage signal. Raw series
+        # is still preserved in `_price_raw` for reward functions.
         self._price_min = float(prices.min())
         self._price_max = float(prices.max())
-        self._price_span = max(self._price_max - self._price_min, 1e-6)
-        self._price_norm = (prices - self._price_min) / self._price_span
+        lo = float(np.percentile(prices, 5))
+        hi = float(np.percentile(prices, 95))
+        self._price_clip_lo = lo
+        self._price_clip_hi = hi
+        self._price_span = max(hi - lo, 1e-6)
+        self._price_norm = np.clip((prices - lo) / self._price_span, 0.0, 1.0).astype(np.float32)
 
         self.lookahead = int(lookahead_hours)
         self._hour_idx = 0

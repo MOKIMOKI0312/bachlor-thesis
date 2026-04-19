@@ -40,6 +40,7 @@ from sinergym.utils.common import get_ids
 from sinergym.utils.wrappers import LoggerWrapper, NormalizeObservation
 from sinergym.envs.tes_wrapper import TESIncrementalWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
+from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.workload_wrapper import WorkloadWrapper
@@ -66,6 +67,12 @@ def build_env(args) -> gym.Env:
     )
     env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
     env = TimeEncodingWrapper(env)
+    # H2c: 6-dim outdoor temperature trend features (tech route §6.1-C)
+    env = TempTrendWrapper(
+        env,
+        epw_path=Path("Data/weather") / (args.epw if isinstance(args.epw, str) else args.epw[0]),
+        lookahead_hours=6,
+    )
     env = PriceSignalWrapper(env, price_csv_path=args.price_csv)
     env = PVSignalWrapper(env, pv_csv_path=args.pv_csv, dc_peak_load_kw=args.dc_peak_load_kw)
     env = WorkloadWrapper(env, it_trace_csv=args.it_trace, workload_idx=4,

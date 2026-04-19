@@ -1,11 +1,10 @@
 """Integration smoke for the full M2 wrapper stack on a real EplusEnv.
 
-Builds:  EplusEnv → TESIncremental → TimeEncoding → PriceSignal → PVSignal →
-         WorkloadWrapper → (+ RL_Cost_Reward patched)
+Builds:  EplusEnv → TESIncremental → TimeEncoding → TempTrend → PriceSignal →
+         PVSignal → WorkloadWrapper → (+ RL_Cost_Reward patched)
 
 Verifies:
-  - obs_dim == 35 (20 + 3 + 3 + 9) — post-H2a/H2b/H2d, tech route §6.1
-    (TempTrendWrapper H2c pending → +6 → 41)
+  - obs_dim == 41 (20 + 6 + 3 + 3 + 9) — post-H2a/H2b/H2c/H2d, tech route §6.1
   - action_dim == 6
   - 3 env.step calls run clean
   - reward_terms dict contains cost_term / lmp_usd_per_mwh (RL-Cost)
@@ -32,6 +31,7 @@ import numpy as np
 from sinergym.utils.common import get_ids
 from sinergym.envs.tes_wrapper import TESIncrementalWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
+from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.workload_wrapper import WorkloadWrapper
@@ -55,6 +55,11 @@ def main():
     )
     env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
     env = TimeEncodingWrapper(env)
+    env = TempTrendWrapper(
+        env,
+        epw_path="Data/weather/USA_CA_San.Francisco.Intl.AP.724940_TMYx.2009-2023.epw",
+        lookahead_hours=6,
+    )
     env = PriceSignalWrapper(env, price_csv_path="Data/prices/CAISO_NP15_2023_hourly.csv")
     env = PVSignalWrapper(env, pv_csv_path="Data/pv/CAISO_PaloAlto_PV_6MWp_hourly.csv")
     env = WorkloadWrapper(env, it_trace_csv="Data/AI Trace Data/Earth_hourly.csv", workload_idx=4)
@@ -94,8 +99,8 @@ def main():
             inner = inner.env
         inner.reward_fn = cls(**kwargs)
 
-    # H2c TempTrendWrapper pending: 35 now, will become 41 once +6 dims land.
-    expected_dim = 35
+    # Post H2a/H2b/H2c/H2d: 20 + 6 + 3 + 3 + 9 = 41 dims (tech route §6.1).
+    expected_dim = 41
     assert env.observation_space.shape == (expected_dim,), (
         f"Expected obs_dim={expected_dim}, got {env.observation_space.shape}"
     )

@@ -1,18 +1,17 @@
 """M2 training launcher — 41-dim obs / 6-dim action, CAISO SiliconValley site.
 
 Wrapper chain (inside to outside):
-  EplusEnv (22 raw dims, 6 absolute actions)  — built from Eplus-DC-Cooling-TES
-  → TESIncrementalWrapper  (+1 dim → 23)     — action[5] = Δvalve
-  → TimeEncodingWrapper    (+4 dim → 27)
-  → PriceSignalWrapper     (+3 dim → 30)
-  → PVSignalWrapper        (+3 dim → 33)
-  → WorkloadWrapper        (+9 dim → 42)     — action[4] = discretised workload
+  EplusEnv (19 raw dims, 6 absolute actions)   — built from Eplus-DC-Cooling-TES
+  → TESIncrementalWrapper  (+1 dim → 20)      — action[5] = Δvalve
+  → TimeEncodingWrapper    (-5 +1 +4 = 20)     — drop raw time & CRAH raw, merge CRAH_diff, add sin/cos
+  → TempTrendWrapper       (+6 dim → 26)       — outdoor temperature lookahead trend (§6.1-C)
+  → PriceSignalWrapper     (+3 dim → 29)
+  → PVSignalWrapper        (+3 dim → 32)
+  → WorkloadWrapper        (+9 dim → 41)       — action[4] = discretised workload
   → NormalizeObservation
   → LoggerWrapper
 
-Wait 42? The base env already contributes 22 before TES wrapper.
-Actually base env has 21 raw obs, TES wrapper adds 1 → 22. Then +4+3+3+9 = 41.
-(See tech route §6.1.)
+Final obs_dim = 41 (tech route §6.1).
 
 Reward class selectable via --reward-cls {rl_cost, rl_green}. Defaults to
 rl_cost. RL_Cost and RL_Green accept the PriceSignalWrapper / PVSignalWrapper
@@ -49,6 +48,7 @@ from sinergym.utils.training_monitor import StatusCallback, make_probe_logger_fa
 from sinergym.utils.wrappers import LoggerWrapper, NormalizeObservation
 from sinergym.envs.tes_wrapper import TESIncrementalWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
+from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.workload_wrapper import WorkloadWrapper
@@ -90,6 +90,12 @@ def build_env(args) -> gym.Env:
 
     env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
     env = TimeEncodingWrapper(env)
+    # H2c: 6-dim outdoor temperature trend features (tech route §6.1-C)
+    env = TempTrendWrapper(
+        env,
+        epw_path=Path("Data/weather") / args.epw,
+        lookahead_hours=6,
+    )
     env = PriceSignalWrapper(env, price_csv_path=args.price_csv, lookahead_hours=6)
     env = PVSignalWrapper(
         env, pv_csv_path=args.pv_csv, dc_peak_load_kw=args.dc_peak_load_kw, lookahead_hours=6
@@ -205,9 +211,9 @@ def main() -> None:
     env = attach_reward(env, args)
 
     # Verify shapes before moving on.
-    # Expected = 35 post-H2a/H2b/H2d. Will return to 41 once H2c (TempTrend
-    # wrapper, +6 dims) lands. See analysis/m2_code_review_2026-04-19.md §H2.
-    expected_obs_dim = 20 + 3 + 3 + 9  # 35 (H2c TempTrendWrapper pending → +6 → 41)
+    # Post H2a/H2b/H2c/H2d: 20 (TimeEncoding output) + 6 (TempTrend) + 3 (Price)
+    #                       + 3 (PV) + 9 (Workload) = 41, aligned with tech route §6.1.
+    expected_obs_dim = 20 + 6 + 3 + 3 + 9  # 41
     assert env.observation_space.shape == (expected_obs_dim,), (
         f"Expected M2 obs_dim={expected_obs_dim}, got {env.observation_space.shape}"
     )
@@ -220,9 +226,9 @@ def main() -> None:
     act_vars = env.get_wrapper_attr("action_variables")
 
     # [H2d] Check observation_variables names match tech route §6.1 layout.
-    # NOTE: TempTrendWrapper (H2c) is not yet implemented — when it lands,
-    # insert 6 trend names after 'outdoor_wet_temperature' and bump expected
-    # dim to 41. Until then we assert the 35-dim subset.
+    # 41 dims total; wrapper application order: TES → TimeEncoding → TempTrend
+    # → Price → PV → Workload. Names follow the wrapper append order, not the
+    # abstract §6.1 group order (groups are interleaved accordingly).
     expected_names = [
         # B: outdoor 2
         'outdoor_temperature', 'outdoor_wet_temperature',
@@ -238,6 +244,9 @@ def main() -> None:
         'TES_valve_wrapper_position',
         # A: sin/cos time 4
         'hour_sin', 'hour_cos', 'month_sin', 'month_cos',
+        # C: temperature trend 6 (H2c)
+        'temperature_slope', 'temp_mean', 'temp_std', 'temp_percentile',
+        'time_to_next_temp_peak', 'time_to_next_temp_valley',
         # G: price 3
         'price_current_norm', 'price_future_slope', 'price_future_mean',
         # H: PV 3

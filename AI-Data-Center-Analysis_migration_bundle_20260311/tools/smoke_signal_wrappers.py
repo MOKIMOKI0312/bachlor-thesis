@@ -21,6 +21,7 @@ import gymnasium as gym
 import numpy as np
 
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
+from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.workload_wrapper import WorkloadWrapper
@@ -133,17 +134,23 @@ def main() -> None:
 
     env = MockEplusLikeEnv()
     env = TimeEncodingWrapper(env)
+    env = TempTrendWrapper(
+        env,
+        epw_path=ROOT / "Data/weather/USA_CA_San.Francisco.Intl.AP.724940_TMYx.2009-2023.epw",
+        lookahead_hours=6,
+    )
     env = PriceSignalWrapper(env, price_csv_path=price_csv, lookahead_hours=6)
     env = PVSignalWrapper(env, pv_csv_path=pv_csv, dc_peak_load_kw=6000.0, lookahead_hours=6)
     env = WorkloadWrapper(env, it_trace_csv=trace_csv, workload_idx=4, flexible_fraction=0.3)
 
-    # Post-H2a/H2b/H2d dim math:
+    # Post-H2a/H2b/H2c/H2d dim math:
     #   base mock:     20
     #   TimeEncoding: -5 (drop month/day/hour/CRAH_1/CRAH_2) +1 (CRAH_diff) +4 (sin/cos) = 20
-    #   Price:         +3 → 23
-    #   PV:            +3 → 26
-    #   Workload:      +9 → 35
-    expected_dim = 20 + 3 + 3 + 9  # 35 (H2c TempTrendWrapper +6 pending)
+    #   TempTrend:     +6 → 26
+    #   Price:         +3 → 29
+    #   PV:            +3 → 32
+    #   Workload:      +9 → 41
+    expected_dim = 20 + 6 + 3 + 3 + 9  # 41
     assert env.observation_space.shape == (expected_dim,), (
         f"Expected dim {expected_dim}, got {env.observation_space.shape}"
     )
@@ -184,19 +191,26 @@ def main() -> None:
     )
     print("PV daily shape sane ✓")
 
-    # Verify obs signal ranges. Layout after wrappers (35 dims):
+    # Verify obs signal ranges. Layout after wrappers (41 dims):
     #   [0..15]  body (outdoor/air/CT/CW/CRAH_diff/4 act/TES SOC+avg/elec/ITE/TES_valve)
     #   [16..19] sin/cos time (hour_sin, hour_cos, month_sin, month_cos)
-    #   [20..22] price (current, slope, mean)
-    #   [23..25] pv    (current_ratio, slope, time_to_peak)
-    #   [26..34] workload (9 dims)
-    price_slice = obs[20:23]
-    pv_slice = obs[23:26]
-    wl_slice = obs[26:35]
+    #   [20..25] temp trend (slope, mean, std, percentile, ttp, ttv)
+    #   [26..28] price (current, slope, mean)
+    #   [29..31] pv    (current_ratio, slope, time_to_peak)
+    #   [32..40] workload (9 dims)
+    temp_slice = obs[20:26]
+    price_slice = obs[26:29]
+    pv_slice = obs[29:32]
+    wl_slice = obs[32:41]
+    # Temp trend bounds: slope ∈ [-1,1], mean/std/pct/ttp/ttv ∈ [0,1]
+    assert -1 <= temp_slice[0] <= 1, f"temp slope out of range: {temp_slice[0]}"
+    assert np.all(temp_slice[1:] >= -1e-6) and np.all(temp_slice[1:] <= 1 + 1e-6), (
+        f"temp trend [1:] out of [0,1]: {temp_slice[1:]}"
+    )
     assert 0 <= price_slice[0] <= 1 and -1 <= price_slice[1] <= 1 and 0 <= price_slice[2] <= 1
     assert 0 <= pv_slice[0] <= 1 and -1 <= pv_slice[1] <= 1 and 0 <= pv_slice[2] <= 1
     assert np.all(wl_slice >= 0) and np.all(wl_slice <= 1)
-    print(f"Final obs slices: price={price_slice.round(3)} pv={pv_slice.round(3)} wl={wl_slice.round(3)} ✓")
+    print(f"Final obs slices: temp={temp_slice.round(3)} price={price_slice.round(3)} pv={pv_slice.round(3)} wl={wl_slice.round(3)} ✓")
 
     # Workload discretisation smoke: drive agent action[4] to each of 3 tiers
     print("Workload discretization test:")

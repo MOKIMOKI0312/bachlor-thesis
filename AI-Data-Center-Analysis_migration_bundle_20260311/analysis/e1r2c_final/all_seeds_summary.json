@@ -1,0 +1,86 @@
+[
+  {
+    "seed": "baseline",
+    "final_ep": 0,
+    "pue": 1.3973137425763926,
+    "facility_MWh": 86282.90619138889,
+    "comfort_pct": 0.0,
+    "soc_mean": null,
+    "valve_mean": null,
+    "cycles_yr": null,
+    "final_ent_coef": null,
+    "final_actor_loss": null
+  },
+  {
+    "seed": "seed1",
+    "final_ep": 305,
+    "pue": 1.3742290091791671,
+    "facility_MWh": 90106.25935283334,
+    "comfort_pct": 6.254993722177833,
+    "soc_mean": 0.28647773385176967,
+    "valve_mean": 0.8910214207582101,
+    "cycles_yr": 7.584634609299999,
+    "final_ent_coef": 0.1178961768746376,
+    "final_actor_loss": 142.5549774169922
+  },
+  {
+    "seed": "seed3",
+    "final_ep": 310,
+    "pue": 1.313611687199199,
+    "facility_MWh": 86538.41732558333,
+    "comfort_pct": 34.42529391621961,
+    "soc_mean": 0.3308524028276453,
+    "valve_mean": 0.18672905493404635,
+    "cycles_yr": 21.419092436,
+    "final_ent_coef": 0.08093314617872238,
+    "final_actor_loss": 274.9712829589844
+  },
+  {
+    "seed": "seed4",
+    "final_ep": 291,
+    "pue": 1.3536964520372976,
+    "facility_MWh": 88461.68135922222,
+    "comfort_pct": 4.417303960735076,
+    "soc_mean": 0.26599157094683823,
+    "valve_mean": 0.8094308156293117,
+    "cycles_yr": 1.9110895248,
+    "final_ent_coef": 0.10777004063129425,
+    "final_actor_loss": 156.09288024902344
+  },
+  {
+    "seed": "seed5",
+    "final_ep": 301,
+    "pue": 1.351225676969148,
+    "facility_MWh": 88366.28881180556,
+    "comfort_pct": 18.913366054103413,
+    "soc_mean": 0.3486072712515158,
+    "valve_mean": 0.6932645299876982,
+    "cycles_yr": 4.61090462,
+    "final_ent_coef": 0.08535308390855789,
+    "final_actor_loss": 211.57774353027344
+  },
+  {
+    "seed": "seed6",
+    "final_ep": 292,
+    "pue": 1.361815387432275,
+    "facility_MWh": 88909.92475558333,
+    "comfort_pct": 11.996347448921355,
+    "soc_mean": 0.31637690176664424,
+    "valve_mean": 0.7953497950846867,
+    "cycles_yr": 2.3382889687,
+    "final_ent_coef": 0.1880577653646469,
+    "final_actor_loss": 82.68263244628906
+  },
+  {
+    "seed": "seed8",
+    "final_ep": 315,
+    "pue": 1.348341300369642,
+    "facility_MWh": 87913.01293755556,
+    "comfort_pct": 2.351329756877069,
+    "soc_mean": 0.28684096078957877,
+    "valve_mean": 0.9347923778095526,
+    "cycles_yr": 3.5525794573000002,
+    "final_ent_coef": 0.09057865291833878,
+    "final_actor_loss": 215.0474395751953
+  }
+]

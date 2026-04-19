@@ -1,0 +1,21 @@
+{
+  "num_timesteps": 2636000,
+  "approx_episode": 301,
+  "elapsed_seconds": 47164.370345699994,
+  "last_update_epoch": 1776593645.0985286,
+  "workspace_path": "C:\\Users\\18430\\Desktop\\毕业设计代码\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\train\\run-207",
+  "probe_dir": "C:\\Users\\18430\\Desktop\\毕业设计代码\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\train\\run-207\\probe",
+  "progress_file": "C:\\Users\\18430\\Desktop\\毕业设计代码\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\train\\run-207\\progress.csv",
+  "finished": false,
+  "training_metrics": {
+    "train/learning_rate": 5e-05,
+    "train/n_updates": 2627237,
+    "train/ent_coef": 0.08535308390855789,
+    "train/actor_loss": 211.57774353027344,
+    "train/critic_loss": 3.791005849838257,
+    "train/sigma_mean": 42.95745849609375,
+    "train/clip_b": 127.64698463449666,
+    "train/omega": 1853.005886762857,
+    "train/ent_coef_loss": 0.8468664884567261
+  }
+}

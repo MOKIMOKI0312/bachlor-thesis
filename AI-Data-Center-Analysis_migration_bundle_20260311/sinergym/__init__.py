@@ -165,9 +165,8 @@ _register_if_missing(
             'act_CT_Pump': (
                 'Pump Mass Flow Rate',
                 'CONDENSER WATER LOOP CONSTANT PUMP'),
-            'act_ITE': (
-                'Schedule Value',
-                'DataCenter Equipment_SCH'),
+            # [H2b] act_ITE removed — duplicated SustainDC 'workload_current_utilization'
+            # (tech route §6.1-D). If SustainDC queue obs disabled, re-add here.
             'TES_SOC': (
                 'Schedule Value',
                 'TES_SOC_Obs'),
@@ -178,7 +177,7 @@ _register_if_missing(
         "meters": {
             "Electricity:Facility": "Electricity:Facility",
             "ITE-CPU:InteriorEquipment:Electricity": "ITE-CPU:InteriorEquipment:Electricity",
-            "Water:Facility": "Water:Facility"
+            # [H2b] Water:Facility removed per tech route §6.1-E (not part of 41-dim obs)
         },
         'actuators': {
             'CRAH_Fan_DRL': (

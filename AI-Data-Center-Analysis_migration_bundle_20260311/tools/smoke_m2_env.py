@@ -4,7 +4,8 @@ Builds:  EplusEnv → TESIncremental → TimeEncoding → PriceSignal → PVSign
          WorkloadWrapper → (+ RL_Cost_Reward patched)
 
 Verifies:
-  - obs_dim == 41 (22 + 4 + 3 + 3 + 9)
+  - obs_dim == 35 (20 + 3 + 3 + 9) — post-H2a/H2b/H2d, tech route §6.1
+    (TempTrendWrapper H2c pending → +6 → 41)
   - action_dim == 6
   - 3 env.step calls run clean
   - reward_terms dict contains cost_term / lmp_usd_per_mwh (RL-Cost)
@@ -93,23 +94,25 @@ def main():
             inner = inner.env
         inner.reward_fn = cls(**kwargs)
 
-    assert env.observation_space.shape == (41,), (
-        f"Expected obs_dim=41, got {env.observation_space.shape}"
+    # H2c TempTrendWrapper pending: 35 now, will become 41 once +6 dims land.
+    expected_dim = 35
+    assert env.observation_space.shape == (expected_dim,), (
+        f"Expected obs_dim={expected_dim}, got {env.observation_space.shape}"
     )
     assert env.action_space.shape == (6,), (
         f"Expected action_dim=6, got {env.action_space.shape}"
     )
-    print(f"Env stack OK: obs_dim=41, action_dim=6, reward={args.reward_cls}")
+    print(f"Env stack OK: obs_dim={expected_dim}, action_dim=6, reward={args.reward_cls}")
 
     obs, info = env.reset()
-    assert obs.shape == (41,)
+    assert obs.shape == (expected_dim,)
     print(f"reset obs.shape={obs.shape}, finite={np.all(np.isfinite(obs))}")
 
     rng = np.random.default_rng(42)
     for i in range(args.steps):
         a = rng.uniform(-1, 1, size=(6,)).astype(np.float32)
         obs, r, term, trunc, info = env.step(a)
-        assert obs.shape == (41,)
+        assert obs.shape == (expected_dim,)
         assert np.isfinite(r)
         summary = {
             "step": i + 1, "reward": round(float(r), 3),

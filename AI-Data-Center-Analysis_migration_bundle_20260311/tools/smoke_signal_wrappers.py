@@ -27,15 +27,55 @@ from sinergym.envs.workload_wrapper import WorkloadWrapper
 
 
 class MockEplusLikeEnv(gym.Env):
-    """Minimal Eplus-like env: 5-dim obs [month, day, hour, outdoor_T, air_T],
-    6-dim action box. Increments hour on each step."""
+    """Minimal Eplus-like env mirroring the layout seen by TimeEncodingWrapper.
+
+    Obs layout (20 dims, same order as real EplusEnv + TESIncrementalWrapper
+    after H2b):
+      [0]  month
+      [1]  day_of_month
+      [2]  hour
+      [3]  outdoor_temperature
+      [4]  outdoor_wet_temperature
+      [5]  air_temperature
+      [6]  air_humidity
+      [7]  CT_temperature
+      [8]  CW_temperature
+      [9]  CRAH_temperature_1
+      [10] CRAH_temperature_2
+      [11] act_Fan
+      [12] act_Chiller_T
+      [13] act_Chiller_Pump
+      [14] act_CT_Pump
+      [15] TES_SOC
+      [16] TES_avg_temp
+      [17] Electricity:Facility
+      [18] ITE-CPU:InteriorEquipment:Electricity
+      [19] TES_valve_wrapper_position
+
+    Action box mirrors Eplus-DC-Cooling-TES registration: low=[0,0,0,0,0,-1],
+    high=[1,1,1,1,1,1] (see sinergym/__init__.py L126-127)."""
+
+    OBS_NAMES = [
+        'month', 'day_of_month', 'hour',
+        'outdoor_temperature', 'outdoor_wet_temperature',
+        'air_temperature', 'air_humidity',
+        'CT_temperature', 'CW_temperature',
+        'CRAH_temperature_1', 'CRAH_temperature_2',
+        'act_Fan', 'act_Chiller_T', 'act_Chiller_Pump', 'act_CT_Pump',
+        'TES_SOC', 'TES_avg_temp',
+        'Electricity:Facility', 'ITE-CPU:InteriorEquipment:Electricity',
+        'TES_valve_wrapper_position',
+    ]
 
     def __init__(self):
-        self.observation_space = gym.spaces.Box(
-            low=np.array([1, 1, 0, -50, 10], dtype=np.float32),
-            high=np.array([12, 31, 23, 50, 40], dtype=np.float32),
-            shape=(5,), dtype=np.float32,
-        )
+        low = np.array(
+            [1, 1, 0, -50, -50, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+            dtype=np.float32)
+        high = np.array(
+            [12, 31, 23, 50, 50, 40, 100, 50, 50, 50, 50, 1e6, 50, 1e6, 1e6,
+             1, 40, 1e9, 1e9, 1],
+            dtype=np.float32)
+        self.observation_space = gym.spaces.Box(low=low, high=high, shape=(20,), dtype=np.float32)
         self.action_space = gym.spaces.Box(
             low=np.array([0, 0, 0, 0, 0, -1], dtype=np.float32),
             high=np.array([1, 1, 1, 1, 1, 1], dtype=np.float32),
@@ -47,14 +87,26 @@ class MockEplusLikeEnv(gym.Env):
 
     @property
     def observation_variables(self):
-        return ['month', 'day_of_month', 'hour', 'outdoor_temperature', 'air_temperature']
+        return list(self.OBS_NAMES)
 
     @property
     def action_variables(self):
         return ['CRAH_Fan', 'CT_Pump', 'CRAH_T', 'Chiller_T', 'ITE', 'TES']
 
     def _obs(self):
-        return np.array([self._month, self._day, self._hour, 20.0, 22.0], dtype=np.float32)
+        # Plug mildly realistic constants; CRAH_1/CRAH_2 differ by ~2 °C so
+        # we can eyeball the merged diff in output.
+        return np.array([
+            self._month, self._day, self._hour,
+            20.0, 18.0,           # outdoor_T, outdoor_wet_T
+            22.0, 40.0,           # air_T, air_H
+            25.0, 15.0,           # CT, CW
+            18.5, 20.5,           # CRAH_1, CRAH_2 → diff = +2.0
+            0.5, 0.5, 0.5, 0.5,   # 4 actuator vars
+            0.5, 12.0,            # TES_SOC, TES_avg_temp
+            1e6, 5e5,             # Electricity:Facility, ITE
+            0.0,                  # TES_valve_wrapper_position
+        ], dtype=np.float32)
 
     def reset(self, *, seed=None, options=None):
         self._month = 1
@@ -85,7 +137,13 @@ def main() -> None:
     env = PVSignalWrapper(env, pv_csv_path=pv_csv, dc_peak_load_kw=6000.0, lookahead_hours=6)
     env = WorkloadWrapper(env, it_trace_csv=trace_csv, workload_idx=4, flexible_fraction=0.3)
 
-    expected_dim = 5 + 4 + 3 + 3 + 9  # 24
+    # Post-H2a/H2b/H2d dim math:
+    #   base mock:     20
+    #   TimeEncoding: -5 (drop month/day/hour/CRAH_1/CRAH_2) +1 (CRAH_diff) +4 (sin/cos) = 20
+    #   Price:         +3 → 23
+    #   PV:            +3 → 26
+    #   Workload:      +9 → 35
+    expected_dim = 20 + 3 + 3 + 9  # 35 (H2c TempTrendWrapper +6 pending)
     assert env.observation_space.shape == (expected_dim,), (
         f"Expected dim {expected_dim}, got {env.observation_space.shape}"
     )
@@ -98,8 +156,12 @@ def main() -> None:
     assert "current_pv_kw" in info
     print(f"reset obs shape OK; price@hour0={info['current_price_usd_per_mwh']:.2f}, pv@hour0={info['current_pv_kw']:.1f}")
 
-    # Verify time encoding at hour 0: hour_sin=0, hour_cos=1
-    time_enc = obs[5:9]
+    # Verify CRAH_temp_diff at index 6 (body[6] = CRAH_2 - CRAH_1 = 20.5 - 18.5 = 2.0)
+    assert abs(obs[6] - 2.0) < 1e-5, f"CRAH_temp_diff should be 2.0, got {obs[6]}"
+    print(f"CRAH_temp_diff at obs[6] = {obs[6]:.3f} (expect 2.0) ✓")
+
+    # Verify time encoding at obs[16..20] (hour 0, month 1: sin=0, cos=1)
+    time_enc = obs[16:20]
     assert abs(time_enc[0]) < 1e-5, f"hour_sin at hour 0 should be 0, got {time_enc[0]}"
     assert abs(time_enc[1] - 1.0) < 1e-5, f"hour_cos at hour 0 should be 1, got {time_enc[1]}"
     # Month Jan (=1): month_sin=sin(0)=0, month_cos=cos(0)=1
@@ -122,10 +184,15 @@ def main() -> None:
     )
     print("PV daily shape sane ✓")
 
-    # Verify obs signal ranges (indices 9..14 = price+PV, 15..23 = workload)
-    price_slice = obs[9:12]
-    pv_slice = obs[12:15]
-    wl_slice = obs[15:24]
+    # Verify obs signal ranges. Layout after wrappers (35 dims):
+    #   [0..15]  body (outdoor/air/CT/CW/CRAH_diff/4 act/TES SOC+avg/elec/ITE/TES_valve)
+    #   [16..19] sin/cos time (hour_sin, hour_cos, month_sin, month_cos)
+    #   [20..22] price (current, slope, mean)
+    #   [23..25] pv    (current_ratio, slope, time_to_peak)
+    #   [26..34] workload (9 dims)
+    price_slice = obs[20:23]
+    pv_slice = obs[23:26]
+    wl_slice = obs[26:35]
     assert 0 <= price_slice[0] <= 1 and -1 <= price_slice[1] <= 1 and 0 <= price_slice[2] <= 1
     assert 0 <= pv_slice[0] <= 1 and -1 <= pv_slice[1] <= 1 and 0 <= pv_slice[2] <= 1
     assert np.all(wl_slice >= 0) and np.all(wl_slice <= 1)

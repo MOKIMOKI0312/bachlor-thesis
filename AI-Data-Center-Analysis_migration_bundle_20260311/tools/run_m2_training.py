@@ -204,8 +204,10 @@ def main() -> None:
     env = build_env(args)
     env = attach_reward(env, args)
 
-    # Verify shapes before moving on
-    expected_obs_dim = 22 + 4 + 3 + 3 + 9  # 41
+    # Verify shapes before moving on.
+    # Expected = 35 post-H2a/H2b/H2d. Will return to 41 once H2c (TempTrend
+    # wrapper, +6 dims) lands. See analysis/m2_code_review_2026-04-19.md §H2.
+    expected_obs_dim = 20 + 3 + 3 + 9  # 35 (H2c TempTrendWrapper pending → +6 → 41)
     assert env.observation_space.shape == (expected_obs_dim,), (
         f"Expected M2 obs_dim={expected_obs_dim}, got {env.observation_space.shape}"
     )
@@ -216,6 +218,44 @@ def main() -> None:
 
     obs_vars = env.get_wrapper_attr("observation_variables")
     act_vars = env.get_wrapper_attr("action_variables")
+
+    # [H2d] Check observation_variables names match tech route §6.1 layout.
+    # NOTE: TempTrendWrapper (H2c) is not yet implemented — when it lands,
+    # insert 6 trend names after 'outdoor_wet_temperature' and bump expected
+    # dim to 41. Until then we assert the 35-dim subset.
+    expected_names = [
+        # B: outdoor 2
+        'outdoor_temperature', 'outdoor_wet_temperature',
+        # D: DC 9 (air_T, air_H, CT, CW, CRAH_diff, 4 actuators)
+        'air_temperature', 'air_humidity', 'CT_temperature', 'CW_temperature',
+        'CRAH_temp_diff',
+        'act_Fan', 'act_Chiller_T', 'act_Chiller_Pump', 'act_CT_Pump',
+        # I (partial): TES SOC + avg_temp (valve injected by TESIncrementalWrapper at end)
+        'TES_SOC', 'TES_avg_temp',
+        # E: energy 2
+        'Electricity:Facility', 'ITE-CPU:InteriorEquipment:Electricity',
+        # I (remainder): TES valve position from TESIncrementalWrapper
+        'TES_valve_wrapper_position',
+        # A: sin/cos time 4
+        'hour_sin', 'hour_cos', 'month_sin', 'month_cos',
+        # G: price 3
+        'price_current_norm', 'price_future_slope', 'price_future_mean',
+        # H: PV 3
+        'pv_current_ratio', 'pv_future_slope', 'time_to_pv_peak',
+        # F: queue 9
+        'workload_current_utilization', 'workload_queue_norm',
+        'workload_oldest_age_norm', 'workload_avg_age_norm',
+        'workload_hist_0_6h', 'workload_hist_6_12h',
+        'workload_hist_12_18h', 'workload_hist_18_24h',
+        'workload_hist_24h_plus',
+    ]
+    actual_names = list(obs_vars)
+    assert actual_names == expected_names, (
+        f"observation_variables mismatch (tech route §6.1).\n"
+        f"  expected ({len(expected_names)}): {expected_names}\n"
+        f"  actual   ({len(actual_names)}): {actual_names}"
+    )
+    print(f"observation_variables name check OK ({len(actual_names)} dims)")
     env = NormalizeObservation(env)
     env = LoggerWrapper(
         env,

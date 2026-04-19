@@ -189,6 +189,14 @@ def evaluate(args) -> dict:
     # Parse monitor.csv with pandas (avoids csv.DictReader duplicate-header issue)
     monitor_path = workspace_post / "episode-001" / "monitor.csv"
     df = pd.read_csv(monitor_path)
+    # L1 fix (2026-04-19): guard against duplicate monitor columns — if a
+    # wrapper re-introduces a name clash (see M1 TES_valve_position bug),
+    # pandas silently renames the second column to `col.1` and a by-name read
+    # would pick the wrong series. Fail loud instead of silently mis-reading.
+    assert df.columns.is_unique, (
+        f"Duplicate columns in {monitor_path}: "
+        f"{df.columns[df.columns.duplicated()].tolist()}"
+    )
 
     facility_J = df["Electricity:Facility"].astype(float)
     ite_J = df["ITE-CPU:InteriorEquipment:Electricity"].astype(float)

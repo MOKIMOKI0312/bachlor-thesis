@@ -287,7 +287,10 @@ def main() -> None:
         + ["time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "cost_term", "terminated", "truncated"],
     )
 
-    policy_kwargs = dict(net_arch=[512])
+    # M2-D2 网络升级：从 M1 的 [512] 1 层升级到 [256, 256] 2 层
+    # 理由：41 维 obs + 9 类异构信号需要 2 层才能学"条件组合型"决策
+    # 参考：DSAC-T 原论文 + SB3 默认 + Xiao & You 2026 都用 [256, 256]
+    policy_kwargs = dict(net_arch=[256, 256])
     if args.algo == "dsac_t":
         from tools.dsac_t import DSAC_T
 
@@ -310,7 +313,7 @@ def main() -> None:
             "MlpPolicy",
             env,
             batch_size=512,
-            learning_rate=5e-5,
+            learning_rate=1e-4,   # M2-D2: 5e-5 → 1e-4，匹配更大的 [256,256] 网络
             learning_starts=8760,
             gamma=0.99,
             policy_kwargs=policy_kwargs,

@@ -109,10 +109,24 @@ def attach_reward(env: gym.Env, args) -> gym.Env:
         kwargs["c_pv"] = args.c_pv
         kwargs["pv_threshold_kw"] = args.pv_threshold_kw
 
-    inner = env
-    while hasattr(inner, "env") and not hasattr(inner, "reward_fn"):
-        inner = inner.env
-    inner.reward_fn = cls(**kwargs)
+    # R1b fix (2026-04-19): gymnasium.Wrapper.__getattr__ forwards attribute
+    # lookup to self.env, so `hasattr(wrapper, "reward_fn")` is always True
+    # for every wrapper above EplusEnv. The previous while-loop exited after
+    # zero iterations and patched reward_fn on the outermost wrapper, leaving
+    # env.unwrapped.reward_fn as the default PUE_TES_Reward — silently
+    # corrupting all rl_cost / rl_green ablation evaluations. Use
+    # env.unwrapped to land on the innermost EplusEnv directly.
+    eplus_env = env.unwrapped
+    if not hasattr(eplus_env, "reward_fn"):
+        raise RuntimeError(
+            f"env.unwrapped={type(eplus_env).__name__} has no reward_fn attribute"
+        )
+    eplus_env.reward_fn = cls(**kwargs)
+    assert isinstance(eplus_env.reward_fn, cls), (
+        f"reward_fn patch did not land on EplusEnv, "
+        f"got {type(eplus_env.reward_fn).__name__}"
+    )
+    print(f"[evaluate_m2] reward class swapped to {cls.__name__} on {type(eplus_env).__name__}")
     return env
 
 
@@ -143,6 +157,16 @@ def evaluate(args) -> dict:
     model = DSAC_T.load(str(args.checkpoint), device="cpu")
     workspace_post = Path(env.get_wrapper_attr("workspace_path"))
 
+    # R1b: reward-class-specific info fields the patched reward_fn MUST emit.
+    # Sampled once at step 1 to catch silent reward_fn downgrades (e.g. the
+    # previous while-hasattr bug that left PUE_TES_Reward in place).
+    if args.reward_cls == "rl_cost":
+        required_info_keys = ("cost_term", "cost_usd_step", "lmp_usd_per_mwh")
+    elif args.reward_cls == "rl_green":
+        required_info_keys = ("cost_term", "effective_price_usd_per_mwh", "pv_kw")
+    else:
+        required_info_keys = ()
+
     started = time.perf_counter()
     obs, _ = env.reset()
     term = trunc = False
@@ -150,9 +174,15 @@ def evaluate(args) -> dict:
     total_reward = 0.0
     while not (term or trunc):
         action, _ = model.predict(obs, deterministic=True)
-        obs, reward, term, trunc, _ = env.step(action)
+        obs, reward, term, trunc, info = env.step(action)
         total_reward += float(reward)
         step += 1
+        if step == 1 and required_info_keys:
+            missing = [k for k in required_info_keys if k not in info]
+            assert not missing, (
+                f"reward_fn patch did not take effect: info missing {missing} "
+                f"for reward_cls={args.reward_cls}; got keys={sorted(info.keys())}"
+            )
 
     env.close()
 

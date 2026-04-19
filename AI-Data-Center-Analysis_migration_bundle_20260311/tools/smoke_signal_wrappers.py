@@ -36,7 +36,11 @@ class MockEplusLikeEnv(gym.Env):
             high=np.array([12, 31, 23, 50, 40], dtype=np.float32),
             shape=(5,), dtype=np.float32,
         )
-        self.action_space = gym.spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float32)
+        self.action_space = gym.spaces.Box(
+            low=np.array([0, 0, 0, 0, 0, -1], dtype=np.float32),
+            high=np.array([1, 1, 1, 1, 1, 1], dtype=np.float32),
+            shape=(6,), dtype=np.float32,
+        )
         self._month = 1
         self._day = 1
         self._hour = 0
@@ -132,7 +136,7 @@ def main() -> None:
     env.reset()
     # Defer mode
     for _ in range(3):
-        a = np.zeros(6, dtype=np.float32); a[4] = -0.9
+        a = np.zeros(6, dtype=np.float32); a[4] = 0.1
         _, _, _, _, info = env.step(a)
         assert info["workload_action"] == 0, f"expected 0, got {info['workload_action']}"
     queue_after_defer = info["workload_queue_len"]
@@ -140,7 +144,7 @@ def main() -> None:
     assert queue_after_defer > 0, "defer should grow the queue"
     # Process mode
     for _ in range(3):
-        a = np.zeros(6, dtype=np.float32); a[4] = +0.9
+        a = np.zeros(6, dtype=np.float32); a[4] = 0.9
         _, _, _, _, info = env.step(a)
         assert info["workload_action"] == 2
     print(f"  after 3 process steps, queue_len={info['workload_queue_len']} util={info['workload_utilization']:.3f}")

@@ -51,7 +51,7 @@ class WorkloadWrapper(gym.Wrapper):
         workload_idx: int = 4,
         flexible_fraction: float = 0.3,
         queue_max_len: int = 500,
-        discretize_thresholds: Tuple[float, float] = (-0.33, 0.33),
+        discretize_thresholds: Tuple[float, float] = (1/3, 2/3),
     ):
         super().__init__(env)
 

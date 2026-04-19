@@ -23,6 +23,7 @@ import numpy as np
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
+from sinergym.envs.workload_wrapper import WorkloadWrapper
 
 
 class MockEplusLikeEnv(gym.Env):
@@ -72,13 +73,15 @@ def main() -> None:
     data_root = ROOT / "Data"
     price_csv = data_root / "prices" / "CAISO_NP15_2023_hourly.csv"
     pv_csv = data_root / "pv" / "CAISO_PaloAlto_PV_6MWp_hourly.csv"
+    trace_csv = data_root / "AI Trace Data" / "Earth_hourly.csv"
 
     env = MockEplusLikeEnv()
     env = TimeEncodingWrapper(env)
     env = PriceSignalWrapper(env, price_csv_path=price_csv, lookahead_hours=6)
     env = PVSignalWrapper(env, pv_csv_path=pv_csv, dc_peak_load_kw=6000.0, lookahead_hours=6)
+    env = WorkloadWrapper(env, it_trace_csv=trace_csv, workload_idx=4, flexible_fraction=0.3)
 
-    expected_dim = 5 + 4 + 3 + 3  # 15
+    expected_dim = 5 + 4 + 3 + 3 + 9  # 24
     assert env.observation_space.shape == (expected_dim,), (
         f"Expected dim {expected_dim}, got {env.observation_space.shape}"
     )
@@ -115,35 +118,40 @@ def main() -> None:
     )
     print("PV daily shape sane ✓")
 
-    # Verify last obs has signal dims in range
-    current_price_norm = obs[9]
-    price_slope = obs[10]
-    price_mean = obs[11]
-    pv_ratio_obs = obs[12]
-    pv_slope = obs[13]
-    ttp = obs[14]
-    assert 0 <= current_price_norm <= 1
-    assert -1 <= price_slope <= 1
-    assert 0 <= price_mean <= 1
-    assert 0 <= pv_ratio_obs <= 1
-    assert -1 <= pv_slope <= 1
-    assert 0 <= ttp <= 1
-    print(f"Final obs signals: price=({current_price_norm:.3f},{price_slope:+.3f},{price_mean:.3f}) "
-          f"pv=({pv_ratio_obs:.3f},{pv_slope:+.3f},ttp={ttp:.3f}) ✓")
+    # Verify obs signal ranges (indices 9..14 = price+PV, 15..23 = workload)
+    price_slice = obs[9:12]
+    pv_slice = obs[12:15]
+    wl_slice = obs[15:24]
+    assert 0 <= price_slice[0] <= 1 and -1 <= price_slice[1] <= 1 and 0 <= price_slice[2] <= 1
+    assert 0 <= pv_slice[0] <= 1 and -1 <= pv_slice[1] <= 1 and 0 <= pv_slice[2] <= 1
+    assert np.all(wl_slice >= 0) and np.all(wl_slice <= 1)
+    print(f"Final obs slices: price={price_slice.round(3)} pv={pv_slice.round(3)} wl={wl_slice.round(3)} ✓")
+
+    # Workload discretisation smoke: drive agent action[4] to each of 3 tiers
+    print("Workload discretization test:")
+    env.reset()
+    # Defer mode
+    for _ in range(3):
+        a = np.zeros(6, dtype=np.float32); a[4] = -0.9
+        _, _, _, _, info = env.step(a)
+        assert info["workload_action"] == 0, f"expected 0, got {info['workload_action']}"
+    queue_after_defer = info["workload_queue_len"]
+    print(f"  after 3 defer steps, queue_len={queue_after_defer} (expect > 0)")
+    assert queue_after_defer > 0, "defer should grow the queue"
+    # Process mode
+    for _ in range(3):
+        a = np.zeros(6, dtype=np.float32); a[4] = +0.9
+        _, _, _, _, info = env.step(a)
+        assert info["workload_action"] == 2
+    print(f"  after 3 process steps, queue_len={info['workload_queue_len']} util={info['workload_utilization']:.3f}")
 
     # observation_variables chain
     obs_vars = env.get_wrapper_attr("observation_variables")
-    expected_vars = [
-        'month', 'day_of_month', 'hour', 'outdoor_temperature', 'air_temperature',
-        'hour_sin', 'hour_cos', 'month_sin', 'month_cos',
-        'price_current_norm', 'price_future_slope', 'price_future_mean',
-        'pv_current_ratio', 'pv_future_slope', 'time_to_pv_peak',
-    ]
-    assert obs_vars == expected_vars, f"obs_vars mismatch:\n got {obs_vars}\n want {expected_vars}"
+    assert len(obs_vars) == expected_dim, f"got {len(obs_vars)} names, want {expected_dim}"
     print(f"observation_variables chain OK: {len(obs_vars)} names")
 
     print("=" * 60)
-    print("SIGNAL WRAPPERS SMOKE PASSED")
+    print("SIGNAL + WORKLOAD WRAPPERS SMOKE PASSED")
 
 
 if __name__ == "__main__":

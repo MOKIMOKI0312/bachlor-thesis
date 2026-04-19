@@ -156,13 +156,22 @@ def attach_reward(env: gym.Env, args) -> gym.Env:
     else:
         raise ValueError(f"Unknown reward class: {args.reward_cls}")
 
-    # Replace reward_fn on the innermost EplusEnv
-    inner = env
-    while hasattr(inner, "env") and not hasattr(inner, "reward_fn"):
-        inner = inner.env
-    if not hasattr(inner, "reward_fn"):
-        raise RuntimeError("Could not locate EplusEnv with reward_fn to patch")
-    inner.reward_fn = cls(**kwargs)
+    # R1 fix (2026-04-19): gymnasium.Wrapper.__getattr__ forwards attribute
+    # lookup to self.env, so `hasattr(wrapper, "reward_fn")` is always True
+    # for any wrapper above EplusEnv. The previous while-loop exited after
+    # zero iterations and patched only the outermost wrapper, leaving
+    # env.unwrapped.reward_fn as the default PUE_TES_Reward. Use
+    # env.unwrapped to hit the innermost EplusEnv directly.
+    eplus_env = env.unwrapped
+    if not hasattr(eplus_env, "reward_fn"):
+        raise RuntimeError(
+            f"env.unwrapped={type(eplus_env).__name__} has no reward_fn attribute"
+        )
+    eplus_env.reward_fn = cls(**kwargs)
+    assert isinstance(eplus_env.reward_fn, cls), (
+        f"reward_fn patch did not land on EplusEnv, "
+        f"got {type(eplus_env.reward_fn).__name__}"
+    )
     print(f"Reward class swapped to {cls.__name__}; alpha={args.alpha}, beta={args.beta}")
     return env
 

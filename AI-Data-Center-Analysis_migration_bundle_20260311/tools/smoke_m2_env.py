@@ -94,10 +94,18 @@ def main():
             kwargs["c_pv"] = 0.0
             kwargs["pv_threshold_kw"] = 100.0
 
-        inner = env
-        while hasattr(inner, "env") and not hasattr(inner, "reward_fn"):
-            inner = inner.env
-        inner.reward_fn = cls(**kwargs)
+        # R1 fix (2026-04-19): gymnasium.Wrapper.__getattr__ forwards attribute
+        # lookup to self.env, so hasattr(outer_wrapper, "reward_fn") is ALWAYS
+        # True and the while-loop exits after zero iterations, patching the
+        # outermost wrapper instead of EplusEnv. Result: env.unwrapped.reward_fn
+        # remained the default (PUE_TES_Reward) and rl_cost/rl_green smoke runs
+        # produced identical results. Patch directly on env.unwrapped (the
+        # EplusEnv is the only layer that owns reward_fn).
+        env.unwrapped.reward_fn = cls(**kwargs)
+        assert isinstance(env.unwrapped.reward_fn, cls), (
+            f"reward_fn patch did not land on EplusEnv, "
+            f"got {type(env.unwrapped.reward_fn).__name__}"
+        )
 
     # Post H2a/H2b/H2c/H2d: 20 + 6 + 3 + 3 + 9 = 41 dims (tech route §6.1).
     expected_dim = 41
@@ -166,6 +174,27 @@ def main():
         # flag and will show up as identical prints.
         if soc_float == 0.0:
             print("    [warn] soc_value == 0.0 — verify TES isn't empty at init.")
+
+        # R1 fix (2026-04-19): prove the reward_fn patch landed by requiring
+        # reward-class-specific info fields.  If env.unwrapped.reward_fn is
+        # still PUE_TES_Reward these assertions fail loudly.
+        if args.reward_cls == "rl_cost":
+            for k in ("cost_term", "cost_usd_step", "mwh_step", "lmp_usd_per_mwh"):
+                assert k in info, (
+                    f"RL_Cost_Reward did not emit {k!r} into info — "
+                    f"reward_fn patch likely failed (type="
+                    f"{type(env.unwrapped.reward_fn).__name__})."
+                )
+        elif args.reward_cls == "rl_green":
+            for k in (
+                "cost_term", "cost_usd_step", "lmp_usd_per_mwh",
+                "effective_price_usd_per_mwh", "pv_kw",
+            ):
+                assert k in info, (
+                    f"RL_Green_Reward did not emit {k!r} into info — "
+                    f"reward_fn patch likely failed (type="
+                    f"{type(env.unwrapped.reward_fn).__name__})."
+                )
 
     env.close()
     print("=" * 60)

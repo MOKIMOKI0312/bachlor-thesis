@@ -61,7 +61,7 @@ def evaluate(root: Path, checkpoint: Path, workspace: Path, trace_name: str, tag
         monitor_header=["timestep"]
         + list(obs_vars)
         + list(act_vars)
-        + ["TES_valve_position"]
+        + ["TES_valve_wrapper_position"]
         + ["time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "terminated", "truncated"],
     )
 
@@ -99,7 +99,7 @@ def evaluate(root: Path, checkpoint: Path, workspace: Path, trace_name: str, tag
     comfort_pct = comfort_violations / len(temps) * 100 if temps else 0
 
     # TES valve position stats (if recorded)
-    valves = [float(r["TES_valve_position"]) for r in rows if r.get("TES_valve_position")]
+    valves = [float(r["TES_valve_wrapper_position"]) for r in rows if r.get("TES_valve_wrapper_position")]
 
     return {
         "seed": tag,

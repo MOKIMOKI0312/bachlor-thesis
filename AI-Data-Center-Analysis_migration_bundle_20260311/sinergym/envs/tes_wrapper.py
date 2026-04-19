@@ -4,7 +4,7 @@ Wraps an EplusEnv that has a TES actuator at action index `valve_idx`.
 Converts the agent's Δv output to a recursive valve position v(t+1) = clip(v(t) + Δv * δmax, -1, +1),
 then passes the signed valve position v directly to EnergyPlus (EMS reads it and converts to flow).
 
-Also injects `TES_valve_position` into the observation vector.
+Also injects `TES_valve_wrapper_position` into the observation vector.
 """
 from typing import Any, Dict, Optional, Tuple
 
@@ -59,4 +59,4 @@ class TESIncrementalWrapper(gym.Wrapper):
     @property
     def observation_variables(self):
         base = self.env.get_wrapper_attr('observation_variables')
-        return list(base) + ['TES_valve_position']
+        return list(base) + ['TES_valve_wrapper_position']

@@ -226,8 +226,23 @@ def evaluate(args) -> dict:
     # 1 cycle = |valve_fraction| × TES_MAX_FLOW integrated over 1 hour / tank_volume
     # Rough proxy: total_charge_volume_kg / rho_water ≈ cumulative valve hours × 97.2 kg/s × 3600
     valve_abs_mean = float(valves.abs().mean())
+    # M4 fix (2026-04-19): apply EMS P_5 deadband before the linear scaling.
+    # Data/buildings/DRL_DC_{training,evaluation}.epJSON -> Program P_5:
+    #   SET Flow = @Abs TES_Signal * Max_Flow   (Max_Flow = 97.2 kg/s, strictly linear)
+    #   IF TES_Signal > 0.01         -> charge at Flow
+    #   ELSEIF TES_Signal < -0.01    -> discharge at Flow
+    #   (else)                       -> Flow = 0  (dead band, avoids valve chatter)
+    # So the true instantaneous flow is `Flow * 1_{|v|>0.01}`, NOT `Flow` everywhere.
+    # Without this mask, tiny residual valve positions from the incremental
+    # wrapper inflate cycles_rough and can flip `tes_activated` spuriously.
+    # No upper saturation is needed: the wrapper clips v to [-1, 1] upstream,
+    # and P_5 has no other non-linearities (no PID, no hysteresis).
     # Each timestep is 1h = 3600 s at 97.2 kg/s max. |valve| fraction of that:
-    cycles_rough = float(valves.abs().sum() * TES_MAX_FLOW_KG_S * 3600 / 1000 / TES_TANK_M3)
+    #   mass_kg_step  = |v|_eff * 97.2 * 3600
+    #   volume_m3     = mass_kg / 1000 (rho_water ~= 1000 kg/m^3)
+    #   cycles        = sum(volume_m3) / tank_volume_m3
+    valves_effective = np.where(valves.abs() > 0.01, valves.abs(), 0.0)
+    cycles_rough = float(valves_effective.sum() * TES_MAX_FLOW_KG_S * 3600 / 1000 / TES_TANK_M3)
     # SOC daily amplitude: mean of (daily max - daily min)
     soc_np = soc.to_numpy()
     n_days = len(soc_np) // 24

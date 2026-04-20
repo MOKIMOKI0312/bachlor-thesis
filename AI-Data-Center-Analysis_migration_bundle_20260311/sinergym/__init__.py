@@ -214,7 +214,7 @@ _register_if_missing(
             'range_comfort_summer': (18.0, 25.0),
             'energy_weight': 1/2,
             'lambda_energy': 1,
-            'lambda_temperature': 3.0,
+            'lambda_temperature': 1.0,  # M2-E3b: 3.0 → 1.0，workload wrapper 已提供热负载控制，无需 3× 放大（E3 实测 λ=3 导致 comfort 压倒 cost）
             'soc_variable': 'TES_SOC',
             'soc_low': 0.15,
             'soc_high': 0.85,

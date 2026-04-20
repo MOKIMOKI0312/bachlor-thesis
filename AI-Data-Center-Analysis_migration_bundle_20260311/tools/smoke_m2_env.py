@@ -79,12 +79,12 @@ def main():
             range_comfort_summer=(18.0, 25.0),
             energy_weight=0.5,
             lambda_energy=1.0,
-            lambda_temperature=3.0,
+            lambda_temperature=1.0,  # M2-E3b: 3.0 → 1.0（对齐 run_m2_training.attach_reward）
             soc_variable="TES_SOC",
             soc_low=0.15, soc_high=0.85,
             soc_warn_low=0.30, soc_warn_high=0.70,
             lambda_soc=5.0, lambda_soc_warn=3.0,
-            price_series=price, alpha=1e-6, beta=1.0,
+            price_series=price, alpha=5e-4, beta=1.0,  # M2-E3b: 1e-6 → 5e-4（对齐 --alpha 默认）
         )
         if args.reward_cls == "rl_cost":
             cls = RL_Cost_Reward

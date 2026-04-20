@@ -134,7 +134,7 @@ def attach_reward(env: gym.Env, args) -> gym.Env:
         range_comfort_summer=(18.0, 25.0),
         energy_weight=0.5,
         lambda_energy=1.0,
-        lambda_temperature=3.0,
+        lambda_temperature=1.0,  # M2-E3b: 3.0 → 1.0（M1 λ=3 诊断出 comfort 项比 energy 大 5-9×, 4/4 seed 违规 >90%, 确认主导病因, 回退 E0.3 验证值）
         soc_variable="TES_SOC",
         soc_low=0.15,
         soc_high=0.85,
@@ -205,7 +205,12 @@ def main() -> None:
     parser.add_argument("--it-trace", default=DEFAULT_IT_TRACE)
     parser.add_argument("--dc-peak-load-kw", type=float, default=6000.0)
     parser.add_argument("--flexible-fraction", type=float, default=0.3)
-    parser.add_argument("--alpha", type=float, default=1e-3, help="Cost reward coefficient (1e-3 → ~-0.4 per hour at 60 USD/MWh & 6 MW, comparable to base reward ~-5; pilot α/β in M2-C3)")
+    # M2-E3b: cost 缩放 1e-3 → 5e-4
+    # 目标：cost_term 典型值 ~-0.87（vs comfort_term -0.6），量级可比
+    # scarcity 事件 cost_term ~-6（vs extreme comfort -4.5）不超标
+    # 注意：alpha 不能塞进 sinergym/__init__.py 的 reward_kwargs——PUE_Reward 基类
+    # __init__ 无 **kwargs，会 TypeError；必须通过 --alpha CLI 注入 RL_Cost_Reward
+    parser.add_argument("--alpha", type=float, default=5e-4, help="Cost reward coefficient (5e-4 → cost_term ~-0.87 USD/h comparable to comfort_term, M2-E3b tuned)")
     parser.add_argument("--beta", type=float, default=1.0, help="Comfort penalty coefficient")
     parser.add_argument("--c-pv", type=float, default=0.0, help="Virtual green-price USD/MWh (RL-Green only)")
     parser.add_argument("--pv-threshold-kw", type=float, default=100.0, help="PV kW above which green price applies")
@@ -313,7 +318,7 @@ def main() -> None:
             "MlpPolicy",
             env,
             batch_size=512,
-            learning_rate=1e-4,   # M2-D2: 5e-5 → 1e-4，匹配更大的 [256,256] 网络
+            learning_rate=5e-5,   # M2-E3b: 1e-4 → 5e-5（lr=1e-4 下 3/4 seed policy collapse, 回退 M1 验证值恢复 DSAC-T R3 阻尼裕度, 保留 [256,256] 网络）
             learning_starts=8760,
             gamma=0.99,
             policy_kwargs=policy_kwargs,

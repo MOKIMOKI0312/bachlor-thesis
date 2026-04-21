@@ -1816,18 +1816,29 @@ class RL_Cost_Reward(PUE_TES_Reward):
         return e_joule / 3.6e9
 
     def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
+        import numpy as np
+
         reward, terms = super().__call__(obs_dict)
 
         price = self._lookup_price(obs_dict)
         mwh = self._energy_MWh(obs_dict)
         cost_usd = mwh * price
-        cost_term = -self.alpha * cost_usd
+        cost_term_raw = -self.alpha * cost_usd
+        # M2-E3b fix (Issue A, 2026-04-21): CAISO NP15 2023 price distribution has
+        # kurtosis ≈ 120 (normal = 3) due to scarcity spikes (max = $1091/MWh vs
+        # mean = $61) and ~1.6%/yr negative-price hours. These extreme tails
+        # violate DSAC-T's Gaussian critic assumption, triggering variance
+        # explosion (omega diverges) + SAC auto-temperature feedback → policy
+        # collapse. ±3.0 clip preserves 99.9% of normal samples but bounds the
+        # <0.1% pathological tails. `cost_term_raw` stashed for diagnostics.
+        cost_term = float(np.clip(cost_term_raw, -3.0, 3.0))
 
         # beta scales parent's comfort_term as an extra multiplier (idempotent if beta=1)
         comfort_extra = (self.beta - 1.0) * terms.get('comfort_term', 0.0)
 
         reward = reward + cost_term + comfort_extra
         terms['cost_term'] = cost_term
+        terms['cost_term_raw'] = cost_term_raw
         terms['cost_usd_step'] = cost_usd
         terms['mwh_step'] = mwh
         terms['lmp_usd_per_mwh'] = price
@@ -1896,6 +1907,8 @@ class RL_Green_Reward(RL_Cost_Reward):
         return float(self.pv_series[idx])
 
     def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
+        import numpy as np
+
         # Compute base reward with market price (super().__call__)
         reward, terms = super().__call__(obs_dict)
 
@@ -1915,13 +1928,20 @@ class RL_Green_Reward(RL_Cost_Reward):
         else:
             effective_price = market_price
         new_cost_usd = mwh * effective_price
-        new_cost_term = -self.alpha * new_cost_usd
+        new_cost_term_raw = -self.alpha * new_cost_usd
+        # M2-E3b fix (Issue A, 2026-04-21): mirror RL_Cost_Reward clip so the
+        # virtual-green reward path has the same Gaussian-critic safety bound.
+        # See RL_Cost_Reward.__call__ for full rationale.
+        new_cost_term = float(np.clip(new_cost_term_raw, -3.0, 3.0))
 
-        # Undo market cost, apply virtual-green cost
+        # Undo market cost, apply virtual-green cost.
+        # Parent already applied clipped `cost_term`; subtract that same
+        # clipped value so the net swap is consistent.
         old_cost_term = terms['cost_term']
         reward = reward - old_cost_term + new_cost_term
 
         terms['cost_term'] = new_cost_term
+        terms['cost_term_raw'] = new_cost_term_raw
         terms['cost_usd_step'] = new_cost_usd
         terms['effective_price_usd_per_mwh'] = effective_price
         terms['pv_kw'] = pv_kw

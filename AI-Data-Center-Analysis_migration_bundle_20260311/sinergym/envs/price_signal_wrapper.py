@@ -2,12 +2,18 @@
 
 Reads a precomputed hourly electricity price CSV (e.g. CAISO NP15 2023 DAM LMP)
 and injects 3 dims into obs:
-  - current_price          : normalised LMP at the current simulation hour
+  - current_price          : tanh-squashed LMP at the current simulation hour
   - price_future_slope     : linear-regression slope over the next K hours
-  - price_mean             : mean LMP over the next K hours
+  - price_mean             : mean tanh-squashed LMP over the next K hours
 
-Normalisation is min-max to [0, 1] using the global min/max of the loaded
-series (preserves shape, avoids running-stats drift).
+Normalisation (M2-E3b fix, Issue C, 2026-04-21): tanh squash centred on the
+*median* with a 2σ scale, i.e. ``tanh((price - median) / (2σ))``.
+  - median (rather than mean) is robust to scarcity spikes / negative-price
+    outliers that would otherwise pull the centre off.
+  - 2σ scale keeps ±2σ of samples in tanh's near-linear region while smoothly
+    compressing the 120-kurtosis tails that triggered DSAC-T critic variance
+    collapse under the previous 5/95 percentile min-max normalisation.
+  - Output is in the open interval (-1, 1) (tanh range), NOT [0, 1].
 
 The wrapper maintains its own step counter (hour_of_year ∈ [0, 8759]) that
 loops each episode. It does NOT rely on the base env's time_variables, so
@@ -50,24 +56,30 @@ class PriceSignalWrapper(gym.Wrapper):
                 f"Price CSV must have 8760 rows, got {len(prices)} from {price_csv_path}"
             )
         self._price_raw = prices
-        # M2 fix (2026-04-19): CAISO NP15 2023 has mean=$61 but max=$1091 (rare
-        # spikes), so global min-max compresses the typical $40-$80 peak-valley
-        # band to near-zero variance. Use 5th/95th percentile clip instead so
-        # the policy can perceive the day-to-day arbitrage signal. Raw series
-        # is still preserved in `_price_raw` for reward functions.
+        # M2-E3b fix (Issue C, 2026-04-21): replaced 5/95-percentile min-max
+        # clip with a tanh squash anchored on the MEDIAN with a 2σ scale. The
+        # old min-max output (a) saturated hard at the clip boundaries (no
+        # gradient past ~$40 / ~$90), and (b) bounded the 3 price dims to
+        # [0, 1] which — together with CAISO NP15's kurtosis≈120 — produced
+        # reward targets with heavy tails that violated DSAC-T's Gaussian
+        # critic assumption, causing ep30-50 variance explosion.  tanh gives
+        # a smooth, bounded, (-1, 1) output that preserves local gradient
+        # around the median band while softly compressing scarcity tails.
+        # Raw series stays in `_price_raw` for reward functions.
         self._price_min = float(prices.min())
         self._price_max = float(prices.max())
-        lo = float(np.percentile(prices, 5))
-        hi = float(np.percentile(prices, 95))
-        self._price_clip_lo = lo
-        self._price_clip_hi = hi
-        self._price_span = max(hi - lo, 1e-6)
-        self._price_norm = np.clip((prices - lo) / self._price_span, 0.0, 1.0).astype(np.float32)
+        median = float(np.median(prices))
+        std = float(np.std(prices))
+        self._price_median = median
+        self._price_std = std
+        self._price_scale = max(2.0 * std, 1e-6)
+        self._price_norm = np.tanh((prices - median) / self._price_scale).astype(np.float32)
 
         self.lookahead = int(lookahead_hours)
         self._hour_idx = 0
 
-        low = np.append(self.env.observation_space.low, [0.0, -1.0, 0.0])
+        # tanh output ∈ (-1, 1); slope stays in [-1, 1].
+        low = np.append(self.env.observation_space.low, [-1.0, -1.0, -1.0])
         high = np.append(self.env.observation_space.high, [1.0, 1.0, 1.0])
         self.observation_space = gym.spaces.Box(
             low=low.astype(np.float32),
@@ -89,9 +101,10 @@ class PriceSignalWrapper(gym.Wrapper):
             slope = 0.0
         else:
             slope_raw = float(np.polyfit(t, future, 1)[0])
-            # Scale to [-1, 1]: max possible abs slope for normed y ∈ [0,1]
-            # over K steps is 1/(K-1). Clip & rescale.
-            slope = float(np.clip(slope_raw * (self.lookahead - 1), -1.0, 1.0))
+            # Scale to [-1, 1]: tanh-normalised y ∈ (-1, 1), so the maximum
+            # possible |slope| over K steps is 2/(K-1). Multiply by (K-1)/2
+            # and clip to bound to [-1, 1].
+            slope = float(np.clip(slope_raw * (self.lookahead - 1) / 2.0, -1.0, 1.0))
         mean = float(future.mean())
         raw_price = float(self._price_raw[self._hour_idx])
         return np.array([current_norm, slope, mean], dtype=np.float32), raw_price

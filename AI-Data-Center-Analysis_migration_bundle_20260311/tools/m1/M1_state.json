@@ -1,0 +1,28 @@
+{
+  "completed": ["A1", "A2", "A3", "A3b", "R2", "R3", "2026-04-23_P5P7_fix"],
+  "current": "2026-04-23_P5P7_fix (done)",
+  "last_commit": "d2169f0",
+  "notes": {
+    "2026-04-23_P5P7_fix": {
+      "summary": "Fix P_5 + P_7 chiller-kill direction bug (moved kill block from charge branch to discharge branch, SOC threshold 0.02 -> 0.15)",
+      "affected_files": [
+        "Data/buildings/DRL_DC_training.epJSON",
+        "Data/buildings/DRL_DC_evaluation.epJSON",
+        "Data/buildings/建筑模型说明.md"
+      ],
+      "backup_files": {
+        "training": "Data/buildings/backups/DRL_DC_training_before_20260423-005444.epJSON (md5=6c1531ed6ddb6265f294abc1de8040a6)",
+        "evaluation": "Data/buildings/backups/DRL_DC_evaluation_before_20260423-005444.epJSON (md5=1a0932c072afbf27a37e76c70c9f37fd)"
+      },
+      "fix_script": "tools/m1/fix_p5_chiller_deadlock.py",
+      "smoke_script": "tools/m1/smoke_p5_fix.py",
+      "smoke_output_dir": "tools/m1/smoke_p5_fix_final/",
+      "smoke_results": {
+        "1day_baseline_training": "returncode=0, severe=0, fatal=0, warnings=111",
+        "1day_baseline_evaluation": "returncode=0, severe=0, fatal=0, warnings=111",
+        "7day_A_charge_TES_Set_-0.5": "chiller ca_min=1.0 (always ON), SOC 0.97->0.93 (micro-drop), air_max=35.05°C, PASS",
+        "7day_B_discharge_TES_Set_+0.5": "chiller OFF until SOC<0.15 (step 251), then 100% recovery; SOC 0.80->0.016; air_max=40.24°C (过放期已知 §9.10); facility_elec -6.8% vs A (节能显现); PASS"
+      }
+    }
+  }
+}

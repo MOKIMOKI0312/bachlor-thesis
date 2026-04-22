@@ -289,7 +289,7 @@ def main() -> None:
     ap.add_argument("--it-trace", default=DEFAULT_IT_TRACE)
     ap.add_argument("--dc-peak-load-kw", type=float, default=6000.0)
     ap.add_argument("--flexible-fraction", type=float, default=0.3)
-    ap.add_argument("--alpha", type=float, default=1e-3)
+    ap.add_argument("--alpha", type=float, default=2e-3)
     ap.add_argument("--beta", type=float, default=1.0)
     ap.add_argument("--c-pv", type=float, default=0.0)
     ap.add_argument("--pv-threshold-kw", type=float, default=100.0)

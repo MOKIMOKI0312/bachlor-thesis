@@ -208,12 +208,14 @@ def main() -> None:
     parser.add_argument("--it-trace", default=DEFAULT_IT_TRACE)
     parser.add_argument("--dc-peak-load-kw", type=float, default=6000.0)
     parser.add_argument("--flexible-fraction", type=float, default=0.3)
-    # M2-E3b: cost 缩放 1e-3 → 5e-4
-    # 目标：cost_term 典型值 ~-0.87（vs comfort_term -0.6），量级可比
-    # scarcity 事件 cost_term ~-6（vs extreme comfort -4.5）不超标
+    # M2-E3b-v4 (2026-04-23): cost 缩放 5e-4 → 2e-3
+    # 目标：在 Jiangsu TOU 下让 cost_term 峰谷量级 >= soc/comfort 惩罚，
+    # 避免 agent 感受不到 TOU 峰谷信号。2e-3 × 10.7 MWh × 29 USD/MWh ≈
+    # -0.62（谷段），× 150 ≈ -3.2（peak 段，被 RL_Cost_Reward 内部 ±3.0 clip
+    # 轻微截断）；scarcity 事件保持防御。
     # 注意：alpha 不能塞进 sinergym/__init__.py 的 reward_kwargs——PUE_Reward 基类
     # __init__ 无 **kwargs，会 TypeError；必须通过 --alpha CLI 注入 RL_Cost_Reward
-    parser.add_argument("--alpha", type=float, default=5e-4, help="Cost reward coefficient (5e-4 → cost_term ~-0.87 USD/h comparable to comfort_term, M2-E3b tuned)")
+    parser.add_argument("--alpha", type=float, default=2e-3, help="Cost reward coefficient (2e-3 → cost_term typical -0.5 at shoulder tier 83 USD/MWh, -3.0 clip at super-peak, M2-E3b-v4 retuned)")
     parser.add_argument("--beta", type=float, default=1.0, help="Comfort penalty coefficient")
     parser.add_argument("--c-pv", type=float, default=0.0, help="Virtual green-price USD/MWh (RL-Green only)")
     parser.add_argument("--pv-threshold-kw", type=float, default=100.0, help="PV kW above which green price applies")

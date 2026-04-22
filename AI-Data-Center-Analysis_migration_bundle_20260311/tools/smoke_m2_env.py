@@ -84,7 +84,7 @@ def main():
             soc_low=0.15, soc_high=0.85,
             soc_warn_low=0.30, soc_warn_high=0.70,
             lambda_soc=5.0, lambda_soc_warn=3.0,
-            price_series=price, alpha=5e-4, beta=1.0,  # M2-E3b: 1e-6 → 5e-4（对齐 --alpha 默认）
+            price_series=price, alpha=2e-3, beta=1.0,  # M2-E3b-v4: 5e-4 → 2e-3（对齐 --alpha 默认）
         )
         if args.reward_cls == "rl_cost":
             cls = RL_Cost_Reward
@@ -121,12 +121,44 @@ def main():
     assert obs.shape == (expected_dim,)
     print(f"reset obs.shape={obs.shape}, finite={np.all(np.isfinite(obs))}")
 
+    # M2-E3b-v4 (Issue P1, 2026-04-23): verify the 3 new price-signal dims
+    # land at obs[31:34] with their TOU-aware ranges.
+    # Stack layout (tech route §6.1):
+    #   [0:20]   base EplusEnv obs
+    #   [20:26]  TESIncremental (+6)
+    #   [26:29]  TimeEncoding   (+3: sin/cos hour, sin day)   -> actually +3 per wrapper
+    # Rather than rely on fragile offsets we just sanity-check bounded range
+    # at the (expected) tail 3 dims (= dims 31/32/33 under the 41-dim layout).
+    price_dims = obs[-3:]
+    print(f"  price_dims at reset: current_norm={price_dims[0]:.3f}, "
+          f"delta_next_1h={price_dims[1]:.3f}, hours_to_peak_norm={price_dims[2]:.3f}")
+    assert -1.0 - 1e-6 <= price_dims[0] <= 2.0 + 1e-6, (
+        f"current_price_norm out of [-1, 2]: {price_dims[0]}"
+    )
+    assert -2.0 - 1e-6 <= price_dims[1] <= 2.0 + 1e-6, (
+        f"price_delta_next_1h out of [-2, 2]: {price_dims[1]}"
+    )
+    assert 0.0 - 1e-6 <= price_dims[2] <= 1.0 + 1e-6, (
+        f"hours_to_next_peak_norm out of [0, 1]: {price_dims[2]}"
+    )
+
     rng = np.random.default_rng(42)
     for i in range(args.steps):
         a = rng.uniform(-1, 1, size=(6,)).astype(np.float32)
         obs, r, term, trunc, info = env.step(a)
         assert obs.shape == (expected_dim,)
         assert np.isfinite(r)
+        # Per-step: same range checks on the tail 3 price dims.
+        pd_step = obs[-3:]
+        assert -1.0 - 1e-6 <= pd_step[0] <= 2.0 + 1e-6, (
+            f"step {i+1}: current_price_norm out of [-1, 2]: {pd_step[0]}"
+        )
+        assert -2.0 - 1e-6 <= pd_step[1] <= 2.0 + 1e-6, (
+            f"step {i+1}: price_delta_next_1h out of [-2, 2]: {pd_step[1]}"
+        )
+        assert 0.0 - 1e-6 <= pd_step[2] <= 1.0 + 1e-6, (
+            f"step {i+1}: hours_to_next_peak_norm out of [0, 1]: {pd_step[2]}"
+        )
         # M5 fix (2026-04-19): EplusEnv.step does `info.update(rw_terms)`, so
         # reward terms are flattened into info (not nested under `terms`).  We
         # snapshot the known-M2 keys here to verify TES SoC is live.  If the

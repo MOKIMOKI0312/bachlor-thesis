@@ -52,6 +52,7 @@ from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.workload_wrapper import WorkloadWrapper
+from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
 
 # M2-E3b-v3 (2026-04-22): CAISO → Nanjing + Jiangsu TOU
 # 切换动机：CAISO 重尾 reward (kurtosis=120) 触发 DSAC-T critic σ 爆炸
@@ -109,6 +110,13 @@ def build_env(args) -> gym.Env:
         workload_idx=4,
         flexible_fraction=args.flexible_fraction,
     )
+    # B3 fix (2026-04-23, corrected): Electricity:Facility (idx 13) and
+    # ITE-CPU:InteriorEquipment:Electricity (idx 14) are EnergyPlus Output:Meter
+    # cumulative-Joules values ~3e10 J/h. obs[12]=TES_avg_temp (NOT energy! 0-indexed,
+    # see expected_names in H2d assertion). All other 39 obs dims sit in [-5e-6, 1560].
+    # Rescale J/h -> MWh/h (÷3.6e9) so NormalizeObservation's RunningMeanStd doesn't
+    # lose float32 precision absorbing 10^10-magnitude samples.
+    env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
     return env
 
 
@@ -296,6 +304,23 @@ def main() -> None:
         monitor_header=["timestep"] + list(obs_vars) + list(act_vars)
         + ["time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "cost_term", "terminated", "truncated"],
     )
+
+    # B4 fix (2026-04-23): warmup RunningMeanStd with a baseline-policy episode,
+    # then freeze. Prevents non-stationary obs normalization from destabilizing
+    # DSAC-T critic during ep60-80 transient window. Skipped on --resume so we
+    # keep the obs_rms that rides along with the checkpointed policy.
+    if not args.resume:
+        print("[B4] Warming up NormalizeObservation with 1 baseline-policy episode...")
+        warmup_obs, _ = env.reset()
+        done = truncated = False
+        center_action = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.0], dtype=np.float32)
+        step_count = 0
+        while not (done or truncated):
+            warmup_obs, _, done, truncated, _ = env.step(center_action)
+            step_count += 1
+        print(f"[B4] Warmup done: {step_count} steps. Freezing obs_rms.")
+        env.deactivate_update()
+        print(f"[B4] automatic_update after freeze: {env.get_wrapper_attr('automatic_update')}")
 
     # M2-D2 网络升级：从 M1 的 [512] 1 层升级到 [256, 256] 2 层
     # 理由：41 维 obs + 9 类异构信号需要 2 层才能学"条件组合型"决策

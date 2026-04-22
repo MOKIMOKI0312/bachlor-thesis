@@ -10,6 +10,15 @@ Three refinements over standard SAC:
        with lower mean for target computation (anti-overestimation).
   R3 - Variance-Based Critic Gradient Adjustment: adaptive clipping boundary b and
        gradient scaling weight ω based on learned variance, stabilizing training.
+
+Implementation note (2026-04-23):
+R3 aligned with official Jingliang-Duan/DSAC-v2 reference (not paper pseudocode).
+Adds 4 defense lines against critic σ explosion:
+  1) z sample clamp to [-3, 3]
+  2) per-sample td_bound = xi * q_std (not EMA batch mean)
+  3) Huber loss (delta=50) replaces MSE
+  4) ratio clamp [0.1, 10]
+Diverges from paper Algorithm 1 in favor of empirically stable official impl.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
@@ -60,8 +69,9 @@ class DSAC_T(SAC):
         self.eps_omega = eps_omega
 
         # DSAC-T specific state (initialized in _setup_model)
-        self._b: Optional[List[float]] = None  # clipping boundaries per critic
-        self._omega: Optional[List[float]] = None  # gradient scaling weights per critic
+        # Align with Jingliang-Duan/DSAC-v2: single EMA `mean_std` per critic
+        # (replaces paper's separate `_b` and `_omega` EMAs).
+        self._mean_std: Optional[List[Optional[float]]] = None  # EMA of batch sigma mean per critic
 
         super().__init__(policy, env, **kwargs)
 
@@ -101,10 +111,9 @@ class DSAC_T(SAC):
         self.batch_norm_stats = get_parameters_by_name(self.critic, ["running_"])
         self.batch_norm_stats_target = get_parameters_by_name(self.critic_target, ["running_"])
 
-        # Initialize DSAC-T adaptive parameters
+        # Initialize DSAC-T adaptive parameters (align with Jingliang-Duan/DSAC-v2)
         n_critics = self.critic.n_critics
-        self._b = [1.0] * n_critics  # initial clipping boundary
-        self._omega = [1.0] * n_critics  # initial gradient scaling
+        self._mean_std = [None] * n_critics  # lazy-init on first batch
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         """
@@ -171,42 +180,55 @@ class DSAC_T(SAC):
                     selected_mean - ent_coef * next_log_prob
                 )
 
-                # Stochastic target for variance gradient (sample from target distribution)
-                z_sample = selected_mean + selected_sigma * th.randn_like(selected_sigma)
+                # Stochastic target with z clamp to [-3, 3] — official DSAC-v2 defense #1
+                z = th.clamp(th.randn_like(selected_sigma), -3.0, 3.0)
+                z_sample = selected_mean + selected_sigma * z
                 y_z = replay_data.rewards + (1 - replay_data.dones) * self.gamma * (
                     z_sample - ent_coef * next_log_prob
                 )
 
-            # --- R3: Variance-based critic gradient (Eq. 26) ---
+            # --- R3 (aligned with Jingliang-Duan/DSAC-v2): Huber + per-sample td_bound + bounded ratio ---
             current_outputs = self.critic(replay_data.observations, replay_data.actions)
             # current_outputs = ((Q1_mean, Q1_sigma), (Q2_mean, Q2_sigma))
 
-            # Vectorized loss computation (avoid per-critic for loop)
+            BIAS = self.eps_sigma   # 0.1 (matches official "bias")
+            HUBER_DELTA = 50.0      # official delta
+
             critic_losses_per_net = []
-            with th.no_grad():
-                batch_sigma_sum = 0.0
+            batch_sigma_sum = 0.0
+
             for i, (q_mean, q_sigma) in enumerate(current_outputs):
-                sigma_sq = q_sigma ** 2
+                q_sigma_det = q_sigma.detach()
+                q_mean_det = q_mean.detach()
 
-                # Eq. 26, term 1: mean gradient (detach sigma to avoid gradient through it)
-                mean_loss = ((y_q_min - q_mean) ** 2) / (sigma_sq.detach() + self.eps_sigma)
+                # Defense #2: Per-sample td_bound = xi * q_std (not EMA — key fix)
+                td_bound = self.xi * q_sigma_det
+                diff = th.clamp(y_z - q_mean_det, -td_bound, td_bound)
+                y_q_bound = q_mean_det + diff
 
-                # Eq. 26, term 2: variance gradient with clipping (detach q_mean)
-                b_i = self._b[i]
-                q_mean_d = q_mean.detach()
-                y_z_clipped = th.clamp(y_z, q_mean_d - b_i, q_mean_d + b_i)
-                var_target = (y_z_clipped - q_mean_d) ** 2
-                var_loss = ((var_target - sigma_sq) ** 2) / (sigma_sq.detach() + self.eps_sigma)
-
-                omega_i = self._omega[i]
-                critic_losses_per_net.append((mean_loss + var_loss).mean() / (omega_i + self.eps_omega))
-
-                # EMA updates (no grad)
+                # EMA of batch sigma mean (used only for ratio)
+                batch_std_mean = q_sigma_det.mean().item()
                 with th.no_grad():
-                    s_mean = q_sigma.mean().item()
-                    self._b[i] = self.tau * self.xi * s_mean + (1 - self.tau) * self._b[i]
-                    self._omega[i] = self.tau * (q_sigma ** 2).mean().item() + (1 - self.tau) * self._omega[i]
-                    batch_sigma_sum += s_mean
+                    if self._mean_std[i] is None:
+                        self._mean_std[i] = batch_std_mean
+                    else:
+                        self._mean_std[i] = (1 - self.tau) * self._mean_std[i] + self.tau * batch_std_mean
+                    batch_sigma_sum += batch_std_mean
+
+                # Defense #4: Bounded ratio (outer scaling weight)
+                ratio_num = self._mean_std[i] ** 2
+                ratio_den = q_sigma_det.pow(2) + BIAS
+                ratio_i = (ratio_num / ratio_den).clamp(min=0.1, max=10.0)
+
+                # Defense #3: Huber loss (delta=50) replaces MSE
+                # Mean-loss term
+                mean_term = F.huber_loss(q_mean, y_q_min, delta=HUBER_DELTA, reduction='none')
+                # Var-loss term (uses per-sample td_bound target)
+                var_huber = F.huber_loss(q_mean_det, y_q_bound, delta=HUBER_DELTA, reduction='none')
+                var_term = q_sigma * (q_sigma_det.pow(2) - var_huber) / (q_sigma_det + BIAS)
+
+                loss_i = (ratio_i * (mean_term + var_term)).mean()
+                critic_losses_per_net.append(loss_i)
 
             total_critic_loss = critic_losses_per_net[0] + critic_losses_per_net[1]
             critic_losses.append(total_critic_loss.item())
@@ -245,7 +267,9 @@ class DSAC_T(SAC):
         self.logger.record("train/actor_loss", np.mean(actor_losses))
         self.logger.record("train/critic_loss", np.mean(critic_losses))
         self.logger.record("train/sigma_mean", np.mean(sigma_means))
-        self.logger.record("train/clip_b", np.mean(self._b))
-        self.logger.record("train/omega", np.mean(self._omega))
+        # Backward-compat logging: clip_b = xi * mean_std, omega = mean_std^2
+        _ms = [x if x is not None else 1.0 for x in self._mean_std]
+        self.logger.record("train/clip_b", float(np.mean([self.xi * s for s in _ms])))
+        self.logger.record("train/omega", float(np.mean([s * s for s in _ms])))
         if len(ent_coef_losses) > 0:
             self.logger.record("train/ent_coef_loss", np.mean(ent_coef_losses))

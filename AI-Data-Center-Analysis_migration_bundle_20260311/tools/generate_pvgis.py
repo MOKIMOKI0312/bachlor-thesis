@@ -46,6 +46,15 @@ SITE_PRESETS = {
         yield_min=1100,        # Singapore typical 1100-1600
         yield_max=1600,
     ),
+    "nanjing": dict(
+        latitude=32.0584,      # Nanjing 32°03′30″N
+        longitude=118.7965,    # Nanjing 118°47′47″E
+        surface_tilt=27,       # Eastern-China fixed-tilt optimum (~latitude-5)
+        tz="Asia/Shanghai",
+        output_stem="CHN_Nanjing",
+        yield_min=950,         # Nanjing typical 1000-1300; PVGIS sometimes reports lower
+        yield_max=1400,
+    ),
 }
 
 # Legacy CONFIG kept for backward compat with any caller that still imports it.

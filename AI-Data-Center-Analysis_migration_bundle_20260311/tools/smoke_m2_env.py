@@ -50,18 +50,18 @@ def main():
         "Eplus-DC-Cooling-TES",
         env_name=f"{stamp}_smoke_m2_{args.reward_cls}",
         building_file=["DRL_DC_training.epJSON"],
-        weather_files=["USA_CA_San.Francisco.Intl.AP.724940_TMYx.2009-2023.epw"],
+        weather_files=["CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"],
         config_params={"runperiod": (1, 1, 2025, 31, 12, 2025), "timesteps_per_hour": 1},
     )
     env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(
         env,
-        epw_path="Data/weather/USA_CA_San.Francisco.Intl.AP.724940_TMYx.2009-2023.epw",
+        epw_path="Data/weather/CHN_JS_Nanjing.582380_TMYx.2009-2023.epw",
         lookahead_hours=6,
     )
-    env = PriceSignalWrapper(env, price_csv_path="Data/prices/CAISO_NP15_2023_hourly.csv")
-    env = PVSignalWrapper(env, pv_csv_path="Data/pv/CAISO_PaloAlto_PV_6MWp_hourly.csv")
+    env = PriceSignalWrapper(env, price_csv_path="Data/prices/Jiangsu_TOU_2025_hourly.csv")
+    env = PVSignalWrapper(env, pv_csv_path="Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv")
     env = WorkloadWrapper(env, it_trace_csv="Data/AI Trace Data/Earth_hourly.csv", workload_idx=4)
 
     # Patch reward if requested
@@ -69,8 +69,8 @@ def main():
         import pandas as pd
         from sinergym.utils.rewards import RL_Cost_Reward, RL_Green_Reward
 
-        price = pd.read_csv("Data/prices/CAISO_NP15_2023_hourly.csv")["price_usd_per_mwh"].to_numpy()
-        pv = pd.read_csv("Data/pv/CAISO_PaloAlto_PV_6MWp_hourly.csv")["power_kw"].to_numpy()
+        price = pd.read_csv("Data/prices/Jiangsu_TOU_2025_hourly.csv")["price_usd_per_mwh"].to_numpy()
+        pv = pd.read_csv("Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv")["power_kw"].to_numpy()
         kwargs = dict(
             temperature_variables=["air_temperature"],
             energy_variables=["Electricity:Facility"],

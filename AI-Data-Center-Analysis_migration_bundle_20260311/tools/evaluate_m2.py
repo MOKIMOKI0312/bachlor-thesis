@@ -46,9 +46,10 @@ from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.workload_wrapper import WorkloadWrapper
 from tools.dsac_t import DSAC_T
 
-DEFAULT_EPW = "USA_CA_San.Francisco.Intl.AP.724940_TMYx.2009-2023.epw"
-DEFAULT_PRICE_CSV = "Data/prices/CAISO_NP15_2023_hourly.csv"
-DEFAULT_PV_CSV = "Data/pv/CAISO_PaloAlto_PV_6MWp_hourly.csv"
+# M2-E3b-v3 (2026-04-22): Nanjing + Jiangsu 2025 TOU 合成电价 (见 run_m2_training.py)
+DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
+DEFAULT_PRICE_CSV = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
+DEFAULT_PV_CSV = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
 DEFAULT_IT_TRACE = "Data/AI Trace Data/Earth_hourly.csv"
 
 # TES sizing (from 建筑模型说明.md) — used for annual cycle estimate

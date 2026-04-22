@@ -53,9 +53,12 @@ from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.workload_wrapper import WorkloadWrapper
 
-DEFAULT_EPW = "USA_CA_San.Francisco.Intl.AP.724940_TMYx.2009-2023.epw"
-DEFAULT_PRICE_CSV = "Data/prices/CAISO_NP15_2023_hourly.csv"
-DEFAULT_PV_CSV = "Data/pv/CAISO_PaloAlto_PV_6MWp_hourly.csv"
+# M2-E3b-v3 (2026-04-22): CAISO → Nanjing + Jiangsu TOU
+# 切换动机：CAISO 重尾 reward (kurtosis=120) 触发 DSAC-T critic σ 爆炸
+# 新数据源：Jiangsu 2025 TOU 合成 (kurtosis ≈ -1.3) + Nanjing TMYx + Nanjing PV
+DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
+DEFAULT_PRICE_CSV = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
+DEFAULT_PV_CSV = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
 DEFAULT_IT_TRACE = "Data/AI Trace Data/Earth_hourly.csv"
 
 

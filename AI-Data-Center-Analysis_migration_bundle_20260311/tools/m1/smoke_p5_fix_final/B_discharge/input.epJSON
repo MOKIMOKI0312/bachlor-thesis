@@ -3198,15 +3198,15 @@
     }
   },
   "RunPeriod": {
-    "Run Period 1": {
-      "apply_weekend_holiday_rule": "No",
-      "begin_day_of_month": 1,
+    "RP Short": {
       "begin_month": 1,
-      "begin_year": 2024,
-      "day_of_week_for_start_day": "Sunday",
-      "end_day_of_month": 31,
-      "end_month": 12,
-      "end_year": 2024,
+      "begin_day_of_month": 1,
+      "begin_year": 2025,
+      "end_month": 1,
+      "end_day_of_month": 7,
+      "end_year": 2025,
+      "day_of_week_for_start_day": "Wednesday",
+      "apply_weekend_holiday_rule": "No",
       "use_weather_file_daylight_saving_period": "No",
       "use_weather_file_holidays_and_special_days": "No",
       "use_weather_file_rain_indicators": "Yes",
@@ -3278,7 +3278,7 @@
       "schedule_type_limits_name": "Temperature"
     },
     "TES_Set": {
-      "hourly_value": 0.0
+      "hourly_value": 0.5
     },
     "TES_Use_Avail_Sch": {
       "hourly_value": 0.0,
@@ -5850,7 +5850,7 @@
   },
   "Timestep": {
     "Timestep 1": {
-      "number_of_timesteps_per_hour": 1
+      "number_of_timesteps_per_hour": 4
     }
   },
   "Version": {

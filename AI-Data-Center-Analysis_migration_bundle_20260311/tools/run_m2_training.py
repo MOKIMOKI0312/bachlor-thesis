@@ -274,8 +274,8 @@ def main() -> None:
         # C: temperature trend 6 (H2c)
         'temperature_slope', 'temp_mean', 'temp_std', 'temp_percentile',
         'time_to_next_temp_peak', 'time_to_next_temp_valley',
-        # G: price 3
-        'price_current_norm', 'price_future_slope', 'price_future_mean',
+        # G: price 3 (TOU-aware post bc10db0: replaced polyfit slope+mean with tier-delta+hours_to_peak)
+        'price_current_norm', 'price_delta_next_1h', 'price_hours_to_next_peak_norm',
         # H: PV 3
         'pv_current_ratio', 'pv_future_slope', 'time_to_pv_peak',
         # F: queue 9

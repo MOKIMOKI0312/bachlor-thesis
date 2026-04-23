@@ -141,10 +141,10 @@ def attach_reward(env: gym.Env, args) -> gym.Env:
         soc_variable="TES_SOC",
         soc_low=0.15,
         soc_high=0.85,
-        soc_warn_low=0.30,
-        soc_warn_high=0.70,
-        lambda_soc=5.0,
-        lambda_soc_warn=3.0,
+        soc_warn_low=0.15,   # M2-E3b-v4 P3 (2026-04-23): 放松 soc 约束，让 cost_term 主导 TOU 学习
+        soc_warn_high=0.85,  # M2-E3b-v4 P3 (2026-04-23): 放松 soc 约束，让 cost_term 主导 TOU 学习
+        lambda_soc=2.0,      # M2-E3b-v4 P3 (2026-04-23): 放松 soc 约束，让 cost_term 主导 TOU 学习
+        lambda_soc_warn=1.0, # M2-E3b-v4 P3 (2026-04-23): 放松 soc 约束，让 cost_term 主导 TOU 学习
         price_series=price_series,
         alpha=args.alpha,
         beta=args.beta,

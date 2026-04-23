@@ -1401,7 +1401,10 @@ class PUE_Reward(BaseReward):
         Returns:
             Tuple[float,float,float]: total reward calculated, reward term for energy, reward term for comfort.
         """
-        energy_term = self.lambda_energy * self.W_energy * -energy_penalty/ITE_penalty
+        # M2-E3b-v4 P3b (2026-04-23): 除零保护，ITE_penalty=0 时用 sign-preserving eps
+        # （EnergyPlus 极端边界可能 ITE 全 0，避免 NaN 传播到 critic）
+        ite_denom = ITE_penalty if abs(ITE_penalty) > 1e-6 else -1e-6
+        energy_term = self.lambda_energy * self.W_energy * -energy_penalty / ite_denom
         comfort_term = self.lambda_temp * \
             (1 - self.W_energy ) * comfort_penalty
         reward = energy_term + comfort_term

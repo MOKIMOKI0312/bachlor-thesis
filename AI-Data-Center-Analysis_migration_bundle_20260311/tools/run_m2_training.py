@@ -309,18 +309,54 @@ def main() -> None:
     # then freeze. Prevents non-stationary obs normalization from destabilizing
     # DSAC-T critic during ep60-80 transient window. Skipped on --resume so we
     # keep the obs_rms that rides along with the checkpointed policy.
+    #
+    # B4-v2 (2026-04-23): center_action=[0.5,...,0.0] caused TES_valve (dim 15)
+    # and workload_hist_{6_12h,...,24h_plus} (dims 36-40) to stay at 0 throughout
+    # warmup → obs_rms.var collapsed to epsilon (1e-8). During training, (obs - μ)
+    # / sqrt(var + eps) then amplified any nonzero sample to ~10^4, blowing up
+    # the DSAC-T critic (σ=642, ent=1.835 by ep3). Fix:
+    #   (1) Use random actions (action_space.sample) — TES valve Δ and workload
+    #       action cover their full ranges, so var reflects realistic spread.
+    #   (2) Clamp obs_rms.var to a floor of 1e-2 after freezing, bounding max
+    #       normalization amplification to 10× (= 1/sqrt(1e-2)).
     if not args.resume:
-        print("[B4] Warming up NormalizeObservation with 1 baseline-policy episode...")
+        print("[B4] Warming up NormalizeObservation with 1 random-policy episode (seed-consistent)...")
         warmup_obs, _ = env.reset()
         done = truncated = False
-        center_action = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.0], dtype=np.float32)
+        # Deterministic-but-independent warmup seed (offset by 1000 so the
+        # post-warmup policy training still sees its intended action_space seed).
+        env.action_space.seed(args.seed + 1000)
         step_count = 0
         while not (done or truncated):
-            warmup_obs, _, done, truncated, _ = env.step(center_action)
+            action = env.action_space.sample()
+            warmup_obs, _, done, truncated, _ = env.step(action)
             step_count += 1
         print(f"[B4] Warmup done: {step_count} steps. Freezing obs_rms.")
         env.deactivate_update()
         print(f"[B4] automatic_update after freeze: {env.get_wrapper_attr('automatic_update')}")
+
+        # B4-v2 safety: clamp obs_rms.var to a floor so dims with zero/near-zero
+        # activity during warmup (e.g., workload_hist_24h_plus when queue never
+        # reached 24h of backlog) don't amplify by 10^4×. Floor 1e-2 caps max
+        # amplification at 10× (= 1/sqrt(1e-2)).
+        var_floor = 1e-2
+        try:
+            obs_rms = env.get_wrapper_attr('obs_rms')
+        except (AttributeError, KeyError):
+            def _find_obs_rms(e):
+                while hasattr(e, 'env'):
+                    if hasattr(e, 'obs_rms'):
+                        return e.obs_rms
+                    e = e.env
+                raise RuntimeError("obs_rms not found in wrapper chain")
+            obs_rms = _find_obs_rms(env)
+        n_clipped = int((obs_rms.var < var_floor).sum())
+        min_var_before = float(obs_rms.var.min())
+        obs_rms.var = np.maximum(obs_rms.var, var_floor)
+        print(
+            f"[B4] var floor clamp: {n_clipped}/{len(obs_rms.var)} dims raised to {var_floor} "
+            f"(min before clamp: {min_var_before:.2e}, min after: {float(obs_rms.var.min()):.2e})"
+        )
 
     # M2-D2 网络升级：从 M1 的 [512] 1 层升级到 [256, 256] 2 层
     # 理由：41 维 obs + 9 类异构信号需要 2 层才能学"条件组合型"决策

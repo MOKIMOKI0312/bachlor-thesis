@@ -156,6 +156,8 @@ def attach_reward(env: gym.Env, args) -> gym.Env:
         price_series=price_series,
         alpha=args.alpha,
         beta=args.beta,
+        kappa_shape=args.kappa_shape,
+        gamma_pbrs=args.gamma_pbrs,
     )
     if args.reward_cls == "rl_cost":
         cls = RL_Cost_Reward
@@ -227,6 +229,9 @@ def main() -> None:
     parser.add_argument("--beta", type=float, default=1.0, help="Comfort penalty coefficient")
     parser.add_argument("--c-pv", type=float, default=0.0, help="Virtual green-price USD/MWh (RL-Green only)")
     parser.add_argument("--pv-threshold-kw", type=float, default=100.0, help="PV kW above which green price applies")
+    # PBRS (analysis/pbrs_design_2026-04-23.md §4)
+    parser.add_argument("--kappa-shape", type=float, default=2.0, help="PBRS potential scaling (default 2.0 → |Φ|≤0.5)")
+    parser.add_argument("--gamma-pbrs", type=float, default=0.99, help="PBRS discount (must match SAC/DSAC-T gamma)")
     args = parser.parse_args()
 
     if "Eplus-DC-Cooling-TES" not in get_ids():
@@ -470,6 +475,8 @@ def main() -> None:
                 "reward_cls": args.reward_cls,
                 "alpha": args.alpha,
                 "beta": args.beta,
+                "kappa_shape": args.kappa_shape,
+                "gamma_pbrs": args.gamma_pbrs,
                 "elapsed_seconds": elapsed,
                 "workspace_path": str(workspace_path),
                 "model_path": str(model_path) + ".zip",

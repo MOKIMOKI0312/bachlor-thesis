@@ -1783,6 +1783,8 @@ class RL_Cost_Reward(PUE_TES_Reward):
         price_series,
         alpha: float = 1e-6,
         beta: float = 1.0,
+        kappa_shape: float = 2.0,
+        gamma_pbrs: float = 0.99,
         **kwargs,
     ):
         super().__init__(
@@ -1803,6 +1805,27 @@ class RL_Cost_Reward(PUE_TES_Reward):
         self.alpha = float(alpha)
         self.beta = float(beta)
 
+        # --- PBRS (analysis/pbrs_design_2026-04-23.md §4) -------------------
+        # Ng-Harada-Russell potential shaping:
+        #   Φ(s) = κ · (SOC(s) − 0.5) · (0.5 − price_norm(s))
+        #   F(s,s') = γ · Φ(s') − Φ(s)
+        # κ=2.0 bounds |Φ|≤0.5; γ=0.99 matches DSAC-T discount.
+        #
+        # IMPORTANT: obs_dict passed to __call__ is the RAW EnergyPlus dict
+        # (see EplusEnv.step: self.reward_fn(obs)). Wrapper-added obs like
+        # `price_current_norm` are appended to the obs ARRAY only, NOT to the
+        # obs_dict. So we compute price_current_norm internally here, mirroring
+        # the normalization in PriceSignalWrapper (z-score clipped to [-1, 2]).
+        self.kappa_shape = float(kappa_shape)
+        self.gamma_pbrs = float(gamma_pbrs)
+        self._price_mean_phi = float(np.mean(self.price_series))
+        self._price_std_phi = max(float(np.std(self.price_series)), 1e-6)
+        # In [-1, 2] per PriceSignalWrapper; remap to [0, 1] for Φ. The linear
+        # remap preserves monotonicity; 0.5 midpoint corresponds to z≈0.5
+        # (slightly above mean), matching the "cheap-vs-dear" threshold.
+        self._prev_phi = 0.0
+        self._first_step = True
+
     def _lookup_price(self, obs_dict: Dict[str, Any]) -> float:
         m = obs_dict.get('month')
         d = obs_dict.get('day_of_month')
@@ -1817,6 +1840,35 @@ class RL_Cost_Reward(PUE_TES_Reward):
         At 1 step/hour cadence, divide by 3.6e9 to get MWh."""
         e_joule = float(obs_dict.get(self.energy_names[0], 0.0))
         return e_joule / 3.6e9
+
+    def _signal_norm(self, obs_dict: Dict[str, Any]) -> float:
+        """Compute `price_current_norm` INTERNALLY (wrapper does not inject
+        it into obs_dict — see docstring on self._prev_phi setup).
+
+        Mirrors PriceSignalWrapper: z-score clipped to [-1, 2], then remapped
+        to [0, 1] via (z+1)/3 so Φ midpoint aligns with mean price.
+        """
+        import numpy as np
+        p = self._lookup_price(obs_dict)
+        z = (p - self._price_mean_phi) / self._price_std_phi
+        z_clipped = float(np.clip(z, -1.0, 2.0))
+        # Remap [-1, 2] → [0, 1]; mean price (z=0) → 1/3
+        return (z_clipped + 1.0) / 3.0
+
+    def _phi(self, obs_dict: Dict[str, Any]) -> float:
+        """PBRS potential: Φ = κ · (SOC − 0.5) · (0.5 − signal_norm).
+
+        Positive when (high SOC & low price) or (low SOC & high price) —
+        aligns with "charge cheap, discharge dear" under TOU.
+        """
+        soc = float(obs_dict.get(self.soc_variable, 0.5))
+        sig = self._signal_norm(obs_dict)
+        return self.kappa_shape * (soc - 0.5) * (0.5 - sig)
+
+    def reset_episode(self) -> None:
+        """Reset PBRS episode state. Called by EplusEnv.reset() if available."""
+        self._prev_phi = 0.0
+        self._first_step = True
 
     def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
         import numpy as np
@@ -1840,12 +1892,28 @@ class RL_Cost_Reward(PUE_TES_Reward):
         comfort_extra = (self.beta - 1.0) * terms.get('comfort_term', 0.0)
 
         reward = reward + cost_term + comfort_extra
+
+        # --- PBRS: F = γ·Φ(s') − Φ(s_prev) ---------------------------------
+        # First step of episode sets prev_phi via reset; first F is 0 (NHR
+        # 1999 — any constant offset on Φ(s_0) is absorbed by γΦ telescoping).
+        phi_s_prime = self._phi(obs_dict)
+        if self._first_step:
+            f_shape = 0.0
+            self._first_step = False
+        else:
+            f_shape = self.gamma_pbrs * phi_s_prime - self._prev_phi
+        self._prev_phi = phi_s_prime
+
+        reward = reward + f_shape
+
         terms['cost_term'] = cost_term
         terms['cost_term_raw'] = cost_term_raw
         terms['cost_usd_step'] = cost_usd
         terms['mwh_step'] = mwh
         terms['lmp_usd_per_mwh'] = price
         terms['comfort_extra_term'] = comfort_extra
+        terms['shaping_term'] = f_shape
+        terms['phi_value'] = phi_s_prime
         return reward, terms
 
 

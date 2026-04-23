@@ -1938,12 +1938,15 @@ class RL_Cost_Reward(PUE_TES_Reward):
         cost_term_raw = -self.alpha * cost_usd
         # M2-E3b fix (Issue A, 2026-04-21): CAISO NP15 2023 price distribution has
         # kurtosis ≈ 120 (normal = 3) due to scarcity spikes (max = $1091/MWh vs
-        # mean = $61) and ~1.6%/yr negative-price hours. These extreme tails
-        # violate DSAC-T's Gaussian critic assumption, triggering variance
-        # explosion (omega diverges) + SAC auto-temperature feedback → policy
-        # collapse. ±3.0 clip preserves 99.9% of normal samples but bounds the
-        # <0.1% pathological tails. `cost_term_raw` stashed for diagnostics.
-        cost_term = float(np.clip(cost_term_raw, -3.0, 3.0))
+        # mean = $61) and ~1.6%/yr negative-price hours. ±3.0 clip was added for
+        # CAISO's extreme tails.
+        # PBRS-v3 (2026-04-23): Jiangsu 2025 TOU has kurtosis≈-1.3 (subgaussian,
+        # max $200). No tail risk. ±3 clip was SATURATING peak cost_term (-4.0
+        # raw → -3.0 clipped), muting the TOU differentiation. DPBA pilot ep15
+        # pk-tr stuck 0.04 because agent saw trough=-0.58 vs peak=-3.0 diff
+        # 2.42 (clipped) instead of natural diff 3.42 (unclipped). Relax to
+        # ±8.0: peak -4.0 not clipped at α=2e-3, full price sensitivity.
+        cost_term = float(np.clip(cost_term_raw, -8.0, 8.0))
 
         # beta scales parent's comfort_term as an extra multiplier (idempotent if beta=1)
         comfort_extra = (self.beta - 1.0) * terms.get('comfort_term', 0.0)
@@ -2060,7 +2063,7 @@ class RL_Green_Reward(RL_Cost_Reward):
         # M2-E3b fix (Issue A, 2026-04-21): mirror RL_Cost_Reward clip so the
         # virtual-green reward path has the same Gaussian-critic safety bound.
         # See RL_Cost_Reward.__call__ for full rationale.
-        new_cost_term = float(np.clip(new_cost_term_raw, -3.0, 3.0))
+        new_cost_term = float(np.clip(new_cost_term_raw, -8.0, 8.0))  # PBRS-v3: Jiangsu TOU relax clip
 
         # Undo market cost, apply virtual-green cost.
         # Parent already applied clipped `cost_term`; subtract that same

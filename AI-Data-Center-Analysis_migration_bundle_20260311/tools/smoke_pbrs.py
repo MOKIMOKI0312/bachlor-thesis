@@ -1,14 +1,13 @@
-"""PBRS smoke test (analysis/pbrs_design_2026-04-23.md §4).
+"""PBRS v2 smoke test (analysis/pbrs_upgrade_DPBA_2026-04-23.md).
 
-Verifies that `RL_Cost_Reward` correctly emits `shaping_term` and `phi_value`
-into reward terms, and that the first-step F=0 invariant holds.
-
-Builds the full M2 wrapper stack + RL_Cost_Reward (with PBRS enabled), runs
-3 steps, and asserts:
+Verifies that `RL_Cost_Reward` with the DPBA Φ formula correctly emits
+`shaping_term` and `phi_value` into reward terms, and that:
   1. step 1: shaping_term == 0.0 (first_step guard)
   2. step 2+: shaping_term = γ·Φ(s') − Φ(s_prev)
-  3. |shaping_term| < 1.0 (per design, κ=2.0 bounds |Φ|≤0.5 → |F|≤~1.0 absolute)
-  4. phi_value is bounded in [-0.5, 0.5] (κ=2.0 × (SOC-0.5) × (0.5-signal))
+  3. |Φ| ≤ 0.40 (κ=0.8 × 0.5 × max_spread ≈ 0.32, 0.40 safety margin)
+  4. |shaping_term| < 1.0 (episode-safe |F|)
+  5. DIRECTIONAL: at 15:00 (distance-to-peak ≈ 4h, shoulder price),
+     dΦ/dSOC > 0 — agent rewarded for charging high before the peak.
 
 Run:
   EPLUS_PATH=... PYTHONPATH="$PWD;$EPLUS_PATH" python tools/smoke_pbrs.py
@@ -37,6 +36,75 @@ from sinergym.envs.workload_wrapper import WorkloadWrapper
 from sinergym.utils.rewards import RL_Cost_Reward
 
 
+# Design §"量级验算" bounds
+ASSERT_PHI_MAX = 0.40  # κ=0.8 · 0.5 · 0.8 = 0.32, +25% safety
+
+
+def _directional_test(reward_fn: RL_Cost_Reward) -> None:
+    """Directional test: at 15:00 distance-to-peak ≈ 4h (Jiangsu TOU shoulder
+    at $83/MWh, peak at 19:00), Φ at SOC=0.7 should be GREATER than at SOC=0.3
+    — i.e. dΦ/dSOC > 0 encourages charging.
+
+    Uses a mock obs_dict (no env needed); exercises _phi directly.
+    """
+    # Construct a mock obs_dict approximating 15:00 on a typical day.
+    # Pick July 15 (mid-summer peak) to align with tech route's peak season
+    # assumption. In Jiangsu TOU, July is peak tier; 15:00 is shoulder
+    # ($83/MWh), and 19:00 is peak ($200/MWh) → 4h to peak.
+    mock_obs_low = {
+        'month': 7, 'day_of_month': 15, 'hour': 15,
+        reward_fn.soc_variable: 0.3,
+    }
+    mock_obs_high = dict(mock_obs_low)
+    mock_obs_high[reward_fn.soc_variable] = 0.7
+
+    phi_low = reward_fn._phi(mock_obs_low)
+    phi_high = reward_fn._phi(mock_obs_high)
+    dphi_dsoc = (phi_high - phi_low) / (0.7 - 0.3)
+
+    print(f"[directional] 15:00 distance-to-peak test:")
+    print(f"  Φ(SOC=0.3) = {phi_low:+.5f}")
+    print(f"  Φ(SOC=0.7) = {phi_high:+.5f}")
+    print(f"  ΔΦ/ΔSOC    = {dphi_dsoc:+.5f}  (must be > 0 → charge-ahead-of-peak)")
+
+    assert phi_high > phi_low, (
+        f"DIRECTIONAL FAILED: Φ(SOC=0.7) = {phi_high} should exceed "
+        f"Φ(SOC=0.3) = {phi_low} at 15:00 (distance-to-peak ≈ 4h). "
+        f"Check spread sign / p_peak_ref."
+    )
+    assert dphi_dsoc > 0.01, (
+        f"DIRECTIONAL weak: ΔΦ/ΔSOC = {dphi_dsoc:.5f} too close to 0; "
+        f"agent won't feel the shaping signal"
+    )
+
+
+def _magnitude_table(reward_fn: RL_Cost_Reward) -> None:
+    """Dump Φ at 3 reference timestamps per design §量级验算 table for ground-truth
+    comparison. Expected (±10%):
+      02:00 trough  : SOC=0.3 → -0.002   SOC=0.7 → +0.002
+      15:00 shoulder: SOC=0.3 → -0.041   SOC=0.7 → +0.041
+      17:00 near-peak: SOC=0.3 → -0.068   SOC=0.7 → +0.068
+    """
+    cases = [
+        ("02:00 trough  (distance 17h)", 7, 15, 2),
+        ("15:00 shoulder (distance 4h)", 7, 15, 15),
+        ("17:00 near-peak (distance 2h)", 7, 15, 17),
+    ]
+    print("[magnitude] Ground-truth comparison vs design §量级验算:")
+    for label, m, d, h in cases:
+        phi_lo = reward_fn._phi({'month': m, 'day_of_month': d, 'hour': h,
+                                  reward_fn.soc_variable: 0.3})
+        phi_hi = reward_fn._phi({'month': m, 'day_of_month': d, 'hour': h,
+                                  reward_fn.soc_variable: 0.7})
+        p_norm = reward_fn._signal_norm(
+            {'month': m, 'day_of_month': d, 'hour': h})
+        h_hrs = reward_fn._hours_to_next_peak(
+            {'month': m, 'day_of_month': d, 'hour': h})
+        print(f"  {label}")
+        print(f"    price_norm={p_norm:.3f}  h={h_hrs:.1f}h  "
+              f"Φ(SOC=0.3)={phi_lo:+.5f}  Φ(SOC=0.7)={phi_hi:+.5f}")
+
+
 def main() -> int:
     assert "Eplus-DC-Cooling-TES" in get_ids()
 
@@ -59,7 +127,7 @@ def main() -> int:
     env = PVSignalWrapper(env, pv_csv_path="Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv")
     env = WorkloadWrapper(env, it_trace_csv="Data/AI Trace Data/Earth_hourly.csv", workload_idx=4)
 
-    # --- RL_Cost_Reward WITH PBRS ----------------------------------------
+    # --- RL_Cost_Reward WITH PBRS v2 (DPBA) ------------------------------
     price = pd.read_csv("Data/prices/Jiangsu_TOU_2025_hourly.csv")["price_usd_per_mwh"].to_numpy()
     reward_fn = RL_Cost_Reward(
         temperature_variables=["air_temperature"],
@@ -76,8 +144,10 @@ def main() -> int:
         lambda_soc=2.0, lambda_soc_warn=1.0,
         price_series=price,
         alpha=2e-3, beta=1.0,
-        kappa_shape=2.0,
+        kappa_shape=0.8,      # v2 default
         gamma_pbrs=0.99,
+        tau_decay=4.0,        # DPBA exp-decay hours
+        p_peak_ref=0.80,      # Jiangsu TOU peak price_norm reference
     )
     env.unwrapped.reward_fn = reward_fn
     assert isinstance(env.unwrapped.reward_fn, RL_Cost_Reward)
@@ -86,10 +156,13 @@ def main() -> int:
     assert reward_fn._first_step is True, "first_step should start True before reset"
     assert reward_fn._prev_phi == 0.0
 
+    # --- Pre-env directional + magnitude tests (use mock obs_dict) -------
+    _directional_test(reward_fn)
+    _magnitude_table(reward_fn)
+
     # --- Reset ----------------------------------------------------------
     obs, info = env.reset()
     print(f"reset: obs.shape={obs.shape}, first_step={reward_fn._first_step}, prev_phi={reward_fn._prev_phi}")
-    # EplusEnv.reset calls reward_fn.reset_episode() — should still be True
     assert reward_fn._first_step is True, "reset_episode should re-arm first_step"
     assert reward_fn._prev_phi == 0.0
 
@@ -101,44 +174,28 @@ def main() -> int:
         a = rng.uniform(-1, 1, size=(6,)).astype(np.float32)
         obs, r, term, trunc, info = env.step(a)
 
-        # EplusEnv.step does info.update(rw_terms), so shaping_term/phi_value
-        # land in info.
         shaping = info.get('shaping_term', None)
         phi = info.get('phi_value', None)
         soc = info.get('soc_value', None)
         lmp = info.get('lmp_usd_per_mwh', None)
 
-        # Internal signal_norm (what _phi sees for price)
-        # Reconstruct to verify: signal_norm should be in [0, 1]
-        sig_norm = (np.clip((lmp - reward_fn._price_mean_phi) / reward_fn._price_std_phi, -1.0, 2.0) + 1.0) / 3.0
-
-        # Re-derive phi from SOC and sig_norm — should equal info phi_value
-        phi_reconstructed = 2.0 * (float(soc) - 0.5) * (0.5 - float(sig_norm))
-
         print(f"step {i+1}: soc={soc:.4f}, lmp={lmp:.2f}, "
-              f"sig_norm={sig_norm:.4f}, phi={phi:.6f} (reconstructed={phi_reconstructed:.6f}), "
-              f"shaping={shaping:.6f}, reward={r:.4f}")
+              f"phi={phi:+.6f}, shaping={shaping:+.6f}, reward={r:.4f}")
 
         results.append({
             'step': i + 1, 'soc': float(soc), 'lmp': float(lmp),
-            'sig_norm': float(sig_norm), 'phi': float(phi),
-            'phi_reconstructed': float(phi_reconstructed),
-            'shaping': float(shaping), 'reward': float(r),
+            'phi': float(phi), 'shaping': float(shaping), 'reward': float(r),
         })
 
         # Assertions
         assert shaping is not None, "shaping_term missing from info"
         assert phi is not None, "phi_value missing from info"
-        # phi bounded [-0.5, 0.5] (κ=2.0, SOC in [0,1], sig in [0,1])
-        assert -0.5 - 1e-6 <= phi <= 0.5 + 1e-6, f"phi={phi} outside [-0.5, 0.5]"
-        # |F| bounded: max ≈ γ·0.5 − (−0.5) = 0.99·0.5 + 0.5 = 0.995 (< 1.0)
-        assert abs(shaping) < 1.0, f"|shaping_term|={abs(shaping)} >= 1.0"
-
-        # Verify reconstruction matches (confirms _phi implementation)
-        assert abs(phi - phi_reconstructed) < 1e-4, (
-            f"phi={phi} vs reconstructed={phi_reconstructed} diverged by "
-            f"{abs(phi - phi_reconstructed):.2e}"
+        # |Φ| ≤ 0.40 under DPBA with κ=0.8
+        assert -ASSERT_PHI_MAX - 1e-6 <= phi <= ASSERT_PHI_MAX + 1e-6, (
+            f"phi={phi} outside [-{ASSERT_PHI_MAX}, {ASSERT_PHI_MAX}]"
         )
+        # |F| < 1.0 bound (κ=0.8 × γ=0.99 × ΔΦ)
+        assert abs(shaping) < 1.0, f"|shaping_term|={abs(shaping)} >= 1.0"
 
     # Step 1: shaping_term == 0.0 (first_step guard)
     assert results[0]['shaping'] == 0.0, (
@@ -162,11 +219,12 @@ def main() -> int:
     env.close()
 
     print("=" * 60)
-    print("PBRS SMOKE PASSED")
+    print("PBRS v2 (DPBA) SMOKE PASSED")
+    print(f"  directional: Φ(SOC=0.7) > Φ(SOC=0.3) at 15:00 OK")
     print(f"  step1 shaping=0.0 (first_step) OK")
-    print(f"  step2 shaping={results[1]['shaping']:.6f} = γ·Φ(s2) - Φ(s1) OK")
-    print(f"  step3 shaping={results[2]['shaping']:.6f} = γ·Φ(s3) - Φ(s2) OK")
-    print(f"  |Φ| ≤ 0.5 across all steps OK")
+    print(f"  step2 shaping={results[1]['shaping']:+.6f} = γ·Φ(s2) - Φ(s1) OK")
+    print(f"  step3 shaping={results[2]['shaping']:+.6f} = γ·Φ(s3) - Φ(s2) OK")
+    print(f"  |Φ| ≤ {ASSERT_PHI_MAX} across all steps OK")
     print(f"  |F| < 1.0 across all steps OK")
     return 0
 

@@ -21,6 +21,7 @@ Adds 4 defense lines against critic σ explosion:
 Diverges from paper Algorithm 1 in favor of empirically stable official impl.
 """
 
+import math
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
@@ -154,6 +155,14 @@ class DSAC_T(SAC):
                 self.ent_coef_optimizer.zero_grad()
                 ent_coef_loss.backward()
                 self.ent_coef_optimizer.step()
+                # M2-PBRS-v2 (2026-04-23, Haarnoja SAC v2 / Cao 2024 TOU arbitrage
+                # codebase practice): clamp log_alpha ≥ log(0.05) as entropy floor
+                # to prevent ent_coef collapse during long-horizon TOU shaping.
+                # Φ_A pilot observed ent_coef → 0.011 by ep15; floor 0.05 keeps
+                # exploration alive without over-constraining late-stage policy.
+                if self.log_ent_coef is not None:
+                    with th.no_grad():
+                        self.log_ent_coef.clamp_(min=math.log(0.05))
 
             # --- R1 + R2: Compute distributional target ---
             with th.no_grad():

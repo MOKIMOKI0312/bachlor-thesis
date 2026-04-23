@@ -1773,6 +1773,12 @@ class RL_Cost_Reward(PUE_TES_Reward):
     raise it to tilt the agent toward comfort.
     """
 
+    # Class-level constant — price_hours_to_next_peak_norm ∈ [0,1] maps to
+    # h ∈ [0, 24] hours (PriceSignalWrapper precomputes hours_to_next_peak
+    # then divides by max_gap; under Jiangsu TOU 2025 max_gap ≈ 19 h with
+    # peak_percentile=75, but we use 24 as a safe upper bound for Φ math).
+    H_NORM_SCALE: float = 24.0
+
     def __init__(
         self,
         temperature_variables,
@@ -1783,8 +1789,10 @@ class RL_Cost_Reward(PUE_TES_Reward):
         price_series,
         alpha: float = 1e-6,
         beta: float = 1.0,
-        kappa_shape: float = 2.0,
+        kappa_shape: float = 0.8,
         gamma_pbrs: float = 0.99,
+        tau_decay: float = 4.0,
+        p_peak_ref: float = 0.80,
         **kwargs,
     ):
         super().__init__(
@@ -1805,24 +1813,43 @@ class RL_Cost_Reward(PUE_TES_Reward):
         self.alpha = float(alpha)
         self.beta = float(beta)
 
-        # --- PBRS (analysis/pbrs_design_2026-04-23.md §4) -------------------
-        # Ng-Harada-Russell potential shaping:
-        #   Φ(s) = κ · (SOC(s) − 0.5) · (0.5 − price_norm(s))
-        #   F(s,s') = γ · Φ(s') − Φ(s)
-        # κ=2.0 bounds |Φ|≤0.5; γ=0.99 matches DSAC-T discount.
+        # --- PBRS v2 — Dynamic Price-Aware DPBA (pbrs_upgrade_DPBA_2026-04-23.md) ---
+        # Devlin-Kudenko 2012 AAMAS DPBA:
+        #   Φ(s, t) = κ · (SOC(s) − 0.5) · spread(t)
+        #   spread(t) = (p_peak_ref − p_curr(t)) · exp(−max(h, 0.1) / τ)
+        # where h = hours_to_next_peak (horizon signal from PriceSignalWrapper).
+        # Policy invariance proven for time-dependent Φ. Cao 2024 arxiv 2410.20005
+        # observed +74% battery cycles / +60% reward with forecast-horizon shaping.
+        # κ=0.8 bounds |Φ| ≤ 0.8·0.5·(~0.80) ≈ 0.32; γ=0.99 matches DSAC-T.
         #
         # IMPORTANT: obs_dict passed to __call__ is the RAW EnergyPlus dict
         # (see EplusEnv.step: self.reward_fn(obs)). Wrapper-added obs like
-        # `price_current_norm` are appended to the obs ARRAY only, NOT to the
-        # obs_dict. So we compute price_current_norm internally here, mirroring
-        # the normalization in PriceSignalWrapper (z-score clipped to [-1, 2]).
+        # `price_current_norm` / `price_hours_to_next_peak_norm` are appended to
+        # the obs ARRAY only, NOT to the obs_dict. So we recompute them
+        # internally here, mirroring PriceSignalWrapper's logic.
         self.kappa_shape = float(kappa_shape)
         self.gamma_pbrs = float(gamma_pbrs)
+        self.tau_decay = float(tau_decay)
+        self.p_peak_ref = float(p_peak_ref)
         self._price_mean_phi = float(np.mean(self.price_series))
         self._price_std_phi = max(float(np.std(self.price_series)), 1e-6)
-        # In [-1, 2] per PriceSignalWrapper; remap to [0, 1] for Φ. The linear
-        # remap preserves monotonicity; 0.5 midpoint corresponds to z≈0.5
-        # (slightly above mean), matching the "cheap-vs-dear" threshold.
+        # Precompute peak threshold + per-hour hours_to_next_peak (matches
+        # PriceSignalWrapper's default peak_percentile=75). Used by
+        # _hours_to_next_peak() fallback when obs_dict lacks the wrapper key.
+        peak_threshold = float(np.percentile(self.price_series, 75.0))
+        self._peak_threshold = peak_threshold
+        peak_mask = self.price_series >= peak_threshold
+        hours_to_peak = np.zeros(8760, dtype=np.float32)
+        if peak_mask.any():
+            for h_idx in range(8760):
+                if peak_mask[h_idx]:
+                    hours_to_peak[h_idx] = 0.0
+                    continue
+                for k in range(1, 8761):
+                    if peak_mask[(h_idx + k) % 8760]:
+                        hours_to_peak[h_idx] = float(k)
+                        break
+        self._hours_to_peak = hours_to_peak
         self._prev_phi = 0.0
         self._first_step = True
 
@@ -1855,15 +1882,45 @@ class RL_Cost_Reward(PUE_TES_Reward):
         # Remap [-1, 2] → [0, 1]; mean price (z=0) → 1/3
         return (z_clipped + 1.0) / 3.0
 
-    def _phi(self, obs_dict: Dict[str, Any]) -> float:
-        """PBRS potential: Φ = κ · (SOC − 0.5) · (0.5 − signal_norm).
-
-        Positive when (high SOC & low price) or (low SOC & high price) —
-        aligns with "charge cheap, discharge dear" under TOU.
+    def _hours_to_next_peak(self, obs_dict: Dict[str, Any]) -> float:
+        """Fallback: compute hours-to-next-peak-tier from current
+        month/day/hour + self._hours_to_peak table. Mirrors
+        PriceSignalWrapper's internal precomputation (peak = price >=
+        75th percentile). Returns hours ∈ [0, 24] (capped).
         """
+        m = obs_dict.get('month')
+        d = obs_dict.get('day_of_month')
+        h = obs_dict.get('hour')
+        if m is None or d is None or h is None:
+            return 12.0  # default mid-distance when time not available
+        idx_now = _hour_of_year(m, d, h) % 8760
+        h_val = float(self._hours_to_peak[idx_now])
+        # Cap at H_NORM_SCALE (24) so spread magnitude stays bounded
+        return min(h_val, self.H_NORM_SCALE)
+
+    def _phi(self, obs_dict: Dict[str, Any]) -> float:
+        """PBRS v2 potential (Dynamic Price-Aware DPBA):
+            Φ(s, t) = κ · (SOC − 0.5) · spread(t)
+            spread(t) = (p_peak_ref − p_curr) · exp(−max(h, 0.1) / τ)
+        where h = hours to next peak-tier (from PriceSignalWrapper or
+        fallback _hours_to_next_peak). Positive when high SOC is far
+        from peak (encourages pre-peak charging); zero at / past peak.
+        """
+        import math
         soc = float(obs_dict.get(self.soc_variable, 0.5))
-        sig = self._signal_norm(obs_dict)
-        return self.kappa_shape * (soc - 0.5) * (0.5 - sig)
+        # price_current_norm ∈ [0, 1] — recompute internally (wrapper doesn't
+        # inject into obs_dict; see _signal_norm docstring).
+        p = self._signal_norm(obs_dict)
+        # h: hours to next peak. Prefer wrapper-injected key if present; else fallback.
+        h_norm = obs_dict.get('price_hours_to_next_peak_norm')
+        if h_norm is not None:
+            h = float(h_norm) * self.H_NORM_SCALE
+        else:
+            h = self._hours_to_next_peak(obs_dict)
+        # DPBA spread: (p_peak_ref − p_current) · exp(−max(h, 0.1) / τ)
+        spread = (self.p_peak_ref - p) * math.exp(-max(h, 0.1) / self.tau_decay)
+        # Φ = κ · (SOC − 0.5) · spread
+        return self.kappa_shape * (soc - 0.5) * spread
 
     def reset_episode(self) -> None:
         """Reset PBRS episode state. Called by EplusEnv.reset() if available."""

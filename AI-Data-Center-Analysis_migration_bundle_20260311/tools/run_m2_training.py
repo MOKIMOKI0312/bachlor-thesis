@@ -158,6 +158,8 @@ def attach_reward(env: gym.Env, args) -> gym.Env:
         beta=args.beta,
         kappa_shape=args.kappa_shape,
         gamma_pbrs=args.gamma_pbrs,
+        tau_decay=args.tau_decay,
+        p_peak_ref=args.p_peak_ref,
     )
     if args.reward_cls == "rl_cost":
         cls = RL_Cost_Reward
@@ -229,9 +231,14 @@ def main() -> None:
     parser.add_argument("--beta", type=float, default=1.0, help="Comfort penalty coefficient")
     parser.add_argument("--c-pv", type=float, default=0.0, help="Virtual green-price USD/MWh (RL-Green only)")
     parser.add_argument("--pv-threshold-kw", type=float, default=100.0, help="PV kW above which green price applies")
-    # PBRS (analysis/pbrs_design_2026-04-23.md §4)
-    parser.add_argument("--kappa-shape", type=float, default=2.0, help="PBRS potential scaling (default 2.0 → |Φ|≤0.5)")
+    # PBRS v2 — DPBA (analysis/pbrs_upgrade_DPBA_2026-04-23.md)
+    parser.add_argument("--kappa-shape", type=float, default=0.8, help="PBRS potential scaling (v2 default 0.8 → |Φ|≤0.32 under DPBA spread)")
     parser.add_argument("--gamma-pbrs", type=float, default=0.99, help="PBRS discount (must match SAC/DSAC-T gamma)")
+    parser.add_argument("--tau-decay", type=float, default=4.0, help="DPBA exp-decay scale in hours (shorter = sharper near-peak signal)")
+    parser.add_argument("--p-peak-ref", type=float, default=0.80, help="Reference peak price_norm (Jiangsu TOU: $160-200 / 250 ≈ 0.80)")
+    # M2-PBRS-v2 (2026-04-23, Xu 2023 discrete SAC): target_entropy = -|A|/3
+    # Default SAC uses -|A|=-6; under DPBA shaping -2.0 prevents ent_coef collapse.
+    parser.add_argument("--target-entropy", type=float, default=-2.0, help="SAC/DSAC-T target entropy (Xu 2023: -dim(A)/3 = -2.0 for 6-dim action)")
     args = parser.parse_args()
 
     if "Eplus-DC-Cooling-TES" not in get_ids():
@@ -392,6 +399,7 @@ def main() -> None:
             learning_rate=5e-5,   # M2-E3b: 1e-4 → 5e-5（lr=1e-4 下 3/4 seed policy collapse, 回退 M1 验证值恢复 DSAC-T R3 阻尼裕度, 保留 [256,256] 网络）
             learning_starts=8760,
             gamma=0.99,
+            target_entropy=args.target_entropy,  # M2-PBRS-v2 (2026-04-23, Xu 2023): -dim(A)/3 = -2.0 instead of default -6, prevents ent_coef collapse
             policy_kwargs=policy_kwargs,
             verbose=1,
             seed=args.seed,

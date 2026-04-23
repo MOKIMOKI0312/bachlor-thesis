@@ -1899,21 +1899,28 @@ class RL_Cost_Reward(PUE_TES_Reward):
         return min(h_val, self.H_NORM_SCALE)
 
     def _phi(self, obs_dict: Dict[str, Any]) -> float:
-        """PBRS v4 potential (24h-active Price-SOC alignment, no time decay):
-            Φ(s) = κ · (SOC − 0.5) · (p_peak_ref − p_curr)
-        DPBA v1-v3 used exp(-h/τ) time decay, which limited duty cycle to
-        ~17% (only near-peak windows). Removing the decay makes shaping
-        active 24/7, 6× more integrated gradient per episode. Trade-off:
-        loses "pre-peak preparation" time signal, but agent still gets
-        clear "high SOC + low price = good" / "high SOC + high price = good"
-        direction from the price term alone. Cao 2024 battery arbitrage
-        showed that static price-SOC cross-term suffices if cost signal
-        is also strong (our clip relaxation to ±8 helps here).
+        """PBRS v5 FINAL potential (DPBA v1 best + clip±8):
+            Φ(s, t) = κ · (SOC − 0.5) · (p_peak_ref − p_curr) · exp(−max(h, 0.1) / τ)
+        where h = hours to next peak-tier. The exp(-h/τ) decay was TESTED
+        (v4 removed it, degraded to 0.029 avg pk-tr vs v1 0.055). Time-
+        localized shaping is CORRECT: focuses gradient on the ~4h pre-
+        peak window where SOC charging decisions actually matter.
+        Duty cycle ~17% is feature not bug.
+
+        5-version iteration proved DPBA v1 (κ=0.8, τ=4) is optimal PBRS
+        config. Pair with cost_term clip ±8 (v3, Jiangsu TOU doesn't need
+        CAISO tight clip) for full peak cost signal transmission.
         """
+        import math
         soc = float(obs_dict.get(self.soc_variable, 0.5))
         p = self._signal_norm(obs_dict)  # ∈ [0, 1]
-        # 24h-active: no exp decay; always shape based on current price tier
-        return self.kappa_shape * (soc - 0.5) * (self.p_peak_ref - p)
+        h_norm = obs_dict.get('price_hours_to_next_peak_norm')
+        if h_norm is not None:
+            h = float(h_norm) * self.H_NORM_SCALE
+        else:
+            h = self._hours_to_next_peak(obs_dict)
+        spread = (self.p_peak_ref - p) * math.exp(-max(h, 0.1) / self.tau_decay)
+        return self.kappa_shape * (soc - 0.5) * spread
 
     def reset_episode(self) -> None:
         """Reset PBRS episode state. Called by EplusEnv.reset() if available."""

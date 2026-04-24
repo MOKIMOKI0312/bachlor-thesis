@@ -307,6 +307,24 @@ class EplusEnv(gym.Env):
         source_path = os.path.join(PKG_DATA_PATH, 'weather', stat_file)
         destination_path = os.path.join(self.episode_dir, stat_file)
         shutil.copy(source_path, destination_path)
+        # ----------------------------------------------------------------------- #
+        # F1: per-episode randomization of TES initial tank temperature.
+        # See tools/m1/M1_state.json (F1 entry) and 建筑模型说明.md §9.13.
+        # Mechanism: Schedule:Compact.TES_Charge_Setpoint.data[3].field holds the
+        # first 15-min setpoint, which the tank uses as its init temperature.
+        # Sampling T_init ~ U(6.0, 12.0)°C via gym-managed self.np_random ensures
+        # the randomization is seeded by env.reset(seed=...) for reproducibility.
+        # Gracefully skips if the building has no Schedule:Compact.TES_Charge_Setpoint
+        # (e.g. Baseline_DC.epJSON) -- no error raised.
+        # ----------------------------------------------------------------------- #
+        sc_compact = self.model.building.get('Schedule:Compact', {})
+        tes_sp = sc_compact.get('TES_Charge_Setpoint')
+        if tes_sp is not None and len(tes_sp.get('data', [])) > 3:
+            t_init = float(self.np_random.uniform(6.0, 12.0))
+            tes_sp['data'][3]['field'] = f'{t_init:.3f}'
+            self.logger.info(
+                '[F1] randomized TES initial tank temperature to {:.3f}C at reset (ep={})'.format(
+                    t_init, self.episode))
         # Getting building, weather and Energyplus output directory
         eplus_working_building_path = self.model.save_building_model()
         eplus_working_weather_path = self.model.apply_weather_variability(

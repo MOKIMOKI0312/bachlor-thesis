@@ -1337,10 +1337,10 @@
           "program_line": "SET Chiller_Avail_Obs = 1"
         },
         {
-          "program_line": "IF TES_Signal < 0.0 - 0.01"
+          "program_line": "IF TES_Signal > 0.01"
         },
         {
-          "program_line": "  IF SOC > 0.02"
+          "program_line": "  IF SOC > 0.15"
         },
         {
           "program_line": "    SET Chiller_Branch_Avail = 0"
@@ -1402,10 +1402,10 @@
     "P_7": {
       "lines": [
         {
-          "program_line": "IF TES_Set_Sensor < 0.0 - 0.01"
+          "program_line": "IF TES_Set_Sensor > 0.01"
         },
         {
-          "program_line": "  IF SOC > 0.02"
+          "program_line": "  IF SOC > 0.15"
         },
         {
           "program_line": "    SET Chiller_Branch_Avail = 0"
@@ -3236,6 +3236,29 @@
         }
       ],
       "schedule_type_limits_name": "DataCenter ZN Thermostat Schedule Type Limits"
+    },
+    "TES_Charge_Setpoint": {
+      "schedule_type_limits_name": "Temperature",
+      "data": [
+        {
+          "field": "Through: 12/31"
+        },
+        {
+          "field": "For: AllDays"
+        },
+        {
+          "field": "Until: 00:15"
+        },
+        {
+          "field": "6.0"
+        },
+        {
+          "field": "Until: 24:00"
+        },
+        {
+          "field": "6.0"
+        }
+      ]
     }
   },
   "Schedule:Constant": {
@@ -3272,10 +3295,6 @@
     },
     "ITE_Set": {
       "hourly_value": 0.45
-    },
-    "TES_Charge_Setpoint": {
-      "hourly_value": 6.0,
-      "schedule_type_limits_name": "Temperature"
     },
     "TES_Set": {
       "hourly_value": 0.0

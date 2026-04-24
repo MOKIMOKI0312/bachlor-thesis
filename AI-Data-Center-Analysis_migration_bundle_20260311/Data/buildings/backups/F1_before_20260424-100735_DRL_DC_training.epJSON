@@ -1234,7 +1234,28 @@
     "P_2": {
       "lines": [
         {
-          "program_line": "SET ITE_rate = ITE_S"
+          "program_line": "SET ITE_rate = 0.5"
+        },
+        {
+          "program_line": "IF Hour >= 0"
+        },
+        {
+          "program_line": "SET min_value_ITE = @RandomUniform ITE_Now-0.1 ITE_Now-0.01"
+        },
+        {
+          "program_line": "SET max_value_ITE = @RandomUniform ITE_Now+0.01 ITE_Now+0.1"
+        },
+        {
+          "program_line": "SET min_value_ITE = @Max min_value_ITE 0.05"
+        },
+        {
+          "program_line": "SET max_value_ITE = @Min max_value_ITE 0.80"
+        },
+        {
+          "program_line": "SET ITE_rate = @RandomUniform min_value_ITE max_value_ITE"
+        },
+        {
+          "program_line": "ENDIF"
         }
       ]
     },
@@ -3215,29 +3236,6 @@
         }
       ],
       "schedule_type_limits_name": "DataCenter ZN Thermostat Schedule Type Limits"
-    },
-    "TES_Charge_Setpoint": {
-      "schedule_type_limits_name": "Temperature",
-      "data": [
-        {
-          "field": "Through: 12/31"
-        },
-        {
-          "field": "For: AllDays"
-        },
-        {
-          "field": "Until: 00:15"
-        },
-        {
-          "field": "6.0"
-        },
-        {
-          "field": "Until: 24:00"
-        },
-        {
-          "field": "6.0"
-        }
-      ]
     }
   },
   "Schedule:Constant": {
@@ -3273,7 +3271,11 @@
       "hourly_value": 0
     },
     "ITE_Set": {
-      "hourly_value": 1
+      "hourly_value": 0.45
+    },
+    "TES_Charge_Setpoint": {
+      "hourly_value": 6.0,
+      "schedule_type_limits_name": "Temperature"
     },
     "TES_Set": {
       "hourly_value": 0.0

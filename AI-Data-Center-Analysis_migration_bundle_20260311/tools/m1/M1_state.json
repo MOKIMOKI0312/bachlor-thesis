@@ -1,7 +1,7 @@
 {
-  "completed": ["A1", "A2", "A3", "A3b", "R2", "R3", "2026-04-23_P5P7_fix"],
-  "current": "2026-04-23_P5P7_fix (done)",
-  "last_commit": "d2169f0",
+  "completed": ["A1", "A2", "A3", "A3b", "R2", "R3", "2026-04-23_P5P7_fix", "F1"],
+  "current": "F1 (done, epJSON only; Python reset hook pending code-fixer)",
+  "last_commit": "6a0db39",
   "notes": {
     "2026-04-23_P5P7_fix": {
       "summary": "Fix P_5 + P_7 chiller-kill direction bug (moved kill block from charge branch to discharge branch, SOC threshold 0.02 -> 0.15)",
@@ -22,6 +22,56 @@
         "1day_baseline_evaluation": "returncode=0, severe=0, fatal=0, warnings=111",
         "7day_A_charge_TES_Set_-0.5": "chiller ca_min=1.0 (always ON), SOC 0.97->0.93 (micro-drop), air_max=35.05°C, PASS",
         "7day_B_discharge_TES_Set_+0.5": "chiller OFF until SOC<0.15 (step 251), then 100% recovery; SOC 0.80->0.016; air_max=40.24°C (过放期已知 §9.10); facility_elec -6.8% vs A (节能显现); PASS"
+      }
+    },
+    "F1": {
+      "summary": "TES initial SOC randomization - convert TES_Charge_Setpoint from Schedule:Constant to Schedule:Compact, prepared for per-episode random T_init injection",
+      "date": "2026-04-24",
+      "rationale": "Integration pilot v2 identified 'TES dead' pattern (year_cycles=1, SOC flat at 0.36, no TOU response). Root cause: every ep starts with tank full (6°C, SOC=1.0), agent learned bias toward 'always discharge' strategy. Need random initial SOC to expose agent to full state space (arXiv:2601.22880).",
+      "design_decision": {
+        "selected": "Option B (epJSON Schedule:Compact with Python reset hook)",
+        "rejected_A": "EMS actuator on tank nodes - E+ 23.1 ChilledWater:Stratified exposes no node temperature actuator",
+        "rejected_A_also": "initial_temperature field - E+ 23.1 IDD schema does not include this field for Stratified (only autosizing reference)",
+        "rejected_C": "EMS brute-force preheating - would pollute first few steps data, physically dirty"
+      },
+      "probe_findings": {
+        "probe_1_tools/m1/probe_tank_initial_T.py": "tank nodes initialized to setpoint_schedule's first-step value (TES_Charge_Setpoint=6 -> nodes=6.0; =10 -> nodes=10.0)",
+        "probe_2_tools/m1/probe_schedule_compact.py": "Schedule:Compact with Until 00:15=T_init + Until 24:00=6.0 works (step1 nodes=T_init, step2+ setpoint=6.0)",
+        "probe_3_tools/m1/probe_ems_setpoint_init.py": "EMS actuator write at BeginNewEnvironment cannot affect tank init (tank initialized before EMS executes)"
+      },
+      "affected_files": [
+        "Data/buildings/DRL_DC_training.epJSON",
+        "Data/buildings/DRL_DC_evaluation.epJSON",
+        "Data/buildings/建筑模型说明.md (add §9.13)"
+      ],
+      "not_affected": [
+        "Data/buildings/Baseline_DC.epJSON (no TES, correctly left untouched)"
+      ],
+      "backup_files": {
+        "training": "Data/buildings/backups/F1_before_20260424-100735_DRL_DC_training.epJSON (md5=5742e98f6074dd8bee24e5464eda2b6e)",
+        "evaluation": "Data/buildings/backups/F1_before_20260424-100735_DRL_DC_evaluation.epJSON (md5=39d69d8c0fa538ef26333778e97caf8d)",
+        "baseline": "Data/buildings/backups/F1_before_20260424-100735_Baseline_DC.epJSON (md5=c72adadeb8b13bc3bc3adff25f85b301)"
+      },
+      "md5_after": {
+        "DRL_DC_training.epJSON": "4dd0d773c64ecb14a6811cbe0a76309e",
+        "DRL_DC_evaluation.epJSON": "18cac83185b58d965bb5c062601f8b7e",
+        "Baseline_DC.epJSON": "c72adadeb8b13bc3bc3adff25f85b301"
+      },
+      "fix_script": "tools/m1/f1_tes_init_schedule.py",
+      "validation_script": "tools/m1/f1_validate.py",
+      "validation_results": {
+        "T_init_6C_training": "PASS (node_1=6.000, setpoint_step2=6.0, sev/fat/warn=0/0/111)",
+        "T_init_9C_training": "PASS (node_1=9.000, setpoint_step2=6.0, sev/fat/warn=0/0/111)",
+        "T_init_12C_training": "PASS (node_1=12.000, setpoint_step2=6.0, sev/fat/warn=0/0/111)",
+        "T_init_8C_evaluation": "PASS (node_1=8.001, setpoint_step2=6.0, sev/fat/warn=0/0/111)",
+        "Baseline_sanity_1day": "PASS (returncode=0, severe=0, fatal=0)"
+      },
+      "python_change_request_to_code_fixer": {
+        "file": "sinergym/config/modeling.py  OR  sinergym/envs/eplus_env.py",
+        "location": "After self.building is loaded (in update_weather_path/update_evaluation_weather_path) OR after self.model.update_weather_path() in EplusEnv.reset()",
+        "pseudocode": "sc = self.building['Schedule:Compact'].get('TES_Charge_Setpoint'); if sc: sc['data'][3]['field'] = f'{self.np_random.uniform(6.0, 12.0):.3f}'",
+        "seed_requirement": "MUST use np_random seeded by gym reset() to ensure reproducibility across seeds",
+        "smoke_validation": "env.reset() x3 -> check obs[12] (TES_Avg_Temp_Obs) first-step values differ by >0.1"
       }
     }
   }

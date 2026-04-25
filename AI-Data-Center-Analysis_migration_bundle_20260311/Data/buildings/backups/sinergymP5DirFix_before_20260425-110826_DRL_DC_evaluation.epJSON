@@ -1321,10 +1321,10 @@
           "program_line": "SET Chiller_Avail_Obs = 1"
         },
         {
-          "program_line": "IF TES_Signal > 0.01"
+          "program_line": "IF TES_Signal < 0.0 - 0.01"
         },
         {
-          "program_line": "  IF SOC > 0.15"
+          "program_line": "  IF SOC > 0.02"
         },
         {
           "program_line": "    SET Chiller_Branch_Avail = 0"

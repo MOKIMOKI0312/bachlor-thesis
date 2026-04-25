@@ -1155,11 +1155,6 @@
       "actuated_component_unique_name": "TES_Avg_Temp_Obs",
       "actuated_component_type": "Schedule:Constant",
       "actuated_component_control_type": "Schedule Value"
-    },
-    "TES_Use_Outlet_T_SP": {
-      "actuated_component_unique_name": "CW Tank Use Outlet Node",
-      "actuated_component_type": "System Node Setpoint",
-      "actuated_component_control_type": "Temperature Setpoint"
     }
   },
   "EnergyManagementSystem:GlobalVariable": {
@@ -1239,7 +1234,28 @@
     "P_2": {
       "lines": [
         {
-          "program_line": "SET ITE_rate = ITE_S"
+          "program_line": "SET ITE_rate = 0.5"
+        },
+        {
+          "program_line": "IF Hour >= 0"
+        },
+        {
+          "program_line": "SET min_value_ITE = @RandomUniform ITE_Now-0.1 ITE_Now-0.01"
+        },
+        {
+          "program_line": "SET max_value_ITE = @RandomUniform ITE_Now+0.01 ITE_Now+0.1"
+        },
+        {
+          "program_line": "SET min_value_ITE = @Max min_value_ITE 0.05"
+        },
+        {
+          "program_line": "SET max_value_ITE = @Min max_value_ITE 0.80"
+        },
+        {
+          "program_line": "SET ITE_rate = @RandomUniform min_value_ITE max_value_ITE"
+        },
+        {
+          "program_line": "ENDIF"
         }
       ]
     },
@@ -1380,31 +1396,13 @@
         },
         {
           "program_line": "SET TES_Avg_Temp_Actuator = T_tank_avg"
-        },
-        {
-          "program_line": "SET TES_Use_Outlet_T_SP = 6.67"
         }
       ]
     },
     "P_7": {
       "lines": [
         {
-          "program_line": "SET TES_Signal_Now = TES_Set_Sensor"
-        },
-        {
-          "program_line": "SET Flow_Now = @Abs TES_Signal_Now * 389.0"
-        },
-        {
-          "program_line": "IF TES_Signal_Now > 0.01"
-        },
-        {
-          "program_line": "  SET TES_Use_Avail = 1"
-        },
-        {
-          "program_line": "  SET TES_Use_MFlow_Max = Flow_Now"
-        },
-        {
-          "program_line": "  SET TES_Use_MFlow_Min = Flow_Now"
+          "program_line": "IF TES_Set_Sensor > 0.01"
         },
         {
           "program_line": "  IF SOC > 0.15"
@@ -1426,18 +1424,6 @@
         },
         {
           "program_line": "  ENDIF"
-        },
-        {
-          "program_line": "ELSEIF TES_Signal_Now < 0.0 - 0.01"
-        },
-        {
-          "program_line": "  SET TES_Source_Avail = 1"
-        },
-        {
-          "program_line": "  SET TES_Source_MFlow_Max = Flow_Now"
-        },
-        {
-          "program_line": "  SET TES_Source_MFlow_Min = Flow_Now"
         },
         {
           "program_line": "ENDIF"
@@ -3082,13 +3068,7 @@
       "operation_1_type": "Cooling",
       "operation_2_type": "Cooling",
       "setpoint_1_node_name": "Chilled Water Loop Primary Pump Inlet Water Node",
-      "setpoint_2_node_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Outlet Water Node",
-      "equipment_3_object_type": "ThermalStorage:ChilledWater:Stratified",
-      "equipment_3_name": "Chilled Water Tank",
-      "demand_calculation_3_node_name": "CW Tank Use Inlet Node",
-      "setpoint_3_node_name": "CW Tank Use Outlet Node",
-      "component_3_flow_rate": "Autosize",
-      "operation_3_type": "Cooling"
+      "setpoint_2_node_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Outlet Water Node"
     }
   },
   "PlantEquipmentOperation:CoolingLoad": {
@@ -3291,7 +3271,7 @@
       "hourly_value": 0
     },
     "ITE_Set": {
-      "hourly_value": 1
+      "hourly_value": 0.45
     },
     "TES_Charge_Setpoint": {
       "hourly_value": 6.0,

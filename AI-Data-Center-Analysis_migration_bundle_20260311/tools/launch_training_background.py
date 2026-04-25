@@ -90,6 +90,14 @@ def main() -> None:
     if extra:
         command.extend(extra)
 
+    # Full detachment on Windows: DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP +
+    # CREATE_NO_WINDOW ensures the child survives if the launcher's parent
+    # shell closes (avoids Job Object cascade termination).
+    detach_flags = (
+        getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+        | getattr(subprocess, 'DETACHED_PROCESS', 0)
+        | getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+    )
     with stdout_path.open('w', encoding='utf-8') as stdout_file, stderr_path.open('w', encoding='utf-8') as stderr_file:
         process = subprocess.Popen(
             command,
@@ -97,7 +105,7 @@ def main() -> None:
             env=env,
             stdout=stdout_file,
             stderr=stderr_file,
-            creationflags=getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0),
+            creationflags=detach_flags,
         )
 
     manifest = {

@@ -1401,7 +1401,10 @@ class PUE_Reward(BaseReward):
         Returns:
             Tuple[float,float,float]: total reward calculated, reward term for energy, reward term for comfort.
         """
-        energy_term = self.lambda_energy * self.W_energy * -energy_penalty/ITE_penalty
+        # M2-E3b-v4 P3b (2026-04-23): 除零保护，ITE_penalty=0 时用 sign-preserving eps
+        # （EnergyPlus 极端边界可能 ITE 全 0，避免 NaN 传播到 critic）
+        ite_denom = ITE_penalty if abs(ITE_penalty) > 1e-6 else -1e-6
+        energy_term = self.lambda_energy * self.W_energy * -energy_penalty / ite_denom
         comfort_term = self.lambda_temp * \
             (1 - self.W_energy ) * comfort_penalty
         reward = energy_term + comfort_term
@@ -1741,4 +1744,336 @@ class PUE_TES_Reward(PUE_Reward):
         terms['soc_warn_penalty'] = warn_penalty
         terms['soc_sharp_penalty'] = sharp_penalty
         terms['soc_value'] = soc_val
+        return reward, terms
+
+
+# ---------------------------------------------------------------------------
+# M2 reward classes: RL-Cost and RL-Green (tech route §5.2 / §5.3)
+# ---------------------------------------------------------------------------
+
+# Cumulative days before each month (non-leap year, aligns with 8760 CSVs)
+_DAYS_BEFORE_MONTH = (0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
+
+
+def _hour_of_year(month: int, day: int, hour: int) -> int:
+    """Map calendar triple → non-leap-year hour index ∈ [0, 8759]."""
+    return (_DAYS_BEFORE_MONTH[int(month) - 1] + int(day) - 1) * 24 + int(hour)
+
+
+class RL_Cost_Reward(PUE_TES_Reward):
+    """M2 RL-Cost reward (tech route §5.2).
+
+    Adds a cost term to the PUE+TES baseline:
+        r = r_PUE_TES  - alpha * E_facility_MWh * price_usd_per_mwh
+                       - beta  * comfort_penalty_extra   (optional multiplier)
+
+    Note: the parent class already applies `lambda_temperature` to the comfort
+    term; `beta` here acts as an *additional* multiplier on the parent's
+    comfort_term. Set beta=1.0 to leave M1 comfort weighting unchanged, or
+    raise it to tilt the agent toward comfort.
+    """
+
+    # Class-level constant — price_hours_to_next_peak_norm ∈ [0,1] maps to
+    # h ∈ [0, 24] hours (PriceSignalWrapper precomputes hours_to_next_peak
+    # then divides by max_gap; under Jiangsu TOU 2025 max_gap ≈ 19 h with
+    # peak_percentile=75, but we use 24 as a safe upper bound for Φ math).
+    H_NORM_SCALE: float = 24.0
+
+    def __init__(
+        self,
+        temperature_variables,
+        energy_variables,
+        ITE_variables,
+        range_comfort_winter,
+        range_comfort_summer,
+        price_series,
+        alpha: float = 1e-6,
+        beta: float = 1.0,
+        kappa_shape: float = 0.8,
+        gamma_pbrs: float = 0.99,
+        tau_decay: float = 4.0,
+        p_peak_ref: float = 0.80,
+        **kwargs,
+    ):
+        super().__init__(
+            temperature_variables=temperature_variables,
+            energy_variables=energy_variables,
+            ITE_variables=ITE_variables,
+            range_comfort_winter=range_comfort_winter,
+            range_comfort_summer=range_comfort_summer,
+            **kwargs,
+        )
+        import numpy as np
+
+        self.price_series = np.asarray(price_series, dtype=np.float32)
+        if len(self.price_series) != 8760:
+            raise ValueError(
+                f"RL_Cost_Reward price_series must be 8760 hourly values, got {len(self.price_series)}"
+            )
+        self.alpha = float(alpha)
+        self.beta = float(beta)
+
+        # --- PBRS v2 — Dynamic Price-Aware DPBA (pbrs_upgrade_DPBA_2026-04-23.md) ---
+        # Devlin-Kudenko 2012 AAMAS DPBA:
+        #   Φ(s, t) = κ · (SOC(s) − 0.5) · spread(t)
+        #   spread(t) = (p_peak_ref − p_curr(t)) · exp(−max(h, 0.1) / τ)
+        # where h = hours_to_next_peak (horizon signal from PriceSignalWrapper).
+        # Policy invariance proven for time-dependent Φ. Cao 2024 arxiv 2410.20005
+        # observed +74% battery cycles / +60% reward with forecast-horizon shaping.
+        # κ=0.8 bounds |Φ| ≤ 0.8·0.5·(~0.80) ≈ 0.32; γ=0.99 matches DSAC-T.
+        #
+        # IMPORTANT: obs_dict passed to __call__ is the RAW EnergyPlus dict
+        # (see EplusEnv.step: self.reward_fn(obs)). Wrapper-added obs like
+        # `price_current_norm` / `price_hours_to_next_peak_norm` are appended to
+        # the obs ARRAY only, NOT to the obs_dict. So we recompute them
+        # internally here, mirroring PriceSignalWrapper's logic.
+        self.kappa_shape = float(kappa_shape)
+        self.gamma_pbrs = float(gamma_pbrs)
+        self.tau_decay = float(tau_decay)
+        self.p_peak_ref = float(p_peak_ref)
+        self._price_mean_phi = float(np.mean(self.price_series))
+        self._price_std_phi = max(float(np.std(self.price_series)), 1e-6)
+        # Precompute peak threshold + per-hour hours_to_next_peak (matches
+        # PriceSignalWrapper's default peak_percentile=75). Used by
+        # _hours_to_next_peak() fallback when obs_dict lacks the wrapper key.
+        peak_threshold = float(np.percentile(self.price_series, 75.0))
+        self._peak_threshold = peak_threshold
+        peak_mask = self.price_series >= peak_threshold
+        hours_to_peak = np.zeros(8760, dtype=np.float32)
+        if peak_mask.any():
+            for h_idx in range(8760):
+                if peak_mask[h_idx]:
+                    hours_to_peak[h_idx] = 0.0
+                    continue
+                for k in range(1, 8761):
+                    if peak_mask[(h_idx + k) % 8760]:
+                        hours_to_peak[h_idx] = float(k)
+                        break
+        self._hours_to_peak = hours_to_peak
+        self._prev_phi = 0.0
+        self._first_step = True
+
+    def _lookup_price(self, obs_dict: Dict[str, Any]) -> float:
+        m = obs_dict.get('month')
+        d = obs_dict.get('day_of_month')
+        h = obs_dict.get('hour')
+        if m is None or d is None or h is None:
+            return 0.0
+        idx = _hour_of_year(m, d, h) % 8760
+        return float(self.price_series[idx])
+
+    def _energy_MWh(self, obs_dict: Dict[str, Any]) -> float:
+        """Electricity:Facility meter is J accumulated over the last timestep.
+        At 1 step/hour cadence, divide by 3.6e9 to get MWh."""
+        e_joule = float(obs_dict.get(self.energy_names[0], 0.0))
+        return e_joule / 3.6e9
+
+    def _signal_norm(self, obs_dict: Dict[str, Any]) -> float:
+        """Compute `price_current_norm` INTERNALLY (wrapper does not inject
+        it into obs_dict — see docstring on self._prev_phi setup).
+
+        Mirrors PriceSignalWrapper: z-score clipped to [-1, 2], then remapped
+        to [0, 1] via (z+1)/3 so Φ midpoint aligns with mean price.
+        """
+        import numpy as np
+        p = self._lookup_price(obs_dict)
+        z = (p - self._price_mean_phi) / self._price_std_phi
+        z_clipped = float(np.clip(z, -1.0, 2.0))
+        # Remap [-1, 2] → [0, 1]; mean price (z=0) → 1/3
+        return (z_clipped + 1.0) / 3.0
+
+    def _hours_to_next_peak(self, obs_dict: Dict[str, Any]) -> float:
+        """Fallback: compute hours-to-next-peak-tier from current
+        month/day/hour + self._hours_to_peak table. Mirrors
+        PriceSignalWrapper's internal precomputation (peak = price >=
+        75th percentile). Returns hours ∈ [0, 24] (capped).
+        """
+        m = obs_dict.get('month')
+        d = obs_dict.get('day_of_month')
+        h = obs_dict.get('hour')
+        if m is None or d is None or h is None:
+            return 12.0  # default mid-distance when time not available
+        idx_now = _hour_of_year(m, d, h) % 8760
+        h_val = float(self._hours_to_peak[idx_now])
+        # Cap at H_NORM_SCALE (24) so spread magnitude stays bounded
+        return min(h_val, self.H_NORM_SCALE)
+
+    def _phi(self, obs_dict: Dict[str, Any]) -> float:
+        """PBRS v5 FINAL potential (DPBA v1 best + clip±8):
+            Φ(s, t) = κ · (SOC − 0.5) · (p_peak_ref − p_curr) · exp(−max(h, 0.1) / τ)
+        where h = hours to next peak-tier. The exp(-h/τ) decay was TESTED
+        (v4 removed it, degraded to 0.029 avg pk-tr vs v1 0.055). Time-
+        localized shaping is CORRECT: focuses gradient on the ~4h pre-
+        peak window where SOC charging decisions actually matter.
+        Duty cycle ~17% is feature not bug.
+
+        5-version iteration proved DPBA v1 (κ=0.8, τ=4) is optimal PBRS
+        config. Pair with cost_term clip ±8 (v3, Jiangsu TOU doesn't need
+        CAISO tight clip) for full peak cost signal transmission.
+        """
+        import math
+        soc = float(obs_dict.get(self.soc_variable, 0.5))
+        p = self._signal_norm(obs_dict)  # ∈ [0, 1]
+        h_norm = obs_dict.get('price_hours_to_next_peak_norm')
+        if h_norm is not None:
+            h = float(h_norm) * self.H_NORM_SCALE
+        else:
+            h = self._hours_to_next_peak(obs_dict)
+        spread = (self.p_peak_ref - p) * math.exp(-max(h, 0.1) / self.tau_decay)
+        return self.kappa_shape * (soc - 0.5) * spread
+
+    def reset_episode(self) -> None:
+        """Reset PBRS episode state. Called by EplusEnv.reset() if available."""
+        self._prev_phi = 0.0
+        self._first_step = True
+
+    def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
+        import numpy as np
+
+        reward, terms = super().__call__(obs_dict)
+
+        price = self._lookup_price(obs_dict)
+        mwh = self._energy_MWh(obs_dict)
+        cost_usd = mwh * price
+        cost_term_raw = -self.alpha * cost_usd
+        # M2-E3b fix (Issue A, 2026-04-21): CAISO NP15 2023 price distribution has
+        # kurtosis ≈ 120 (normal = 3) due to scarcity spikes (max = $1091/MWh vs
+        # mean = $61) and ~1.6%/yr negative-price hours. ±3.0 clip was added for
+        # CAISO's extreme tails.
+        # PBRS-v3 (2026-04-23): Jiangsu 2025 TOU has kurtosis≈-1.3 (subgaussian,
+        # max $200). No tail risk. ±3 clip was SATURATING peak cost_term (-4.0
+        # raw → -3.0 clipped), muting the TOU differentiation. DPBA pilot ep15
+        # pk-tr stuck 0.04 because agent saw trough=-0.58 vs peak=-3.0 diff
+        # 2.42 (clipped) instead of natural diff 3.42 (unclipped). Relax to
+        # ±8.0: peak -4.0 not clipped at α=2e-3, full price sensitivity.
+        cost_term = float(np.clip(cost_term_raw, -8.0, 8.0))
+
+        # beta scales parent's comfort_term as an extra multiplier (idempotent if beta=1)
+        comfort_extra = (self.beta - 1.0) * terms.get('comfort_term', 0.0)
+
+        reward = reward + cost_term + comfort_extra
+
+        # --- PBRS: F = γ·Φ(s') − Φ(s_prev) ---------------------------------
+        # First step of episode sets prev_phi via reset; first F is 0 (NHR
+        # 1999 — any constant offset on Φ(s_0) is absorbed by γΦ telescoping).
+        phi_s_prime = self._phi(obs_dict)
+        if self._first_step:
+            f_shape = 0.0
+            self._first_step = False
+        else:
+            f_shape = self.gamma_pbrs * phi_s_prime - self._prev_phi
+        self._prev_phi = phi_s_prime
+
+        reward = reward + f_shape
+
+        terms['cost_term'] = cost_term
+        terms['cost_term_raw'] = cost_term_raw
+        terms['cost_usd_step'] = cost_usd
+        terms['mwh_step'] = mwh
+        terms['lmp_usd_per_mwh'] = price
+        terms['comfort_extra_term'] = comfort_extra
+        terms['shaping_term'] = f_shape
+        terms['phi_value'] = phi_s_prime
+        return reward, terms
+
+
+class RL_Green_Reward(RL_Cost_Reward):
+    """M2 RL-Green reward (tech route §5.3).
+
+    Uses a virtual effective price:
+        c_eff(t) = min(c_market(t), c_pv)   when PV output > pv_threshold_kw
+                 = c_market(t)              otherwise
+
+    The virtual price is lower during PV hours (typically c_pv = 0 USD/MWh),
+    so the energy charged in those hours contributes less to the cost term →
+    agent learns to shift load toward PV peak.
+
+    PV data is not injected into observation here (the PVSignalWrapper does
+    that). This class only reads it as an exogenous series for the reward.
+    """
+
+    def __init__(
+        self,
+        temperature_variables,
+        energy_variables,
+        ITE_variables,
+        range_comfort_winter,
+        range_comfort_summer,
+        price_series,
+        pv_series,
+        c_pv: float = 0.0,
+        pv_threshold_kw: float = 100.0,
+        alpha: float = 1e-6,
+        beta: float = 1.0,
+        **kwargs,
+    ):
+        super().__init__(
+            temperature_variables=temperature_variables,
+            energy_variables=energy_variables,
+            ITE_variables=ITE_variables,
+            range_comfort_winter=range_comfort_winter,
+            range_comfort_summer=range_comfort_summer,
+            price_series=price_series,
+            alpha=alpha,
+            beta=beta,
+            **kwargs,
+        )
+        import numpy as np
+
+        self.pv_series = np.asarray(pv_series, dtype=np.float32)
+        if len(self.pv_series) != 8760:
+            raise ValueError(
+                f"RL_Green_Reward pv_series must be 8760 hourly values, got {len(self.pv_series)}"
+            )
+        self.c_pv = float(c_pv)
+        self.pv_threshold_kw = float(pv_threshold_kw)
+
+    def _lookup_pv(self, obs_dict: Dict[str, Any]) -> float:
+        m = obs_dict.get('month')
+        d = obs_dict.get('day_of_month')
+        h = obs_dict.get('hour')
+        if m is None or d is None or h is None:
+            return 0.0
+        idx = _hour_of_year(m, d, h) % 8760
+        return float(self.pv_series[idx])
+
+    def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
+        import numpy as np
+
+        # Compute base reward with market price (super().__call__)
+        reward, terms = super().__call__(obs_dict)
+
+        # Swap the cost term from market-only to virtual-green.
+        # M1 fix (2026-04-19): read energy directly from obs_dict instead of
+        # reverse-dividing cost_usd_step by market_price — the latter silently
+        # drops to 0 MWh when market_price == 0 (CAISO negative/near-zero price
+        # hours, ~1.6%/yr), which would zero out new_cost_usd regardless of the
+        # actual facility electricity.  `mwh_step` is also stashed by the parent
+        # RL_Cost_Reward into `terms` so downstream consumers can reuse it.
+        market_price = terms['lmp_usd_per_mwh']
+        mwh = terms.get('mwh_step', self._energy_MWh(obs_dict))
+        pv_kw = self._lookup_pv(obs_dict)
+
+        if pv_kw > self.pv_threshold_kw:
+            effective_price = min(market_price, self.c_pv)
+        else:
+            effective_price = market_price
+        new_cost_usd = mwh * effective_price
+        new_cost_term_raw = -self.alpha * new_cost_usd
+        # M2-E3b fix (Issue A, 2026-04-21): mirror RL_Cost_Reward clip so the
+        # virtual-green reward path has the same Gaussian-critic safety bound.
+        # See RL_Cost_Reward.__call__ for full rationale.
+        new_cost_term = float(np.clip(new_cost_term_raw, -8.0, 8.0))  # PBRS-v3: Jiangsu TOU relax clip
+
+        # Undo market cost, apply virtual-green cost.
+        # Parent already applied clipped `cost_term`; subtract that same
+        # clipped value so the net swap is consistent.
+        old_cost_term = terms['cost_term']
+        reward = reward - old_cost_term + new_cost_term
+
+        terms['cost_term'] = new_cost_term
+        terms['cost_term_raw'] = new_cost_term_raw
+        terms['cost_usd_step'] = new_cost_usd
+        terms['effective_price_usd_per_mwh'] = effective_price
+        terms['pv_kw'] = pv_kw
         return reward, terms

@@ -1,0 +1,235 @@
+{
+  "A_charge": {
+    "scenario": "A_charge",
+    "tes_set": -0.5,
+    "returncode": 0,
+    "err": {
+      "severe": 0,
+      "fatal": 0,
+      "severe_lines": [],
+      "fatal_lines": []
+    },
+    "analysis": {
+      "scenario": "A_charge",
+      "tes_set_constant": -0.5,
+      "n_steps": 672,
+      "missing_cols": [
+        "chiller_T",
+        "chiller_elec"
+      ],
+      "stats": {
+        "chiller_avail": {
+          "n": 672,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "last": 1.0
+        },
+        "soc": {
+          "n": 672,
+          "min": 0.9311147002497885,
+          "max": 0.995657306088698,
+          "mean": 0.959044843351947,
+          "last": 0.9311147002497885
+        },
+        "air_temp": {
+          "n": 672,
+          "min": 12.51135382613258,
+          "max": 35.051159754815245,
+          "mean": 20.257852804190797,
+          "last": 16.71860116474095
+        },
+        "tank_T": {
+          "n": 672,
+          "min": 6.016004522247252,
+          "max": 6.413607554776119,
+          "mean": 6.2460188940907395,
+          "last": 6.413607554776119
+        },
+        "chiller_elec": {
+          "missing": true
+        },
+        "facility_elec": {
+          "n": 672,
+          "min": 934065273.8773253,
+          "max": 13380868472.685705,
+          "mean": 5411916766.799883,
+          "last": 3185322293.6598206
+        }
+      },
+      "samples": [
+        {
+          "step_idx": 0,
+          "date": " 01/01  00:15:00",
+          "tes_set": -0.5,
+          "chiller_avail": 1.0,
+          "chiller_T": null,
+          "chiller_elec": null,
+          "air_temp": 18.977151209454952,
+          "soc": 0.970856516570538,
+          "facility_elec": 4471487019.527357,
+          "tank_T": 6.016004522247252,
+          "use_ht": 0.0,
+          "source_ht": 192186.54279524751
+        },
+        {
+          "step_idx": 336,
+          "date": " 01/04  12:15:00",
+          "tes_set": -0.5,
+          "chiller_avail": 1.0,
+          "chiller_T": null,
+          "chiller_elec": null,
+          "air_temp": 19.891698507444186,
+          "soc": 0.9566937335200807,
+          "facility_elec": 5431787642.678974,
+          "tank_T": 6.260140823307949,
+          "use_ht": 0.0,
+          "source_ht": -603.6250235871752
+        },
+        {
+          "step_idx": 671,
+          "date": " 01/07  24:00:00",
+          "tes_set": -0.5,
+          "chiller_avail": 1.0,
+          "chiller_T": null,
+          "chiller_elec": null,
+          "air_temp": 16.71860116474095,
+          "soc": 0.9311147002497885,
+          "facility_elec": 3185322293.6598206,
+          "tank_T": 6.413607554776119,
+          "use_ht": 0.0,
+          "source_ht": -509.08346290332025
+        }
+      ],
+      "verdict": {
+        "chiller_always_ON (expect ca_min==1)": 1.0,
+        "SOC_change (first→last, 允许±0.3)": [
+          0.970856516570538,
+          0.9311147002497885,
+          -0.03974181632074947
+        ],
+        "air_temp_max (expect <40)": 35.051159754815245,
+        "pass": true
+      }
+    }
+  },
+  "B_discharge": {
+    "scenario": "B_discharge",
+    "tes_set": 0.5,
+    "returncode": 0,
+    "err": {
+      "severe": 0,
+      "fatal": 0,
+      "severe_lines": [],
+      "fatal_lines": []
+    },
+    "analysis": {
+      "scenario": "B_discharge",
+      "tes_set_constant": 0.5,
+      "n_steps": 672,
+      "missing_cols": [
+        "chiller_T",
+        "chiller_elec"
+      ],
+      "stats": {
+        "chiller_avail": {
+          "n": 672,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.6264880952380952,
+          "last": 1.0
+        },
+        "soc": {
+          "n": 672,
+          "min": 0.016144780724706227,
+          "max": 0.9999161295435118,
+          "mean": 0.38218695767743055,
+          "last": 0.016144780724706227
+        },
+        "air_temp": {
+          "n": 672,
+          "min": 12.51248921228688,
+          "max": 40.24150765493027,
+          "mean": 20.700929075821698,
+          "last": 16.716143610214655
+        },
+        "tank_T": {
+          "n": 672,
+          "min": 6.000363224549661,
+          "max": 11.903246017411433,
+          "mean": 9.711668910029076,
+          "last": 11.903246017411433
+        },
+        "chiller_elec": {
+          "missing": true
+        },
+        "facility_elec": {
+          "n": 672,
+          "min": 930887368.9263871,
+          "max": 11705643119.928154,
+          "mean": 5040598608.53586,
+          "last": 3179639424.560355
+        }
+      },
+      "samples": [
+        {
+          "step_idx": 0,
+          "date": " 01/01  00:15:00",
+          "tes_set": 0.5,
+          "chiller_avail": 0.0,
+          "chiller_T": null,
+          "chiller_elec": null,
+          "air_temp": 18.971246699470925,
+          "soc": 0.8033597059766319,
+          "facility_elec": 3784915269.1880007,
+          "tank_T": 6.000363224549661,
+          "use_ht": 0.0,
+          "source_ht": 0.0
+        },
+        {
+          "step_idx": 336,
+          "date": " 01/04  12:15:00",
+          "tes_set": 0.5,
+          "chiller_avail": 1.0,
+          "chiller_T": null,
+          "chiller_elec": null,
+          "air_temp": 19.88273092910136,
+          "soc": 0.0301275385519754,
+          "facility_elec": 5431937467.147292,
+          "tank_T": 11.819337242172537,
+          "use_ht": -1001.2208512820774,
+          "source_ht": 0.0
+        },
+        {
+          "step_idx": 671,
+          "date": " 01/07  24:00:00",
+          "tes_set": 0.5,
+          "chiller_avail": 1.0,
+          "chiller_T": null,
+          "chiller_elec": null,
+          "air_temp": 16.716143610214655,
+          "soc": 0.016144780724706227,
+          "facility_elec": 3179639424.560355,
+          "tank_T": 11.903246017411433,
+          "use_ht": -395.24005183776177,
+          "source_ht": 0.0
+        }
+      ],
+      "verdict": {
+        "SOC_fell (expect last < first)": [
+          0.8033597059766319,
+          0.016144780724706227
+        ],
+        "chiller_OFF_ratio_when_SOC_high (expect >0.5)": 1.0,
+        "first_step_with_SOC<0.15": 251,
+        "chiller_recovers_after_SOC_low": {
+          "tail_n": 420,
+          "on_count": 420,
+          "on_ratio": 1.0
+        },
+        "air_temp_max": 40.24150765493027,
+        "pass": true
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "completed": ["A1", "A2", "A3", "A3b", "R2", "R3", "2026-04-23_P5P7_fix", "2026-04-25_PlantSetpointFix"],
+  "current": "2026-04-25_PlantSetpointFix (epJSON patched, awaits main agent probe re-run)",
+  "last_commit": "d2169f0",
+  "notes": {
+    "2026-04-23_P5P7_fix": {
+      "summary": "Fix P_5 + P_7 chiller-kill direction bug (moved kill block from charge branch to discharge branch, SOC threshold 0.02 -> 0.15)",
+      "affected_files": [
+        "Data/buildings/DRL_DC_training.epJSON",
+        "Data/buildings/DRL_DC_evaluation.epJSON",
+        "Data/buildings/建筑模型说明.md"
+      ],
+      "backup_files": {
+        "training": "Data/buildings/backups/DRL_DC_training_before_20260423-005444.epJSON (md5=6c1531ed6ddb6265f294abc1de8040a6)",
+        "evaluation": "Data/buildings/backups/DRL_DC_evaluation_before_20260423-005444.epJSON (md5=1a0932c072afbf27a37e76c70c9f37fd)"
+      },
+      "fix_script": "tools/m1/fix_p5_chiller_deadlock.py",
+      "smoke_script": "tools/m1/smoke_p5_fix.py",
+      "smoke_output_dir": "tools/m1/smoke_p5_fix_final/",
+      "smoke_results": {
+        "1day_baseline_training": "returncode=0, severe=0, fatal=0, warnings=111",
+        "1day_baseline_evaluation": "returncode=0, severe=0, fatal=0, warnings=111",
+        "7day_A_charge_TES_Set_-0.5": "chiller ca_min=1.0 (always ON), SOC 0.97->0.93 (micro-drop), air_max=35.05°C, PASS",
+        "7day_B_discharge_TES_Set_+0.5": "chiller OFF until SOC<0.15 (step 251), then 100% recovery; SOC 0.80->0.016; air_max=40.24°C (过放期已知 §9.10); facility_elec -6.8% vs A (节能显现); PASS"
+      }
+    },
+    "2026-04-25_PlantSetpointFix": {
+      "summary": "Real root cause fix for TES Use branch not delivering cooling. (1) PlantEquipmentOperation:ComponentSetpoint adds equipment_3=ChilledWaterTank so plant solver maintains supply outlet 6.67C via TES Use when chiller is killed. (2) P_7 (HVAC iteration guard, InsideHVACSystemIterationLoop) now resets TES_Use/Source_MFlow_Max/Min and Avail every iteration to prevent plant solver from overwriting EMS setpoints. P_5 Max_Flow=389.0 retained (physically correct, matches 9.77 MW nameplate).",
+      "affected_files": [
+        "Data/buildings/DRL_DC_training.epJSON",
+        "Data/buildings/DRL_DC_evaluation.epJSON",
+        "sinergym/data/buildings/DRL_DC_training.epJSON",
+        "sinergym/data/buildings/DRL_DC_evaluation.epJSON",
+        "Data/buildings/建筑模型说明.md"
+      ],
+      "backup_files": {
+        "training": "Data/buildings/backups/PlantSetpointFix_before_20260425-022126_DRL_DC_training.epJSON",
+        "evaluation": "Data/buildings/backups/PlantSetpointFix_before_20260425-022126_DRL_DC_evaluation.epJSON",
+        "sinergym_training": "Data/buildings/backups/PlantSetpointFix_before_20260425-022126_sinergym_DRL_DC_training.epJSON",
+        "sinergym_evaluation": "Data/buildings/backups/PlantSetpointFix_before_20260425-022126_sinergym_DRL_DC_evaluation.epJSON"
+      },
+      "patched_md5": {
+        "training": "7bb8682414cfc064a803ef4e711587a9",
+        "evaluation": "c5f0ef464cdc9cc0a93e96eacb97e156",
+        "sinergym_training": "a2014a2ff019b2894c1f462dfb941f79",
+        "sinergym_evaluation": "f0dea6eeb1b9b77dd52fd1075db184a2"
+      },
+      "fix_script": "tools/m1/fix_plant_setpoint_and_p7.py",
+      "schema_verification": "Energy+.schema.epJSON: equipment_N_object_type, equipment_N_name, demand_calculation_N_node_name, setpoint_N_node_name, component_N_flow_rate (units m3/s, Autosize allowed), operation_N_type",
+      "validation_status": "json.load passes for all 4 files; EnergyPlus probe re-run pending (owner: main agent via tools/m1/probe_valve_soc.py)"
+    }
+  }
+}

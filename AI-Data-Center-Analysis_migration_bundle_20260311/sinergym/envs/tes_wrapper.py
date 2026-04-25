@@ -4,7 +4,7 @@ Wraps an EplusEnv that has a TES actuator at action index `valve_idx`.
 Converts the agent's Δv output to a recursive valve position v(t+1) = clip(v(t) + Δv * δmax, -1, +1),
 then passes the signed valve position v directly to EnergyPlus (EMS reads it and converts to flow).
 
-Also injects `TES_valve_position` into the observation vector.
+Also injects `TES_valve_wrapper_position` into the observation vector.
 """
 from typing import Any, Dict, Optional, Tuple
 
@@ -36,6 +36,13 @@ class TESIncrementalWrapper(gym.Wrapper):
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, Dict]:
         self._valve = 0.0
+        # TODO(pbrs-design §4 / Liu-Henze 2006): proper initial SOC
+        # randomization requires modifying the `ThermalStorage:ChilledWater`
+        # `initial_tank_temperature` field in the epJSON. That is outside this
+        # wrapper's scope — it belongs to eplus-modeler. Randomizing valve
+        # position here does NOT directly control initial SOC (SOC is
+        # determined by tank temperature, not valve). Deferring to
+        # eplus-modeler pass. For now, valve starts at 0 (centred).
         obs, info = self.env.reset(seed=seed, options=options)
         obs = np.append(obs, np.float32(self._valve))
         return obs, info
@@ -59,4 +66,4 @@ class TESIncrementalWrapper(gym.Wrapper):
     @property
     def observation_variables(self):
         base = self.env.get_wrapper_attr('observation_variables')
-        return list(base) + ['TES_valve_position']
+        return list(base) + ['TES_valve_wrapper_position']

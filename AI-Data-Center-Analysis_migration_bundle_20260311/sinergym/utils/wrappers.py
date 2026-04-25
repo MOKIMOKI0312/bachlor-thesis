@@ -307,6 +307,16 @@ class LoggerWrapper(gym.Wrapper):
             'total_temperature_violation',
             'terminated',
             'truncated']
+        # Dedup column names while preserving order (defence against wrapper-stack
+        # double-append; csv.DictReader behaves unpredictably on duplicate headers).
+        seen: set = set()
+        deduped: list = []
+        for name in monitor_header_list:
+            if name in seen:
+                continue
+            seen.add(name)
+            deduped.append(name)
+        monitor_header_list = deduped
         self.monitor_header = ''
         for element_header in monitor_header_list:
             self.monitor_header += element_header + ','

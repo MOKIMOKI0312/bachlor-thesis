@@ -353,6 +353,11 @@ class EplusEnv(gym.Env):
         self.last_obs = obs
         self.last_info = info
 
+        # PBRS: reset reward_fn episode state if supported
+        # (see sinergym/utils/rewards.py RL_Cost_Reward.reset_episode).
+        if hasattr(self.reward_fn, 'reset_episode'):
+            self.reward_fn.reset_episode()
+
         self.logger.debug('RESET observation received: {}'.format(obs))
         self.logger.debug('RESET info received: {}'.format(info))
 

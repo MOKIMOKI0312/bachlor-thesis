@@ -37,7 +37,11 @@ def main() -> None:
     parser.add_argument('--wandb', action='store_true', help='Enable wandb logging')
     parser.add_argument('--wandb-project', default='dc-cooling-optimization')
     parser.add_argument('--wandb-group', default=None)
-    args = parser.parse_args()
+    # Any extra args after a "--" separator are forwarded verbatim to the
+    # training script (e.g. --reward-cls rl_cost for M2).
+    args, extra = parser.parse_known_args()
+    if extra and extra[0] == '--':
+        extra = extra[1:]
 
     repo = args.repo.resolve()
     jobs_dir = repo / 'training_jobs'
@@ -82,6 +86,9 @@ def main() -> None:
         command.extend(['--wandb-project', args.wandb_project])
         if args.wandb_group:
             command.extend(['--wandb-group', args.wandb_group])
+    # Forward any extra args (e.g. --reward-cls rl_cost for M2)
+    if extra:
+        command.extend(extra)
 
     with stdout_path.open('w', encoding='utf-8') as stdout_file, stderr_path.open('w', encoding='utf-8') as stderr_file:
         process = subprocess.Popen(

@@ -123,16 +123,19 @@ def main() -> None:
         )
     episodes = args.episodes
     timesteps_per_episode = env.get_wrapper_attr('timestep_per_episode') - 1
-    if args.resume:
-        # reset_num_timesteps=False 下 SB3 把 total_timesteps 视为累计目标，
-        # 故需 = 已训步数 + 本次增量；用户显式传 --timesteps 时视为累计目标覆盖
-        if args.timesteps is not None:
-            timesteps = int(args.timesteps)
-        else:
-            timesteps = int(model.num_timesteps) + episodes * timesteps_per_episode
-        print(f'Resume: already_done={model.num_timesteps}, cumulative_target={timesteps}')
+    # SB3 语义修正（handoff §8.1）：reset_num_timesteps=False 下 SB3 的
+    # _setup_learn() 内部会执行 total_timesteps += self.num_timesteps，
+    # 因此传入 model.learn() 的 total_timesteps 应当是"本次新增的步数"，
+    # 而非"累计目标"。`--episodes N` 始终表示"本次再训 N 个 episode"，
+    # 与是否 resume 无关。
+    if args.timesteps is not None:
+        timesteps = int(args.timesteps)
     else:
-        timesteps = int(args.timesteps) if args.timesteps is not None else episodes * timesteps_per_episode
+        timesteps = episodes * timesteps_per_episode
+    if args.resume:
+        print(f'Resume: already_done={model.num_timesteps}, new_increment={timesteps}, final_target={model.num_timesteps + timesteps}')
+    else:
+        print(f'Fresh run: target={timesteps}')
     workspace_path = Path(env.get_wrapper_attr('workspace_path'))
     checkpoints_path = workspace_path / 'checkpoints'
     checkpoints_path.mkdir(parents=True, exist_ok=True)

@@ -165,9 +165,8 @@ _register_if_missing(
             'act_CT_Pump': (
                 'Pump Mass Flow Rate',
                 'CONDENSER WATER LOOP CONSTANT PUMP'),
-            'act_ITE': (
-                'Schedule Value',
-                'DataCenter Equipment_SCH'),
+            # [H2b] act_ITE removed — duplicated SustainDC 'workload_current_utilization'
+            # (tech route §6.1-D). If SustainDC queue obs disabled, re-add here.
             'TES_SOC': (
                 'Schedule Value',
                 'TES_SOC_Obs'),
@@ -178,7 +177,7 @@ _register_if_missing(
         "meters": {
             "Electricity:Facility": "Electricity:Facility",
             "ITE-CPU:InteriorEquipment:Electricity": "ITE-CPU:InteriorEquipment:Electricity",
-            "Water:Facility": "Water:Facility"
+            # [H2b] Water:Facility removed per tech route §6.1-E (not part of 41-dim obs)
         },
         'actuators': {
             'CRAH_Fan_DRL': (
@@ -215,14 +214,15 @@ _register_if_missing(
             'range_comfort_summer': (18.0, 25.0),
             'energy_weight': 1/2,
             'lambda_energy': 1,
-            'lambda_temperature': 3.0,
+            'lambda_temperature': 1.0,  # M2-E3b: 3.0 → 1.0，workload wrapper 已提供热负载控制，无需 3× 放大（E3 实测 λ=3 导致 comfort 压倒 cost）
             'soc_variable': 'TES_SOC',
             'soc_low': 0.15,
             'soc_high': 0.85,
-            'soc_warn_low': 0.30,
-            'soc_warn_high': 0.70,
-            'lambda_soc': 5.0,
-            'lambda_soc_warn': 3.0,
+            # M2-E3b-v4 P3 (2026-04-23): 放松 soc 约束，让 cost_term 主导 TOU 学习
+            'soc_warn_low': 0.15,
+            'soc_warn_high': 0.85,
+            'lambda_soc': 2.0,
+            'lambda_soc_warn': 1.0,
         },
         'env_name': 'DC-DRL-TES',
         'config_params': {

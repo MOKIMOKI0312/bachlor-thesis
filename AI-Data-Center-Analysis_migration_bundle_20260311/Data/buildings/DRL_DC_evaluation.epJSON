@@ -1155,6 +1155,16 @@
       "actuated_component_unique_name": "TES_Avg_Temp_Obs",
       "actuated_component_type": "Schedule:Constant",
       "actuated_component_control_type": "Schedule Value"
+    },
+    "TES_Use_Outlet_T_SP": {
+      "actuated_component_unique_name": "CW Tank Use Outlet Node",
+      "actuated_component_type": "System Node Setpoint",
+      "actuated_component_control_type": "Temperature Setpoint"
+    },
+    "Chiller_Bypass_Avail": {
+      "actuated_component_unique_name": "Chilled Water Loop Chiller Bypass",
+      "actuated_component_type": "Plant Component Pipe:Adiabatic",
+      "actuated_component_control_type": "On/Off Supervisory"
     }
   },
   "EnergyManagementSystem:GlobalVariable": {
@@ -1244,7 +1254,7 @@
           "program_line": "SET TES_Signal = TES_Set_Sensor"
         },
         {
-          "program_line": "SET Max_Flow = 97.2"
+          "program_line": "SET Max_Flow = 389.0"
         },
         {
           "program_line": "SET Flow = @Abs TES_Signal * Max_Flow"
@@ -1313,13 +1323,16 @@
           "program_line": "SET Chiller_In_MFlow_Max = 9999.0"
         },
         {
+          "program_line": "SET Chiller_Bypass_Avail = 1"
+        },
+        {
           "program_line": "SET Chiller_Avail_Obs = 1"
         },
         {
-          "program_line": "IF TES_Signal < 0.0 - 0.01"
+          "program_line": "IF TES_Signal > 0.01"
         },
         {
-          "program_line": "  IF SOC > 0.02"
+          "program_line": "  IF SOC > 0.15"
         },
         {
           "program_line": "    SET Chiller_Branch_Avail = 0"
@@ -1332,6 +1345,9 @@
         },
         {
           "program_line": "    SET Chiller_In_MFlow_Max = 0.0"
+        },
+        {
+          "program_line": "    SET Chiller_Bypass_Avail = 0"
         },
         {
           "program_line": "    SET Chiller_Avail_Obs = 0"
@@ -1375,16 +1391,34 @@
         },
         {
           "program_line": "SET TES_Avg_Temp_Actuator = T_tank_avg"
+        },
+        {
+          "program_line": "SET TES_Use_Outlet_T_SP = 6.67"
         }
       ]
     },
     "P_7": {
       "lines": [
         {
-          "program_line": "IF TES_Set_Sensor < 0.0 - 0.01"
+          "program_line": "SET TES_Signal_Now = TES_Set_Sensor"
         },
         {
-          "program_line": "  IF SOC > 0.02"
+          "program_line": "SET Flow_Now = @Abs TES_Signal_Now * 389.0"
+        },
+        {
+          "program_line": "IF TES_Signal_Now > 0.01"
+        },
+        {
+          "program_line": "  SET TES_Use_Avail = 1"
+        },
+        {
+          "program_line": "  SET TES_Use_MFlow_Max = Flow_Now"
+        },
+        {
+          "program_line": "  SET TES_Use_MFlow_Min = Flow_Now"
+        },
+        {
+          "program_line": "  IF SOC > 0.15"
         },
         {
           "program_line": "    SET Chiller_Branch_Avail = 0"
@@ -1399,10 +1433,25 @@
           "program_line": "    SET Chiller_In_MFlow_Max = 0.0"
         },
         {
+          "program_line": "    SET Chiller_Bypass_Avail = 0"
+        },
+        {
           "program_line": "    SET Chiller_Avail_Obs = 0"
         },
         {
           "program_line": "  ENDIF"
+        },
+        {
+          "program_line": "ELSEIF TES_Signal_Now < 0.0 - 0.01"
+        },
+        {
+          "program_line": "  SET TES_Source_Avail = 1"
+        },
+        {
+          "program_line": "  SET TES_Source_MFlow_Max = Flow_Now"
+        },
+        {
+          "program_line": "  SET TES_Source_MFlow_Min = Flow_Now"
         },
         {
           "program_line": "ENDIF"
@@ -3047,7 +3096,13 @@
       "operation_1_type": "Cooling",
       "operation_2_type": "Cooling",
       "setpoint_1_node_name": "Chilled Water Loop Primary Pump Inlet Water Node",
-      "setpoint_2_node_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Outlet Water Node"
+      "setpoint_2_node_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Outlet Water Node",
+      "equipment_3_object_type": "ThermalStorage:ChilledWater:Stratified",
+      "equipment_3_name": "Chilled Water Tank",
+      "demand_calculation_3_node_name": "CW Tank Use Inlet Node",
+      "setpoint_3_node_name": "CW Tank Use Outlet Node",
+      "component_3_flow_rate": "Autosize",
+      "operation_3_type": "Cooling"
     }
   },
   "PlantEquipmentOperation:CoolingLoad": {

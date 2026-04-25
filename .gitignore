@@ -9,3 +9,6 @@ Eplus-env-*/
 vendor/EnergyPlus-*/
 *.7z
 training_jobs/
+.claude/
+.playwright-mcp/
+AI-Data-Center-Analysis_migration_bundle_20260311/vendor/SustainDC/

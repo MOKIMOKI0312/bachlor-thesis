@@ -1160,6 +1160,11 @@
       "actuated_component_unique_name": "CW Tank Use Outlet Node",
       "actuated_component_type": "System Node Setpoint",
       "actuated_component_control_type": "Temperature Setpoint"
+    },
+    "Chiller_Bypass_Avail": {
+      "actuated_component_unique_name": "Chilled Water Loop Chiller Bypass",
+      "actuated_component_type": "Plant Component Pipe:Adiabatic",
+      "actuated_component_control_type": "On/Off Supervisory"
     }
   },
   "EnergyManagementSystem:GlobalVariable": {
@@ -1318,6 +1323,9 @@
           "program_line": "SET Chiller_In_MFlow_Max = 9999.0"
         },
         {
+          "program_line": "SET Chiller_Bypass_Avail = 1"
+        },
+        {
           "program_line": "SET Chiller_Avail_Obs = 1"
         },
         {
@@ -1337,6 +1345,9 @@
         },
         {
           "program_line": "    SET Chiller_In_MFlow_Max = 0.0"
+        },
+        {
+          "program_line": "    SET Chiller_Bypass_Avail = 0"
         },
         {
           "program_line": "    SET Chiller_Avail_Obs = 0"
@@ -1420,6 +1431,9 @@
         },
         {
           "program_line": "    SET Chiller_In_MFlow_Max = 0.0"
+        },
+        {
+          "program_line": "    SET Chiller_Bypass_Avail = 0"
         },
         {
           "program_line": "    SET Chiller_Avail_Obs = 0"

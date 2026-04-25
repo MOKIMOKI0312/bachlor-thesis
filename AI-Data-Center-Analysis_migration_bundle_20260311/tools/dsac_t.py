@@ -53,11 +53,18 @@ class DSAC_T(SAC):
         xi: float = 3.0,
         eps_sigma: float = 0.1,
         eps_omega: float = 0.1,
+        sigma_max: Optional[float] = None,
+        grad_clip_norm: Optional[float] = None,
+        beta_b: Optional[float] = None,
         **kwargs,
     ):
         self.xi = xi
         self.eps_sigma = eps_sigma
         self.eps_omega = eps_omega
+        # VERIFY-FIX-1/2/3: all default to None → original behaviour preserved
+        self.sigma_max = sigma_max
+        self.grad_clip_norm = grad_clip_norm
+        self.beta_b = beta_b
 
         # DSAC-T specific state (initialized in _setup_model)
         self._b: Optional[List[float]] = None  # clipping boundaries per critic
@@ -80,6 +87,9 @@ class DSAC_T(SAC):
         critic_kwargs = self.policy._update_features_extractor(
             self.policy.critic_kwargs, features_extractor
         )
+        # VERIFY-FIX-1: forward σ clamp into DistributionalCritic
+        if self.sigma_max is not None:
+            critic_kwargs["sigma_max"] = self.sigma_max
 
         self.critic = DistributionalCritic(**critic_kwargs).to(self.device)
         self.critic_target = DistributionalCritic(**critic_kwargs).to(self.device)
@@ -202,10 +212,12 @@ class DSAC_T(SAC):
                 critic_losses_per_net.append((mean_loss + var_loss).mean() / (omega_i + self.eps_omega))
 
                 # EMA updates (no grad)
+                # VERIFY-FIX-3: use independent beta_b if set, else fall back to self.tau
+                _beta = self.beta_b if self.beta_b is not None else self.tau
                 with th.no_grad():
                     s_mean = q_sigma.mean().item()
-                    self._b[i] = self.tau * self.xi * s_mean + (1 - self.tau) * self._b[i]
-                    self._omega[i] = self.tau * (q_sigma ** 2).mean().item() + (1 - self.tau) * self._omega[i]
+                    self._b[i] = _beta * self.xi * s_mean + (1 - _beta) * self._b[i]
+                    self._omega[i] = _beta * (q_sigma ** 2).mean().item() + (1 - _beta) * self._omega[i]
                     batch_sigma_sum += s_mean
 
             total_critic_loss = critic_losses_per_net[0] + critic_losses_per_net[1]
@@ -215,6 +227,9 @@ class DSAC_T(SAC):
             # Optimize critic
             self.critic.optimizer.zero_grad()
             total_critic_loss.backward()
+            # VERIFY-FIX-2: clip critic gradients to prevent single-step σ blow-up
+            if self.grad_clip_norm is not None:
+                th.nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_norm)
             self.critic.optimizer.step()
 
             # --- Actor loss ---
@@ -230,6 +245,9 @@ class DSAC_T(SAC):
             # Optimize actor
             self.actor.optimizer.zero_grad()
             actor_loss.backward()
+            # VERIFY-FIX-2: clip actor gradients too
+            if self.grad_clip_norm is not None:
+                th.nn.utils.clip_grad_norm_(self.actor.parameters(), self.grad_clip_norm)
             self.actor.optimizer.step()
 
             # Soft update target networks

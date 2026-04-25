@@ -7,7 +7,7 @@ The return distribution is modeled as Z_θ(·|s,a) = N(Q_θ(s,a), σ_θ(s,a)²).
 Reference: arXiv:2310.05858, Section 3.
 """
 
-from typing import List, Tuple, Type
+from typing import List, Optional, Tuple, Type
 
 import torch as th
 import torch.nn as nn
@@ -38,6 +38,7 @@ class DistributionalCritic(ContinuousCritic):
         n_critics: int = 2,
         share_features_extractor: bool = True,
         sigma_min: float = 1e-4,
+        sigma_max: Optional[float] = None,
     ):
         # Skip ContinuousCritic.__init__ and call BaseModel.__init__ directly,
         # because we need output_dim=2 instead of 1.
@@ -50,6 +51,7 @@ class DistributionalCritic(ContinuousCritic):
         self.share_features_extractor = share_features_extractor
         self.n_critics = n_critics
         self.sigma_min = sigma_min
+        self.sigma_max = sigma_max  # VERIFY-FIX-1: if set, clamp σ to prevent runaway growth
 
         action_dim = get_action_dim(self.action_space)
 
@@ -81,6 +83,10 @@ class DistributionalCritic(ContinuousCritic):
             mean = output[:, 0:1]  # (batch, 1)
             raw_sigma = output[:, 1:2]  # (batch, 1)
             sigma = nn.functional.softplus(raw_sigma) + self.sigma_min  # ensure > 0
+            # VERIFY-FIX-1: clamp σ to prevent runaway growth; keeps gradients
+            # flowing below sigma_max but saturates at the upper bound.
+            if self.sigma_max is not None:
+                sigma = th.clamp(sigma, min=self.sigma_min, max=self.sigma_max)
             results.append((mean, sigma))
 
         return tuple(results)

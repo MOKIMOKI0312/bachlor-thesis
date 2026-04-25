@@ -160,6 +160,9 @@ def attach_reward(env: gym.Env, args) -> gym.Env:
         gamma_pbrs=args.gamma_pbrs,
         tau_decay=args.tau_decay,
         p_peak_ref=args.p_peak_ref,
+        # F2a (2026-04-25): TOU arbitrage hard reward shaping
+        kappa_tou=args.kappa_tou,
+        tou_bonus_clip=args.tou_bonus_clip,
     )
     if args.reward_cls == "rl_cost":
         cls = RL_Cost_Reward
@@ -187,7 +190,10 @@ def attach_reward(env: gym.Env, args) -> gym.Env:
         f"reward_fn patch did not land on EplusEnv, "
         f"got {type(eplus_env.reward_fn).__name__}"
     )
-    print(f"Reward class swapped to {cls.__name__}; alpha={args.alpha}, beta={args.beta}")
+    print(
+        f"Reward class swapped to {cls.__name__}; alpha={args.alpha}, beta={args.beta}, "
+        f"kappa_tou={args.kappa_tou}, tou_bonus_clip={args.tou_bonus_clip}"
+    )
     return env
 
 
@@ -221,14 +227,16 @@ def main() -> None:
     parser.add_argument("--dc-peak-load-kw", type=float, default=6000.0)
     parser.add_argument("--flexible-fraction", type=float, default=0.3)
     # M2-E3b-v4 (2026-04-23): cost 缩放 5e-4 → 2e-3
-    # 目标：在 Jiangsu TOU 下让 cost_term 峰谷量级 >= soc/comfort 惩罚，
-    # 避免 agent 感受不到 TOU 峰谷信号。2e-3 × 10.7 MWh × 29 USD/MWh ≈
-    # -0.62（谷段），× 150 ≈ -3.2（peak 段，被 RL_Cost_Reward 内部 ±3.0 clip
-    # 轻微截断）；scarcity 事件保持防御。
+    # F2b (2026-04-25): 2e-3 → 5e-3 (2.5× boost). 推导:
+    #   trough cost = 5e-3 × 10 MWh × 29 USD/MWh = -1.45
+    #   peak cost   = 5e-3 × 10 MWh × 200 USD/MWh = -10.0 → clip to -8.0
     # 注意：alpha 不能塞进 sinergym/__init__.py 的 reward_kwargs——PUE_Reward 基类
     # __init__ 无 **kwargs，会 TypeError；必须通过 --alpha CLI 注入 RL_Cost_Reward
-    parser.add_argument("--alpha", type=float, default=2e-3, help="Cost reward coefficient (2e-3 → cost_term typical -0.5 at shoulder tier 83 USD/MWh, -3.0 clip at super-peak, M2-E3b-v4 retuned)")
-    parser.add_argument("--beta", type=float, default=1.0, help="Comfort penalty coefficient")
+    parser.add_argument("--alpha", type=float, default=5e-3, help="Cost reward coefficient (F2b: 2e-3 → 5e-3, trough -1.45 / peak -8.0 clipped, stronger TOU signal)")
+    # F2b (2026-04-25): beta 1.0 → 0.7 — let agent tolerate slight comfort
+    # violations to capture TOU arbitrage. λ_temp × β = 1.0 × 0.7 = 0.7
+    # effective comfort weight (was 1.0).
+    parser.add_argument("--beta", type=float, default=0.7, help="Comfort penalty coefficient (F2b: 1.0 → 0.7, allow comfort tradeoff for TOU)")
     parser.add_argument("--c-pv", type=float, default=0.0, help="Virtual green-price USD/MWh (RL-Green only)")
     parser.add_argument("--pv-threshold-kw", type=float, default=100.0, help="PV kW above which green price applies")
     # PBRS v2 — DPBA (analysis/pbrs_upgrade_DPBA_2026-04-23.md)
@@ -236,6 +244,11 @@ def main() -> None:
     parser.add_argument("--gamma-pbrs", type=float, default=0.99, help="PBRS discount (must match SAC/DSAC-T gamma)")
     parser.add_argument("--tau-decay", type=float, default=4.0, help="DPBA exp-decay scale in hours (shorter = sharper near-peak signal)")
     parser.add_argument("--p-peak-ref", type=float, default=0.80, help="Reference peak price_norm (Jiangsu TOU: $160-200 / 250 ≈ 0.80)")
+    # F2a (2026-04-25): TOU arbitrage hard reward shaping. See RL_Cost_Reward
+    # __init__ docstring — kappa_tou=5.0 yields typical bonus ±0.5 at
+    # |ΔSOC|=0.1 + (price_norm - 0.5)=±0.5; clip ±1.0 caps single-step spike.
+    parser.add_argument("--kappa-tou", type=float, default=5.0, help="F2a TOU arbitrage bonus scale (kappa_tou × ΔSOC × (0.5 - price_norm) × 2)")
+    parser.add_argument("--tou-bonus-clip", type=float, default=1.0, help="F2a TOU arbitrage bonus clip (±)")
     # M2-PBRS-v2 (2026-04-23, Xu 2023 discrete SAC): target_entropy = -|A|/3
     # Default SAC uses -|A|=-6; under DPBA shaping -2.0 prevents ent_coef collapse.
     parser.add_argument("--target-entropy", type=float, default=-2.0, help="SAC/DSAC-T target entropy (Xu 2023: -dim(A)/3 = -2.0 for 6-dim action)")
@@ -485,6 +498,8 @@ def main() -> None:
                 "beta": args.beta,
                 "kappa_shape": args.kappa_shape,
                 "gamma_pbrs": args.gamma_pbrs,
+                "kappa_tou": args.kappa_tou,
+                "tou_bonus_clip": args.tou_bonus_clip,
                 "elapsed_seconds": elapsed,
                 "workspace_path": str(workspace_path),
                 "model_path": str(model_path) + ".zip",

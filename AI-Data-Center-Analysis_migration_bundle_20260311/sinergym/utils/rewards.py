@@ -3,7 +3,7 @@
 
 from datetime import datetime
 from math import exp
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from sinergym.utils.constants import LOG_REWARD_LEVEL, YEAR
 from sinergym.utils.logger import Logger
@@ -1793,6 +1793,8 @@ class RL_Cost_Reward(PUE_TES_Reward):
         gamma_pbrs: float = 0.99,
         tau_decay: float = 4.0,
         p_peak_ref: float = 0.80,
+        kappa_tou: float = 5.0,
+        tou_bonus_clip: float = 1.0,
         **kwargs,
     ):
         super().__init__(
@@ -1812,6 +1814,22 @@ class RL_Cost_Reward(PUE_TES_Reward):
             )
         self.alpha = float(alpha)
         self.beta = float(beta)
+
+        # --- F2a: TOU Arbitrage Bonus (2026-04-25) -----------------------------
+        # F1 pilot (seed1 30 ep) showed SOC stuck near 0.81 with no TOU arbitrage
+        # — agent never explored deep-discharge state, "keep tank full" Q-value
+        # dominated. F2a is hard reward shaping (NOT PBRS) that explicitly
+        # rewards charging at trough + discharging at peak. Stateful — needs
+        # _prev_soc tracked across steps.
+        # Sign convention:
+        #   ΔSOC>0 (charge) at trough (price_norm=0): +ve bonus
+        #   ΔSOC<0 (discharge) at peak (price_norm=1): +ve bonus
+        #   ΔSOC>0 at peak / ΔSOC<0 at trough: -ve bonus
+        # Magnitude: kappa=5.0 × |ΔSOC|≤0.15 × |0.5-price_norm|≤0.5 × 2 ≤ 0.75
+        # typical, clip ±1.0 caps single-step spikes (e.g. episode boundary).
+        self.kappa_tou = float(kappa_tou)
+        self.tou_bonus_clip = float(tou_bonus_clip)
+        self._prev_soc: Optional[float] = None
 
         # --- PBRS v2 — Dynamic Price-Aware DPBA (pbrs_upgrade_DPBA_2026-04-23.md) ---
         # Devlin-Kudenko 2012 AAMAS DPBA:
@@ -1923,9 +1941,13 @@ class RL_Cost_Reward(PUE_TES_Reward):
         return self.kappa_shape * (soc - 0.5) * spread
 
     def reset_episode(self) -> None:
-        """Reset PBRS episode state. Called by EplusEnv.reset() if available."""
+        """Reset PBRS + F2a TOU bonus episode state. Called by EplusEnv.reset()
+        if available. Resetting `_prev_soc=None` ensures the first post-reset
+        step yields tou_bonus=0 (consistent with F1's reset hook contract — no
+        spurious bonus from cross-episode SOC jump)."""
         self._prev_phi = 0.0
         self._first_step = True
+        self._prev_soc = None
 
     def __call__(self, obs_dict: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
         import numpy as np
@@ -1953,6 +1975,32 @@ class RL_Cost_Reward(PUE_TES_Reward):
 
         reward = reward + cost_term + comfort_extra
 
+        # --- F2a: TOU Arbitrage Bonus (2026-04-25) -------------------------
+        # Hard reward shaping (NOT PBRS) on top of cost_term + PBRS. Rewards
+        # ΔSOC>0 at trough + ΔSOC<0 at peak. Stateful — first step yields 0
+        # (no _prev_soc); episode reset clears _prev_soc. price_norm is the
+        # raw [0,1] mapping using Jiangsu TOU min=29 / max=200 USD/MWh. We
+        # also skip cross-episode SOC jumps (>0.15) defensively.
+        soc_obj = obs_dict.get(self.soc_variable, 0.5)
+        soc_val = float(soc_obj) if soc_obj is not None else 0.5
+        tou_bonus = 0.0
+        tou_bonus_raw = 0.0
+        delta_soc_logged = 0.0
+        if self._prev_soc is not None:
+            delta_soc = soc_val - self._prev_soc
+            delta_soc_logged = delta_soc
+            # Skip if jump is too big (likely episode reset / SOC re-init).
+            if abs(delta_soc) < 0.15:
+                # price_norm ∈ [0, 1]: 0=trough ($29), 1=peak ($200)
+                price_norm = float(np.clip((price - 29.0) / (200.0 - 29.0), 0.0, 1.0))
+                # (0.5 - price_norm) ∈ [-0.5, +0.5]: + at trough, - at peak.
+                # ×2 normalizes the (0.5 - price_norm) range to [-1, +1].
+                tou_bonus_raw = self.kappa_tou * delta_soc * (0.5 - price_norm) * 2.0
+                tou_bonus = float(np.clip(tou_bonus_raw, -self.tou_bonus_clip, self.tou_bonus_clip))
+        self._prev_soc = soc_val
+
+        reward = reward + tou_bonus
+
         # --- PBRS: F = γ·Φ(s') − Φ(s_prev) ---------------------------------
         # First step of episode sets prev_phi via reset; first F is 0 (NHR
         # 1999 — any constant offset on Φ(s_0) is absorbed by γΦ telescoping).
@@ -1972,6 +2020,9 @@ class RL_Cost_Reward(PUE_TES_Reward):
         terms['mwh_step'] = mwh
         terms['lmp_usd_per_mwh'] = price
         terms['comfort_extra_term'] = comfort_extra
+        terms['tou_bonus'] = tou_bonus
+        terms['tou_bonus_raw'] = tou_bonus_raw
+        terms['delta_soc'] = delta_soc_logged
         terms['shaping_term'] = f_shape
         terms['phi_value'] = phi_s_prime
         return reward, terms

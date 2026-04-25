@@ -8,6 +8,7 @@ tmp/
 Eplus-env-*/
 vendor/EnergyPlus-*/
 *.7z
+*.rar
 training_jobs/
 .claude/
 .playwright-mcp/

@@ -1,0 +1,236 @@
+{
+  "csv_path": "C:\\Users\\18430\\Desktop\\毕业设计代码\\.claude\\worktrees\\integrate-all-fixes\\AI-Data-Center-Analysis_migration_bundle_20260311\\Data\\pv\\CHN_Nanjing_PV_6MWp_hourly.csv",
+  "checks": {
+    "B1_csv_exists": {
+      "status": "PASS",
+      "evidence": {
+        "path": "C:\\Users\\18430\\Desktop\\毕业设计代码\\.claude\\worktrees\\integrate-all-fixes\\AI-Data-Center-Analysis_migration_bundle_20260311\\Data\\pv\\CHN_Nanjing_PV_6MWp_hourly.csv",
+        "size_bytes": 232984
+      },
+      "threshold": "CSV file exists at expected path",
+      "note": ""
+    },
+    "B2_csv_schema": {
+      "status": "PASS",
+      "evidence": {
+        "rows": 8760,
+        "columns": [
+          "timestamp",
+          "power_kw"
+        ],
+        "peak_kw": 5060.16,
+        "annual_kwh": 7143351.9,
+        "yield_kwh_per_kwp": 1190.5586500000002,
+        "night_mean_kw_0_5h": 0.0,
+        "monthly_peaks_kw": [
+          4751.5,
+          5060.2,
+          5001.3,
+          5006.6,
+          4629.2,
+          4218.7,
+          3833.7,
+          4095.4,
+          4412.1,
+          4522.0,
+          4461.9,
+          4898.9
+        ],
+        "issues": []
+      },
+      "threshold": "8760 rows, power_kw column, nightly≈0, summer>winter",
+      "note": ""
+    },
+    "B3_wrapper_instantiation": {
+      "status": "PASS",
+      "evidence": {
+        "obs_shape": [
+          6
+        ],
+        "n_steps_swept": 24,
+        "pv_ratio_range": [
+          0.0,
+          0.6582800149917603
+        ],
+        "pv_slope_range": [
+          -0.7603557109832764,
+          0.7481871247291565
+        ],
+        "pv_ttp_range": [
+          0.0,
+          1.0
+        ],
+        "info_pv_kw_range": [
+          0.0,
+          3949.679931640625
+        ],
+        "obs_var_tail": [
+          "pv_current_ratio",
+          "pv_future_slope",
+          "time_to_pv_peak"
+        ],
+        "first_24h_samples": [
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.43478259444236755,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.3913043439388275,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.21128571033477783,
+            "obs_pv_ttp": 0.3478260934352875,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.48144999146461487,
+            "obs_pv_ttp": 0.30434781312942505,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.6705785393714905,
+            "obs_pv_ttp": 0.260869562625885,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.7481871247291565,
+            "obs_pv_ttp": 0.21739129722118378,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.6324014067649841,
+            "obs_pv_ttp": 0.17391304671764374,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.29580000042915344,
+            "obs_pv_slope": 0.22539713978767395,
+            "obs_pv_ttp": 0.1304347813129425,
+            "info_pv_kw": 1774.800048828125
+          },
+          {
+            "obs_pv_ratio": 0.4965499937534332,
+            "obs_pv_slope": -0.26623427867889404,
+            "obs_pv_ttp": 0.08695652335882187,
+            "info_pv_kw": 2979.300048828125
+          },
+          {
+            "obs_pv_ratio": 0.5817199945449829,
+            "obs_pv_slope": -0.6063042879104614,
+            "obs_pv_ttp": 0.043478261679410934,
+            "info_pv_kw": 3490.320068359375
+          },
+          {
+            "obs_pv_ratio": 0.6582800149917603,
+            "obs_pv_slope": -0.7603557109832764,
+            "obs_pv_ttp": 0.0,
+            "info_pv_kw": 3949.679931640625
+          },
+          {
+            "obs_pv_ratio": 0.6508399844169617,
+            "obs_pv_slope": -0.6897814273834229,
+            "obs_pv_ttp": 1.0,
+            "info_pv_kw": 3905.0400390625
+          },
+          {
+            "obs_pv_ratio": 0.5034700036048889,
+            "obs_pv_slope": -0.4385671615600586,
+            "obs_pv_ttp": 0.95652174949646,
+            "info_pv_kw": 3020.820068359375
+          },
+          {
+            "obs_pv_ratio": 0.17226001620292664,
+            "obs_pv_slope": -0.1487685889005661,
+            "obs_pv_ttp": 0.9130434989929199,
+            "info_pv_kw": 1033.56005859375
+          },
+          {
+            "obs_pv_ratio": 0.05398000031709671,
+            "obs_pv_slope": -0.04633142799139023,
+            "obs_pv_ttp": 0.8695651888847351,
+            "info_pv_kw": 323.8800048828125
+          },
+          {
+            "obs_pv_ratio": 0.018139999359846115,
+            "obs_pv_slope": -0.012957142665982246,
+            "obs_pv_ttp": 0.8260869383811951,
+            "info_pv_kw": 108.83999633789062
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.782608687877655,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.739130437374115,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.695652186870575,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.6521739363670349,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.6086956262588501,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.5652173757553101,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.52173912525177,
+            "info_pv_kw": 0.0
+          },
+          {
+            "obs_pv_ratio": 0.0,
+            "obs_pv_slope": 0.0,
+            "obs_pv_ttp": 0.6086956262588501,
+            "info_pv_kw": 0.0
+          }
+        ],
+        "issues": []
+      },
+      "threshold": "signals in spec range, 3-dim tail correctly attached",
+      "note": ""
+    },
+    "B4_yearlong_peak_alignment": {
+      "status": "PASS",
+      "evidence": {
+        "valid_days": 365,
+        "peak_hour_mean": 11.476712328767123,
+        "peak_hour_median": 11.0,
+        "hour12_in_top_quartile_ratio": 0.9808219178082191,
+        "issues": []
+      },
+      "threshold": "median peak hour ∈ [9, 14]; hour 12 in top quartile ≥ 70% of days",
+      "note": ""
+    }
+  }
+}

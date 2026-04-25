@@ -1,0 +1,602 @@
+{
+  "A1": {
+    "scenario": "A1",
+    "summary": {
+      "n_steps": 672,
+      "dt_seconds": 900.0,
+      "missing_cols": [],
+      "found_cols": {
+        "soc": 16,
+        "tes_set": 13,
+        "tank_T": 22,
+        "use_HT": 24,
+        "source_HT": 25,
+        "tank_loss": 23,
+        "use_avail": 18,
+        "source_avail": 17,
+        "chiller_avail": 14,
+        "chiller_elec": 26,
+        "chiller_qevap": 27,
+        "chiller_qcond": 28,
+        "tower_fan": 31,
+        "tower_HT": 30,
+        "eco_HT": 29,
+        "pump1_flow": 37,
+        "pump1_elec": 36,
+        "pump2_flow": 33,
+        "pump2_elec": 32,
+        "pump3_flow": 35,
+        "pump3_elec": 34,
+        "coil_Q": 19,
+        "fan_elec": 20,
+        "ite_cpu": 5,
+        "ite_fan": 6,
+        "ite_ups": 7,
+        "ite_sch": 12,
+        "ahu_T": 10,
+        "zone_T": 8,
+        "zone_internal_HT": 4,
+        "facility_elec": 45,
+        "ite_cpu_meter": 46,
+        "ite_fan_meter": 49,
+        "ite_ups_meter": 50,
+        "tes_use_flow": 43,
+        "tes_source_flow": 40,
+        "chiller_in_flow": 41,
+        "wet_bulb": 2
+      }
+    },
+    "err": {
+      "severe": 0,
+      "fatal": 0,
+      "samples": []
+    },
+    "checks": {
+      "C1_TES_Use_energy_balance": {
+        "status": "PASS",
+        "evidence": {
+          "int_use_GJ": 201.47837623879215,
+          "int_source_GJ": -179.80706101200465,
+          "int_loss_GJ": 1.7392554096928705,
+          "net_into_tank_GJ": 19.932059817094636,
+          "throughput_GJ": 381.28543725079675,
+          "drift_ratio": 0.052275953576438314,
+          "soc_first": 0.38154367391009786,
+          "soc_last": 0.2689814032360962,
+          "soc_min": 0.0,
+          "soc_max": 0.9956577823300744
+        },
+        "threshold": "drift_ratio (|net|/throughput) < 0.20 PASS / < 0.40 WARN",
+        "note": ""
+      },
+      "C2_TES_Source_charge": {
+        "status": "PASS",
+        "evidence": {
+          "n_charge_steps": 196,
+          "src_neg_ratio": 0.9540816326530612,
+          "src_mean": -1019314.4048299582,
+          "src_min": -3637894.445675255,
+          "src_max": 192187.8464662861
+        },
+        "threshold": "neg_ratio > 0.5 PASS",
+        "note": ""
+      },
+      "C3_TES_SOC_range": {
+        "status": "PASS",
+        "evidence": {
+          "soc_min": 0.0,
+          "soc_max": 0.9956577823300744,
+          "out_of_range_steps": 0,
+          "first": 0.38154367391009786,
+          "last": 0.2689814032360962
+        },
+        "threshold": "all SOC ∈ [0,1]",
+        "note": ""
+      },
+      "C4_TES_loss": {
+        "status": "PASS",
+        "evidence": {
+          "mean_W": 2875.752992217048,
+          "max_W": 7027.110206941218,
+          "min_W": 420.55520402183123
+        },
+        "threshold": "0 < mean < 50 kW",
+        "note": ""
+      },
+      "C5_Chiller_COP": {
+        "status": "PASS",
+        "evidence": {
+          "n_running_steps": 597,
+          "cop_mean": 3.012117452121162,
+          "cop_min": 2.934250718866942,
+          "cop_max": 4.529776479611794,
+          "qe_max_W": 12832397.744079594,
+          "we_max_W": 2855538.951413931
+        },
+        "threshold": "cop_mean ∈ [3, 8]; rated 6.28",
+        "note": ""
+      },
+      "C6_Chiller_Cond_balance": {
+        "status": "PASS",
+        "evidence": {
+          "sum_qe_W_steps": 3200577515.0826893,
+          "sum_we_W_steps": 1048176635.4963291,
+          "sum_qc_W_steps": 6195609720.286255,
+          "ratio": 0.6857685268113877,
+          "note": "Informational. End-to-end balance verified by C8 tower check."
+        },
+        "threshold": "qc reported (informational; see C8 for end-to-end balance)",
+        "note": ""
+      },
+      "C7_Tower_fan": {
+        "status": "PASS",
+        "evidence": {
+          "fan_max_W": 149855.92738348802,
+          "fan_mean_W": 7142.074789316855,
+          "corr_fan_qcond": 0.45590207920953135
+        },
+        "threshold": "corr(fan, qcond) > 0.4",
+        "note": ""
+      },
+      "C8_Tower_Chiller_balance": {
+        "status": "PASS",
+        "evidence": {
+          "sum_tower_HT_W_steps": 6242960153.225157,
+          "sum_qcond_W_steps": 6195609720.286255,
+          "sum_eco_W_steps": 0.0,
+          "expected_W_steps": 6195609720.286255,
+          "ratio": 1.0076425783864116
+        },
+        "threshold": "tower_HT / (qcond + eco_HT) ∈ [0.85, 1.15]",
+        "note": ""
+      },
+      "C9_Eco_seasonal": {
+        "status": "PASS",
+        "evidence": {
+          "eco_mean_W": 0.0,
+          "eco_max_W": 0.0
+        },
+        "threshold": "summer eco_mean < 100 kW",
+        "note": ""
+      },
+      "C10_Primary_Pump": {
+        "status": "PASS",
+        "evidence": {
+          "flow_running_steps": 672,
+          "flow_mean": 693.3244183298356,
+          "flow_max": 693.3244183298366,
+          "elec_mean_W": 43136.12406828503
+        },
+        "threshold": "flow > 0 some of the time",
+        "note": ""
+      },
+      "C11_Secondary_Pump": {
+        "status": "PASS",
+        "evidence": {
+          "flow_min": 51.12843763701313,
+          "flow_max": 693.3244183298357,
+          "flow_std": 162.53502146933099,
+          "is_variable": true
+        },
+        "threshold": "std > 1% of max → variable speed",
+        "note": ""
+      },
+      "C12_Condenser_Pump": {
+        "status": "PASS",
+        "evidence": {
+          "flow_max": 300.00000000000045,
+          "flow_mean": 300.0,
+          "running_ratio_when_chiller_on": 1.0
+        },
+        "threshold": "flow > 0 when chiller running",
+        "note": ""
+      },
+      "C13_CRAH_Coil": {
+        "status": "PASS",
+        "evidence": {
+          "coil_mean_W": 4725176.079033725,
+          "ite_cpu_mean_W": 4665010.49449717,
+          "ite_fan_mean_W": 0.0,
+          "ite_ups_mean_W": 0.0,
+          "ite_total_mean_W": 4665010.49449717,
+          "ratio": 1.0128972023980496
+        },
+        "threshold": "coil/ITE_total ∈ [0.6, 1.5] (steady-state heat balance)",
+        "note": ""
+      },
+      "C14_CRAH_Fan": {
+        "status": "PASS",
+        "evidence": {
+          "flow_min": 499.9999999999993,
+          "flow_max": 500.0000000000008,
+          "flow_mean": 500.0,
+          "in_design_range": true
+        },
+        "threshold": "P_1 limited flow within design spec",
+        "note": ""
+      },
+      "C15_ITE": {
+        "status": "PASS",
+        "evidence": {
+          "sch_min": 0.05020610605746614,
+          "sch_max": 0.7838320450030741,
+          "sch_mean": 0.31154544404949663,
+          "cpu_mean_W": 4198509445.0474524,
+          "cpu_max_W": 10599860443.063704
+        },
+        "threshold": "schedule ∈ [0, 0.85] (P_2 walk: 0.05–0.80)",
+        "note": ""
+      },
+      "C16_Zone_Temp": {
+        "status": "PASS",
+        "evidence": {
+          "z_min": 12.505590605655991,
+          "z_max": 37.36938341349786,
+          "z_mean": 20.303491861725746,
+          "violation_pct": 0.744047619047619
+        },
+        "threshold": "A1 zone_T < 35°C (cooling SP) (<5% violations)",
+        "note": ""
+      },
+      "C17_Plant_Topology": {
+        "status": "PASS",
+        "evidence": {
+          "chiller_kill_steps": 75,
+          "chiller_flow_leak_steps": 0,
+          "leak_ratio": 0.0,
+          "tes_use_ghost_flow_steps": 0
+        },
+        "threshold": "chiller flow=0 when avail=0; TES use flow=0 when avail=0",
+        "note": ""
+      },
+      "C18_EMS_P1_ramp": {
+        "status": "PASS",
+        "evidence": {
+          "max_ahu_step_C": 0.0,
+          "n_violations_gt_0.5C": 0,
+          "ahu_min": 11.0,
+          "ahu_max": 11.0
+        },
+        "threshold": "P_1 limits CRAH_T step ≤ 0.5°C",
+        "note": ""
+      },
+      "C19_EMS_P2_ITE": {
+        "status": "PASS",
+        "evidence": {
+          "sch_min": 0.05020610605746614,
+          "sch_max": 0.7838320450030741,
+          "is_constant": false
+        },
+        "threshold": "P_2 random walk ∈ [0.05, 0.80]",
+        "note": ""
+      },
+      "C20_EMS_P5P7_TES_response": {
+        "status": "PASS",
+        "evidence": {
+          "discharge_steps": 280,
+          "discharge_use_avail_ratio": 1.0,
+          "charge_steps": 196,
+          "charge_source_avail_ratio": 1.0,
+          "kill_eligible_steps": 75,
+          "kill_observed_ratio": 1.0
+        },
+        "threshold": "discharge→use_avail≈1, charge→source_avail≈1, discharge+SOC>0.15→chiller_avail=0",
+        "note": ""
+      },
+      "C21_severe_fatal": {
+        "status": "PASS",
+        "evidence": {
+          "severe": 0,
+          "fatal": 0,
+          "samples": []
+        },
+        "threshold": "severe=0, fatal=0",
+        "note": ""
+      },
+      "C22_PUE": {
+        "status": "PASS",
+        "evidence": {
+          "sum_facility_GJ": 3886.269426055621,
+          "sum_ite_GJ": 2821.398347071888,
+          "pue": 1.377426704062856
+        },
+        "threshold": "PUE ∈ [1.05, 1.6]",
+        "note": ""
+      }
+    },
+    "epjson": "C:\\Users\\18430\\Desktop\\毕业设计代码\\.claude\\worktrees\\integrate-all-fixes\\AI-Data-Center-Analysis_migration_bundle_20260311\\tools\\m1\\verify_components_out\\A1\\run.epjson",
+    "workdir": "C:\\Users\\18430\\Desktop\\毕业设计代码\\.claude\\worktrees\\integrate-all-fixes\\AI-Data-Center-Analysis_migration_bundle_20260311\\tools\\m1\\verify_components_out\\A1\\sim",
+    "returncode": "skip-sim"
+  },
+  "A2": {
+    "scenario": "A2",
+    "summary": {
+      "n_steps": 672,
+      "dt_seconds": 900.0,
+      "missing_cols": [],
+      "found_cols": {
+        "soc": 15,
+        "tes_set": 16,
+        "tank_T": 22,
+        "use_HT": 24,
+        "source_HT": 25,
+        "tank_loss": 23,
+        "use_avail": 18,
+        "source_avail": 17,
+        "chiller_avail": 13,
+        "chiller_elec": 26,
+        "chiller_qevap": 27,
+        "chiller_qcond": 28,
+        "tower_fan": 31,
+        "tower_HT": 30,
+        "eco_HT": 29,
+        "pump1_flow": 37,
+        "pump1_elec": 36,
+        "pump2_flow": 33,
+        "pump2_elec": 32,
+        "pump3_flow": 35,
+        "pump3_elec": 34,
+        "coil_Q": 19,
+        "fan_elec": 20,
+        "ite_cpu": 5,
+        "ite_fan": 6,
+        "ite_ups": 7,
+        "ite_sch": 12,
+        "ahu_T": 10,
+        "zone_T": 8,
+        "zone_internal_HT": 4,
+        "facility_elec": 45,
+        "ite_cpu_meter": 46,
+        "ite_fan_meter": 49,
+        "ite_ups_meter": 50,
+        "tes_use_flow": 43,
+        "tes_source_flow": 40,
+        "chiller_in_flow": 41,
+        "wet_bulb": 2
+      }
+    },
+    "err": {
+      "severe": 0,
+      "fatal": 0,
+      "samples": []
+    },
+    "checks": {
+      "C1_TES_Use_energy_balance": {
+        "status": "SKIP",
+        "evidence": {
+          "reason": "A2 TES inactive"
+        },
+        "threshold": "",
+        "note": ""
+      },
+      "C2_TES_Source_charge": {
+        "status": "SKIP",
+        "evidence": {
+          "reason": "A2 TES inactive"
+        },
+        "threshold": "",
+        "note": ""
+      },
+      "C3_TES_SOC_range": {
+        "status": "PASS",
+        "evidence": {
+          "soc_min": 0.8185131203766144,
+          "soc_max": 0.9999160910195514,
+          "out_of_range_steps": 0,
+          "first": 0.8185131203766144,
+          "last": 0.9321438394130377
+        },
+        "threshold": "all SOC ∈ [0,1]",
+        "note": ""
+      },
+      "C4_TES_loss": {
+        "status": "PASS",
+        "evidence": {
+          "mean_W": 3958.976095762077,
+          "max_W": 8098.596467230499,
+          "min_W": 1774.6390567543676
+        },
+        "threshold": "0 < mean < 50 kW",
+        "note": ""
+      },
+      "C5_Chiller_COP": {
+        "status": "PASS",
+        "evidence": {
+          "n_running_steps": 671,
+          "cop_mean": 3.3394987330218404,
+          "cop_min": 3.3256642383522967,
+          "cop_max": 4.243677679625068,
+          "qe_max_W": 10785410.190520838,
+          "we_max_W": 2541524.358059574
+        },
+        "threshold": "cop_mean ∈ [3, 8]; rated 6.28",
+        "note": ""
+      },
+      "C6_Chiller_Cond_balance": {
+        "status": "PASS",
+        "evidence": {
+          "sum_qe_W_steps": 2472142280.070713,
+          "sum_we_W_steps": 736261054.1007285,
+          "sum_qc_W_steps": 4817189483.6246605,
+          "ratio": 0.6660322051017393,
+          "note": "Informational. End-to-end balance verified by C8 tower check."
+        },
+        "threshold": "qc reported (informational; see C8 for end-to-end balance)",
+        "note": ""
+      },
+      "C7_Tower_fan": {
+        "status": "PASS",
+        "evidence": {
+          "fan_max_W": 388814.4524819142,
+          "fan_mean_W": 53713.49713573052,
+          "corr_fan_qcond": 0.8165391114185221
+        },
+        "threshold": "corr(fan, qcond) > 0.4",
+        "note": ""
+      },
+      "C8_Tower_Chiller_balance": {
+        "status": "PASS",
+        "evidence": {
+          "sum_tower_HT_W_steps": 5579719727.454789,
+          "sum_qcond_W_steps": 4817189483.6246605,
+          "sum_eco_W_steps": 729787605.2616704,
+          "expected_W_steps": 5546977088.886331,
+          "ratio": 1.0059027895813848
+        },
+        "threshold": "tower_HT / (qcond + eco_HT) ∈ [0.85, 1.15]",
+        "note": ""
+      },
+      "C9_Eco_seasonal": {
+        "status": "PASS",
+        "evidence": {
+          "eco_mean_W": 1085993.460210819,
+          "eco_max_W": 3251136.0773462327
+        },
+        "threshold": "winter eco_mean > 1 MW",
+        "note": ""
+      },
+      "C10_Primary_Pump": {
+        "status": "PASS",
+        "evidence": {
+          "flow_running_steps": 672,
+          "flow_mean": 693.3244183298356,
+          "flow_max": 693.3244183298366,
+          "elec_mean_W": 43136.12406828503
+        },
+        "threshold": "flow > 0 some of the time",
+        "note": ""
+      },
+      "C11_Secondary_Pump": {
+        "status": "PASS",
+        "evidence": {
+          "flow_min": 41.97562989932629,
+          "flow_max": 576.3390119614576,
+          "flow_std": 141.53652946625286,
+          "is_variable": true
+        },
+        "threshold": "std > 1% of max → variable speed",
+        "note": ""
+      },
+      "C12_Condenser_Pump": {
+        "status": "PASS",
+        "evidence": {
+          "flow_max": 300.00000000000045,
+          "flow_mean": 300.0,
+          "running_ratio_when_chiller_on": 1.0
+        },
+        "threshold": "flow > 0 when chiller running",
+        "note": ""
+      },
+      "C13_CRAH_Coil": {
+        "status": "PASS",
+        "evidence": {
+          "coil_mean_W": 4714599.222185861,
+          "ite_cpu_mean_W": 4668808.8866127385,
+          "ite_fan_mean_W": 0.0,
+          "ite_ups_mean_W": 0.0,
+          "ite_total_mean_W": 4668808.8866127385,
+          "ratio": 1.0098077125633524
+        },
+        "threshold": "coil/ITE_total ∈ [0.6, 1.5] (steady-state heat balance)",
+        "note": ""
+      },
+      "C14_CRAH_Fan": {
+        "status": "PASS",
+        "evidence": {
+          "flow_min": 499.9999999999993,
+          "flow_max": 500.0000000000008,
+          "flow_mean": 500.0,
+          "in_design_range": true
+        },
+        "threshold": "P_1 limited flow within design spec",
+        "note": ""
+      },
+      "C15_ITE": {
+        "status": "PASS",
+        "evidence": {
+          "sch_min": 0.05020610605746614,
+          "sch_max": 0.7838320450030741,
+          "sch_mean": 0.31154544404949663,
+          "cpu_mean_W": 4201927997.9514647,
+          "cpu_max_W": 10580613951.932444
+        },
+        "threshold": "schedule ∈ [0, 0.85] (P_2 walk: 0.05–0.80)",
+        "note": ""
+      },
+      "C16_Zone_Temp": {
+        "status": "PASS",
+        "evidence": {
+          "z_min": 12.51132583978196,
+          "z_max": 35.05109343748798,
+          "z_mean": 20.257815172220216,
+          "violation_pct": 14.434523809523808
+        },
+        "threshold": "A2 zone_T > 15°C (heating SP) (<5% violations)",
+        "note": ""
+      },
+      "C17_Plant_Topology": {
+        "status": "PASS",
+        "evidence": {
+          "chiller_kill_steps": 0,
+          "chiller_flow_leak_steps": 0,
+          "leak_ratio": null,
+          "tes_use_ghost_flow_steps": 0
+        },
+        "threshold": "chiller flow=0 when avail=0; TES use flow=0 when avail=0",
+        "note": ""
+      },
+      "C18_EMS_P1_ramp": {
+        "status": "PASS",
+        "evidence": {
+          "max_ahu_step_C": 0.0,
+          "n_violations_gt_0.5C": 0,
+          "ahu_min": 11.0,
+          "ahu_max": 11.0
+        },
+        "threshold": "P_1 limits CRAH_T step ≤ 0.5°C",
+        "note": ""
+      },
+      "C19_EMS_P2_ITE": {
+        "status": "PASS",
+        "evidence": {
+          "sch_min": 0.05020610605746614,
+          "sch_max": 0.7838320450030741,
+          "is_constant": false
+        },
+        "threshold": "P_2 random walk ∈ [0.05, 0.80]",
+        "note": ""
+      },
+      "C20_EMS_P5P7_TES_response": {
+        "status": "SKIP",
+        "evidence": {
+          "reason": "A2 TES inactive"
+        },
+        "threshold": "",
+        "note": ""
+      },
+      "C21_severe_fatal": {
+        "status": "PASS",
+        "evidence": {
+          "severe": 0,
+          "fatal": 0,
+          "samples": []
+        },
+        "threshold": "severe=0, fatal=0",
+        "note": ""
+      },
+      "C22_PUE": {
+        "status": "PASS",
+        "evidence": {
+          "sum_facility_GJ": 3627.7323989713927,
+          "sum_ite_GJ": 2823.6956146233842,
+          "pue": 1.2847462666245095
+        },
+        "threshold": "PUE ∈ [1.05, 1.6]",
+        "note": ""
+      }
+    },
+    "epjson": "C:\\Users\\18430\\Desktop\\毕业设计代码\\.claude\\worktrees\\integrate-all-fixes\\AI-Data-Center-Analysis_migration_bundle_20260311\\tools\\m1\\verify_components_out\\A2\\run.epjson",
+    "workdir": "C:\\Users\\18430\\Desktop\\毕业设计代码\\.claude\\worktrees\\integrate-all-fixes\\AI-Data-Center-Analysis_migration_bundle_20260311\\tools\\m1\\verify_components_out\\A2\\sim",
+    "returncode": "skip-sim"
+  }
+}

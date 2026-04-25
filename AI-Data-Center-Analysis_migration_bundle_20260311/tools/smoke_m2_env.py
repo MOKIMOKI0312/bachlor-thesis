@@ -37,6 +37,76 @@ from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.workload_wrapper import WorkloadWrapper
 
 
+def _index(obs_names: list[str], candidates: tuple[str, ...]) -> int:
+    for name in candidates:
+        if name in obs_names:
+            return obs_names.index(name)
+    raise AssertionError(
+        f"None of {candidates!r} found in observation_variables; "
+        f"available={obs_names}"
+    )
+
+
+def _check_obs_semantics(obs: np.ndarray, obs_names: list[str], label: str) -> dict[str, int]:
+    """Validate signal values by semantic names, not by fragile tail offsets."""
+    idx = {
+        "price_current": _index(obs_names, ("price_current_norm",)),
+        "price_slope": _index(obs_names, ("price_future_slope", "price_delta_next_1h")),
+        "price_mean": _index(obs_names, ("price_future_mean", "price_hours_to_next_peak_norm")),
+        "pv_current": _index(obs_names, ("pv_current_ratio",)),
+        "pv_slope": _index(obs_names, ("pv_future_slope",)),
+        "pv_peak": _index(obs_names, ("time_to_pv_peak",)),
+        "workload": _index(obs_names, ("workload_current_utilization",)),
+        "queue": _index(obs_names, ("workload_queue_norm",)),
+        "tes_soc": _index(obs_names, ("TES_SOC",)),
+        "tes_avg_temp": _index(obs_names, ("TES_avg_temp",)),
+        "tes_valve": _index(obs_names, ("TES_valve_wrapper_position",)),
+    }
+
+    price_vals = obs[[idx["price_current"], idx["price_slope"], idx["price_mean"]]]
+    pv_vals = obs[[idx["pv_current"], idx["pv_slope"], idx["pv_peak"]]]
+    workload_vals = obs[[idx["workload"], idx["queue"]]]
+    tes_vals = obs[[idx["tes_soc"], idx["tes_avg_temp"], idx["tes_valve"]]]
+
+    assert -1.0 - 1e-6 <= price_vals[0] <= 2.0 + 1e-6, (
+        f"{label}: price_current_norm out of [-1, 2]: {price_vals[0]}"
+    )
+    assert -2.0 - 1e-6 <= price_vals[1] <= 2.0 + 1e-6, (
+        f"{label}: price slope/delta out of [-2, 2]: {price_vals[1]}"
+    )
+    assert 0.0 - 1e-6 <= price_vals[2] <= 1.0 + 1e-6, (
+        f"{label}: price planning dim out of [0, 1]: {price_vals[2]}"
+    )
+    assert np.all((-1.0 - 1e-6 <= pv_vals) & (pv_vals <= 1.0 + 1e-6)), (
+        f"{label}: PV dims out of expected bounds: {pv_vals}"
+    )
+    assert np.all((0.0 - 1e-6 <= workload_vals) & (workload_vals <= 1.0 + 1e-6)), (
+        f"{label}: workload dims out of [0, 1]: {workload_vals}"
+    )
+    assert 0.0 - 1e-6 <= tes_vals[0] <= 1.0 + 1e-6, (
+        f"{label}: TES_SOC out of [0, 1]: {tes_vals[0]}"
+    )
+    assert -1.0 - 1e-6 <= tes_vals[2] <= 1.0 + 1e-6, (
+        f"{label}: TES valve out of [-1, 1]: {tes_vals[2]}"
+    )
+
+    print(
+        f"  {label} semantic indices: "
+        f"price=({idx['price_current']},{idx['price_slope']},{idx['price_mean']}), "
+        f"pv=({idx['pv_current']},{idx['pv_slope']},{idx['pv_peak']}), "
+        f"workload=({idx['workload']},{idx['queue']}), "
+        f"TES=({idx['tes_soc']},{idx['tes_avg_temp']},{idx['tes_valve']})"
+    )
+    print(
+        f"  {label} semantic values: "
+        f"price={np.round(price_vals, 4).tolist()}, "
+        f"pv={np.round(pv_vals, 4).tolist()}, "
+        f"workload={np.round(workload_vals, 4).tolist()}, "
+        f"TES={np.round(tes_vals, 4).tolist()}"
+    )
+    return idx
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--reward-cls", default="rl_cost", choices=["pue_tes", "rl_cost", "rl_green"])
@@ -117,49 +187,30 @@ def main():
         f"Expected action_dim=6, got {env.action_space.shape}"
     )
     print(f"Env stack OK: obs_dim={expected_dim}, action_dim=6, reward={args.reward_cls}")
+    obs_names = list(env.get_wrapper_attr("observation_variables"))
+    assert len(obs_names) == expected_dim, (
+        f"observation_variables length mismatch: {len(obs_names)} != {expected_dim}"
+    )
 
     obs, info = env.reset()
     assert obs.shape == (expected_dim,)
     print(f"reset obs.shape={obs.shape}, finite={np.all(np.isfinite(obs))}")
-
-    # M2-E3b-v4 (Issue P1, 2026-04-23): verify the 3 new price-signal dims
-    # land at obs[31:34] with their TOU-aware ranges.
-    # Stack layout (tech route §6.1):
-    #   [0:20]   base EplusEnv obs
-    #   [20:26]  TESIncremental (+6)
-    #   [26:29]  TimeEncoding   (+3: sin/cos hour, sin day)   -> actually +3 per wrapper
-    # Rather than rely on fragile offsets we just sanity-check bounded range
-    # at the (expected) tail 3 dims (= dims 31/32/33 under the 41-dim layout).
-    price_dims = obs[-3:]
-    print(f"  price_dims at reset: current_norm={price_dims[0]:.3f}, "
-          f"delta_next_1h={price_dims[1]:.3f}, hours_to_peak_norm={price_dims[2]:.3f}")
-    assert -1.0 - 1e-6 <= price_dims[0] <= 2.0 + 1e-6, (
-        f"current_price_norm out of [-1, 2]: {price_dims[0]}"
-    )
-    assert -2.0 - 1e-6 <= price_dims[1] <= 2.0 + 1e-6, (
-        f"price_delta_next_1h out of [-2, 2]: {price_dims[1]}"
-    )
-    assert 0.0 - 1e-6 <= price_dims[2] <= 1.0 + 1e-6, (
-        f"hours_to_next_peak_norm out of [0, 1]: {price_dims[2]}"
-    )
+    idx = _check_obs_semantics(obs, obs_names, "reset")
 
     rng = np.random.default_rng(42)
     for i in range(args.steps):
-        a = rng.uniform(-1, 1, size=(6,)).astype(np.float32)
+        if i == 0:
+            a = np.array([0.5, 0.5, 0.5, 0.5, 0.0, -1.0], dtype=np.float32)
+        elif i == 1:
+            a = np.array([0.5, 0.5, 0.5, 0.5, 0.5, +1.0], dtype=np.float32)
+        elif i == 2:
+            a = np.array([0.5, 0.5, 0.5, 0.5, 1.0, +1.0], dtype=np.float32)
+        else:
+            a = rng.uniform(-1, 1, size=(6,)).astype(np.float32)
         obs, r, term, trunc, info = env.step(a)
         assert obs.shape == (expected_dim,)
         assert np.isfinite(r)
-        # Per-step: same range checks on the tail 3 price dims.
-        pd_step = obs[-3:]
-        assert -1.0 - 1e-6 <= pd_step[0] <= 2.0 + 1e-6, (
-            f"step {i+1}: current_price_norm out of [-1, 2]: {pd_step[0]}"
-        )
-        assert -2.0 - 1e-6 <= pd_step[1] <= 2.0 + 1e-6, (
-            f"step {i+1}: price_delta_next_1h out of [-2, 2]: {pd_step[1]}"
-        )
-        assert 0.0 - 1e-6 <= pd_step[2] <= 1.0 + 1e-6, (
-            f"step {i+1}: hours_to_next_peak_norm out of [0, 1]: {pd_step[2]}"
-        )
+        idx = _check_obs_semantics(obs, obs_names, f"step {i+1}")
         # M5 fix (2026-04-19): EplusEnv.step does `info.update(rw_terms)`, so
         # reward terms are flattened into info (not nested under `terms`).  We
         # snapshot the known-M2 keys here to verify TES SoC is live.  If the
@@ -179,6 +230,8 @@ def main():
             "step": i + 1, "reward": round(float(r), 3),
             "wl_util": round(float(info.get("workload_utilization", 0)), 3),
             "wl_action": int(info.get("workload_action", 1)),
+            "tes_action": round(float(a[5]), 3),
+            "tes_valve_obs": round(float(obs[idx["tes_valve"]]), 3),
             "pv_kw": round(float(info.get("current_pv_kw", 0)), 1),
             "lmp": round(float(info.get("current_price_usd_per_mwh", 0)), 2),
             "soc": None if soc_value is None else round(float(soc_value), 4),

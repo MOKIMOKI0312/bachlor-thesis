@@ -161,6 +161,20 @@ class ModelJSON(object):
             'timesteps per episode: {}'.format(
                 self.timestep_per_episode))
 
+    def _refresh_loaded_building(self) -> None:
+        """Refresh cached model metadata and re-apply configured outputs.
+
+        Episode reset can switch to a freshly loaded epJSON.  That reload
+        restores the file's original Output:Variable, Output:Meter, Timestep,
+        and RunPeriod objects, so the runtime model must be adapted again
+        before it is saved for EnergyPlus.
+        """
+        self.zone_names = list(self.building['Zone'].keys())
+        self.schedulers = self.get_schedulers()
+        self.adapt_building_to_variables()
+        self.adapt_building_to_meters()
+        self.adapt_building_to_config()
+
     # ---------------------------------------------------------------------------- #
     #                 Variables and Building model adaptation                      #
     # ---------------------------------------------------------------------------- #
@@ -338,6 +352,7 @@ class ModelJSON(object):
         # Building model object (Python dictionary from epJSON file)
         with open(self._json_path) as json_f:
             self.building = json.load(json_f)
+        self._refresh_loaded_building()
 
     def update_evaluation_weather_path(self, episode_value) -> None:
         """When this method is called, weather file is changed randomly and building model is adapted to new one.
@@ -359,6 +374,7 @@ class ModelJSON(object):
         # Building model object (Python dictionary from epJSON file)
         with open(self._json_path) as json_f:
             self.building = json.load(json_f)
+        self._refresh_loaded_building()
 
 
     def apply_weather_variability(
@@ -726,4 +742,3 @@ class ModelJSON(object):
     @property
     def idd_path(self) -> Optional[str]:
         return self._idd
-

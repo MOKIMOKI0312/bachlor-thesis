@@ -107,6 +107,8 @@ class TempTrendWrapper(gym.Wrapper):
         self._temp_norm = (temps - self._temp_min) / self._temp_span  # ∈ [0, 1]
 
         self.lookahead = int(lookahead_hours)
+        self._steps_per_hour = self._infer_steps_per_hour()
+        self._step_idx = 0
         self._hour_idx = 0
 
         # Observation space bounds for the 6 appended dims:
@@ -127,6 +129,19 @@ class TempTrendWrapper(gym.Wrapper):
         )
 
     # ---------------- helpers ----------------
+
+    def _infer_steps_per_hour(self) -> int:
+        try:
+            step_size = float(self.env.get_wrapper_attr("step_size"))
+        except Exception:
+            step_size = 3600.0
+        if step_size <= 0:
+            return 1
+        return max(1, int(round(3600.0 / step_size)))
+
+    def _advance_clock(self) -> None:
+        self._step_idx += 1
+        self._hour_idx = (self._step_idx // self._steps_per_hour) % 8760
 
     def _future_window(self) -> np.ndarray:
         idx = (self._hour_idx + np.arange(self.lookahead)) % 8760
@@ -168,6 +183,8 @@ class TempTrendWrapper(gym.Wrapper):
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[np.ndarray, Dict]:
+        self._steps_per_hour = self._infer_steps_per_hour()
+        self._step_idx = 0
         self._hour_idx = 0
         obs, info = self.env.reset(seed=seed, options=options)
         sig = self._signals()
@@ -175,7 +192,7 @@ class TempTrendWrapper(gym.Wrapper):
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         obs, reward, terminated, truncated, info = self.env.step(action)
-        self._hour_idx = (self._hour_idx + 1) % 8760
+        self._advance_clock()
         sig = self._signals()
         return np.append(obs, sig).astype(np.float32), reward, terminated, truncated, info
 

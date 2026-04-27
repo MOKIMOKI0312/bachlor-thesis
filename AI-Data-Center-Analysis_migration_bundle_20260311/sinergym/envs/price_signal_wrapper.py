@@ -29,9 +29,9 @@ M2-E3b-v4 rewrite (2026-04-23, Issue P1):
     - dim 3 (hours_to_next_peak_norm): PLANNING horizon — tells the agent
       how long it has to charge TES / shift IT before the next peak tier.
 
-The wrapper maintains its own step counter (hour_of_year ∈ [0, 8759]) that
-loops each episode. It does NOT rely on the base env's time_variables, so
-ordering vs TimeEncodingWrapper is flexible.
+The wrapper maintains its own timestep counter and maps it back to
+hour_of_year, so hourly TOU data stays aligned when EnergyPlus runs with
+sub-hourly timesteps.
 
 Also exposes `info['current_price_usd_per_mwh']` each step so reward
 functions can read it (RL-Cost / RL-Green need the raw USD/MWh, not the
@@ -108,6 +108,8 @@ class PriceSignalWrapper(gym.Wrapper):
         self._max_gap_hours = max_gap
 
         self.lookahead = int(lookahead_hours)  # retained for backward compat (accessors)
+        self._steps_per_hour = self._infer_steps_per_hour()
+        self._step_idx = 0
         self._hour_idx = 0
 
         # New dim ranges (M2-E3b-v4):
@@ -121,6 +123,19 @@ class PriceSignalWrapper(gym.Wrapper):
             high=high.astype(np.float32),
             dtype=np.float32,
         )
+
+    def _infer_steps_per_hour(self) -> int:
+        try:
+            step_size = float(self.env.get_wrapper_attr("step_size"))
+        except Exception:
+            step_size = 3600.0
+        if step_size <= 0:
+            return 1
+        return max(1, int(round(3600.0 / step_size)))
+
+    def _advance_clock(self) -> None:
+        self._step_idx += 1
+        self._hour_idx = (self._step_idx // self._steps_per_hour) % 8760
 
     def _signals(self) -> Tuple[np.ndarray, float]:
         idx = self._hour_idx
@@ -138,6 +153,8 @@ class PriceSignalWrapper(gym.Wrapper):
         return np.array([current_norm, price_delta, htp], dtype=np.float32), p
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, Dict]:
+        self._steps_per_hour = self._infer_steps_per_hour()
+        self._step_idx = 0
         self._hour_idx = 0
         obs, info = self.env.reset(seed=seed, options=options)
         sig, raw = self._signals()
@@ -146,7 +163,7 @@ class PriceSignalWrapper(gym.Wrapper):
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         obs, reward, terminated, truncated, info = self.env.step(action)
-        self._hour_idx = (self._hour_idx + 1) % 8760
+        self._advance_clock()
         sig, raw = self._signals()
         info["current_price_usd_per_mwh"] = raw
         return np.append(obs, sig).astype(np.float32), reward, terminated, truncated, info

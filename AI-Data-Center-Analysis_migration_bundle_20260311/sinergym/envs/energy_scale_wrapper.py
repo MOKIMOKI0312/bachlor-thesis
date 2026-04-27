@@ -20,17 +20,17 @@ class EnergyScaleWrapper(gym.ObservationWrapper):
     """Multiply specified obs indices by a constant scale factor.
 
     Default scale 1/3.6e9 converts Joules/hour to MWh/hour. Wrapper is
-    intended to sit between WorkloadWrapper (last semantic wrapper) and
+    intended to sit after the semantic signal wrappers and before
     NormalizeObservation (first statistical wrapper) so the downstream
     RunningMeanStd sees values in the same order of magnitude as the
     other 39 obs dims.
 
     Args:
-        env: wrapped env with 41-dim obs (post WorkloadWrapper).
+        env: wrapped env with semantic observation vector before normalization.
         energy_indices: 0-indexed positions of Joule-cumulative dims.
-            For the §6.1 41-dim layout these are [12, 13]:
-              - 12: Electricity:Facility
-              - 13: ITE-CPU:InteriorEquipment:Electricity
+            For the §6.1 41-dim layout these are [13, 14]:
+              - 13: Electricity:Facility
+              - 14: ITE-CPU:InteriorEquipment:Electricity
         scale: multiplier, default 1.0/3.6e9 (J/h -> MWh/h).
     """
 

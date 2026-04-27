@@ -1,11 +1,11 @@
 """Integration smoke for the full M2 wrapper stack on a real EplusEnv.
 
-Builds:  EplusEnv → TESIncremental → TimeEncoding → TempTrend → PriceSignal →
-         PVSignal → WorkloadWrapper → (+ RL_Cost_Reward patched)
+Builds:  EplusEnv → TESTargetValve → TimeEncoding → TempTrend → PriceSignal →
+         PVSignal → EnergyScale → optional TESPriceShaping → (+ RL_Cost_Reward patched)
 
 Verifies:
-  - obs_dim == 41 (20 + 6 + 3 + 3 + 9) — post-H2a/H2b/H2c/H2d, tech route §6.1
-  - action_dim == 6
+  - obs_dim == 32 (20 + 6 + 3 + 3)
+  - action_dim == 5
   - 3 env.step calls run clean
   - reward_terms dict contains cost_term / lmp_usd_per_mwh (RL-Cost)
     or effective_price_usd_per_mwh (RL-Green)
@@ -13,6 +13,7 @@ Verifies:
 Run:
   EPLUS_PATH=... PYTHONPATH="$PWD;$EPLUS_PATH" python tools/smoke_m2_env.py --reward-cls rl_cost
   EPLUS_PATH=... PYTHONPATH="$PWD;$EPLUS_PATH" python tools/smoke_m2_env.py --reward-cls rl_green
+  EPLUS_PATH=... PYTHONPATH="$PWD;$EPLUS_PATH" python tools/smoke_m2_env.py --reward-cls rl_cost --disable-tes-tou-shaping
 """
 from __future__ import annotations
 
@@ -29,12 +30,12 @@ import gymnasium as gym
 import numpy as np
 
 from sinergym.utils.common import get_ids
-from sinergym.envs.tes_wrapper import TESIncrementalWrapper
+from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
+from sinergym.envs.tes_wrapper import TESPriceShapingWrapper, TESTargetValveWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
-from sinergym.envs.workload_wrapper import WorkloadWrapper
 
 
 def _index(obs_names: list[str], candidates: tuple[str, ...]) -> int:
@@ -56,8 +57,6 @@ def _check_obs_semantics(obs: np.ndarray, obs_names: list[str], label: str) -> d
         "pv_current": _index(obs_names, ("pv_current_ratio",)),
         "pv_slope": _index(obs_names, ("pv_future_slope",)),
         "pv_peak": _index(obs_names, ("time_to_pv_peak",)),
-        "workload": _index(obs_names, ("workload_current_utilization",)),
-        "queue": _index(obs_names, ("workload_queue_norm",)),
         "tes_soc": _index(obs_names, ("TES_SOC",)),
         "tes_avg_temp": _index(obs_names, ("TES_avg_temp",)),
         "tes_valve": _index(obs_names, ("TES_valve_wrapper_position",)),
@@ -65,7 +64,6 @@ def _check_obs_semantics(obs: np.ndarray, obs_names: list[str], label: str) -> d
 
     price_vals = obs[[idx["price_current"], idx["price_slope"], idx["price_mean"]]]
     pv_vals = obs[[idx["pv_current"], idx["pv_slope"], idx["pv_peak"]]]
-    workload_vals = obs[[idx["workload"], idx["queue"]]]
     tes_vals = obs[[idx["tes_soc"], idx["tes_avg_temp"], idx["tes_valve"]]]
 
     assert -1.0 - 1e-6 <= price_vals[0] <= 2.0 + 1e-6, (
@@ -80,9 +78,6 @@ def _check_obs_semantics(obs: np.ndarray, obs_names: list[str], label: str) -> d
     assert np.all((-1.0 - 1e-6 <= pv_vals) & (pv_vals <= 1.0 + 1e-6)), (
         f"{label}: PV dims out of expected bounds: {pv_vals}"
     )
-    assert np.all((0.0 - 1e-6 <= workload_vals) & (workload_vals <= 1.0 + 1e-6)), (
-        f"{label}: workload dims out of [0, 1]: {workload_vals}"
-    )
     assert 0.0 - 1e-6 <= tes_vals[0] <= 1.0 + 1e-6, (
         f"{label}: TES_SOC out of [0, 1]: {tes_vals[0]}"
     )
@@ -94,14 +89,12 @@ def _check_obs_semantics(obs: np.ndarray, obs_names: list[str], label: str) -> d
         f"  {label} semantic indices: "
         f"price=({idx['price_current']},{idx['price_slope']},{idx['price_mean']}), "
         f"pv=({idx['pv_current']},{idx['pv_slope']},{idx['pv_peak']}), "
-        f"workload=({idx['workload']},{idx['queue']}), "
         f"TES=({idx['tes_soc']},{idx['tes_avg_temp']},{idx['tes_valve']})"
     )
     print(
         f"  {label} semantic values: "
         f"price={np.round(price_vals, 4).tolist()}, "
         f"pv={np.round(pv_vals, 4).tolist()}, "
-        f"workload={np.round(workload_vals, 4).tolist()}, "
         f"TES={np.round(tes_vals, 4).tolist()}"
     )
     return idx
@@ -111,6 +104,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--reward-cls", default="rl_cost", choices=["pue_tes", "rl_cost", "rl_green"])
     ap.add_argument("--steps", type=int, default=3)
+    ap.add_argument("--disable-tes-tou-shaping", action="store_true")
+    ap.add_argument("--tes-teacher-weight", type=float, default=0.0)
+    ap.add_argument("--kappa-shape", type=float, default=0.0)
     args = ap.parse_args()
 
     assert "Eplus-DC-Cooling-TES" in get_ids()
@@ -121,9 +117,9 @@ def main():
         env_name=f"{stamp}_smoke_m2_{args.reward_cls}",
         building_file=["DRL_DC_training.epJSON"],
         weather_files=["CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"],
-        config_params={"runperiod": (1, 1, 2025, 31, 12, 2025), "timesteps_per_hour": 1},
+        config_params={"runperiod": (1, 1, 2025, 31, 12, 2025), "timesteps_per_hour": 4},
     )
-    env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
+    env = TESTargetValveWrapper(env, valve_idx=4, rate_limit=0.25)
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(
         env,
@@ -132,7 +128,12 @@ def main():
     )
     env = PriceSignalWrapper(env, price_csv_path="Data/prices/Jiangsu_TOU_2025_hourly.csv")
     env = PVSignalWrapper(env, pv_csv_path="Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv")
-    env = WorkloadWrapper(env, it_trace_csv="Data/AI Trace Data/Earth_hourly.csv", workload_idx=4)
+    env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
+    if not args.disable_tes_tou_shaping:
+        env = TESPriceShapingWrapper(
+            env,
+            teacher_initial_weight=args.tes_teacher_weight,
+        )
 
     # Patch reward if requested
     if args.reward_cls != "pue_tes":
@@ -156,6 +157,7 @@ def main():
             soc_warn_low=0.15, soc_warn_high=0.85,
             lambda_soc=2.0, lambda_soc_warn=1.0,
             price_series=price, alpha=2e-3, beta=1.0,  # M2-E3b-v4: 5e-4 → 2e-3（对齐 --alpha 默认）
+            kappa_shape=args.kappa_shape,
         )
         if args.reward_cls == "rl_cost":
             cls = RL_Cost_Reward
@@ -178,15 +180,18 @@ def main():
             f"got {type(env.unwrapped.reward_fn).__name__}"
         )
 
-    # Post H2a/H2b/H2c/H2d: 20 + 6 + 3 + 3 + 9 = 41 dims (tech route §6.1).
-    expected_dim = 41
+    # Post H2a/H2b/H2c/H2d: 20 + 6 + 3 + 3 = 32 dims.
+    expected_dim = 32
     assert env.observation_space.shape == (expected_dim,), (
         f"Expected obs_dim={expected_dim}, got {env.observation_space.shape}"
     )
-    assert env.action_space.shape == (6,), (
-        f"Expected action_dim=6, got {env.action_space.shape}"
+    assert env.action_space.shape == (5,), (
+        f"Expected action_dim=5, got {env.action_space.shape}"
     )
-    print(f"Env stack OK: obs_dim={expected_dim}, action_dim=6, reward={args.reward_cls}")
+    print(
+        f"Env stack OK: obs_dim={expected_dim}, action_dim=5, reward={args.reward_cls}, "
+        f"tes_tou_shaping={not args.disable_tes_tou_shaping}"
+    )
     obs_names = list(env.get_wrapper_attr("observation_variables"))
     assert len(obs_names) == expected_dim, (
         f"observation_variables length mismatch: {len(obs_names)} != {expected_dim}"
@@ -198,15 +203,16 @@ def main():
     idx = _check_obs_semantics(obs, obs_names, "reset")
 
     rng = np.random.default_rng(42)
+    pbrs_terms: list[float] = []
     for i in range(args.steps):
         if i == 0:
-            a = np.array([0.5, 0.5, 0.5, 0.5, 0.0, -1.0], dtype=np.float32)
+            a = np.array([0.5, 0.5, 0.5, 0.5, -1.0], dtype=np.float32)
         elif i == 1:
-            a = np.array([0.5, 0.5, 0.5, 0.5, 0.5, +1.0], dtype=np.float32)
+            a = np.array([0.5, 0.5, 0.5, 0.5, +1.0], dtype=np.float32)
         elif i == 2:
-            a = np.array([0.5, 0.5, 0.5, 0.5, 1.0, +1.0], dtype=np.float32)
+            a = np.array([0.5, 0.5, 0.5, 0.5, +1.0], dtype=np.float32)
         else:
-            a = rng.uniform(-1, 1, size=(6,)).astype(np.float32)
+            a = rng.uniform(-1, 1, size=(5,)).astype(np.float32)
         obs, r, term, trunc, info = env.step(a)
         assert obs.shape == (expected_dim,)
         assert np.isfinite(r)
@@ -228,10 +234,12 @@ def main():
 
         summary = {
             "step": i + 1, "reward": round(float(r), 3),
-            "wl_util": round(float(info.get("workload_utilization", 0)), 3),
-            "wl_action": int(info.get("workload_action", 1)),
-            "tes_action": round(float(a[5]), 3),
+            "tes_target_action": round(float(a[4]), 3),
             "tes_valve_obs": round(float(obs[idx["tes_valve"]]), 3),
+            "tes_valve_info": round(float(info.get("tes_valve_position", 0.0)), 3),
+            "tes_soc_target": round(float(info.get("tes_soc_target", 0.0)), 3),
+            "tes_shape": round(float(info.get("tes_shaping_total", 0.0)), 4),
+            "tes_guard": bool(info.get("tes_guard_clipped", False)),
             "pv_kw": round(float(info.get("current_pv_kw", 0)), 1),
             "lmp": round(float(info.get("current_price_usd_per_mwh", 0)), 2),
             "soc": None if soc_value is None else round(float(soc_value), 4),
@@ -244,6 +252,23 @@ def main():
         }
         print(f"  {summary}")
         print(f"    reward_terms={terms_flat}")
+        target_wrapper_keys = (
+            "tes_valve_target", "tes_valve_position", "tes_guard_clipped",
+        )
+        shaping_keys = (
+            "tes_soc_target", "tes_pbrs_term", "tes_teacher_term",
+            "tes_teacher_weight", "tes_valve_penalty", "tes_shaping_total",
+        )
+        for k in target_wrapper_keys:
+            assert k in info, f"TES shaping/target wrapper did not emit {k!r}"
+        if args.disable_tes_tou_shaping:
+            for k in shaping_keys:
+                assert k not in info, f"TES TOU shaping disabled but info still contains {k!r}"
+        else:
+            for k in shaping_keys:
+                assert k in info, f"TES shaping wrapper did not emit {k!r}"
+            assert abs(float(info["tes_teacher_weight"]) - args.tes_teacher_weight) < 1e-9
+            pbrs_terms.append(float(info["tes_pbrs_term"]))
 
         # Hard assertion — do not let a silent SoC-drop slip through.
         assert soc_value is not None, (
@@ -281,6 +306,11 @@ def main():
                     f"reward_fn patch likely failed (type="
                     f"{type(env.unwrapped.reward_fn).__name__})."
                 )
+
+    if not args.disable_tes_tou_shaping:
+        assert any(abs(v) > 1e-12 for v in pbrs_terms), (
+            "TES target-SOC PBRS emitted only zero terms during smoke."
+        )
 
     env.close()
     print("=" * 60)

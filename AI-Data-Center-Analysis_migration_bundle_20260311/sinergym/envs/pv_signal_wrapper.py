@@ -46,6 +46,8 @@ class PVSignalWrapper(gym.Wrapper):
         self._dc_peak = float(dc_peak_load_kw)
         self._pv_ratio = np.clip(pv_kw / self._dc_peak, 0.0, 1.0)
         self.lookahead = int(lookahead_hours)
+        self._steps_per_hour = self._infer_steps_per_hour()
+        self._step_idx = 0
         self._hour_idx = 0
 
         # Pre-compute "hours until next daily peak" for every hour of the year.
@@ -71,6 +73,19 @@ class PVSignalWrapper(gym.Wrapper):
             dtype=np.float32,
         )
 
+    def _infer_steps_per_hour(self) -> int:
+        try:
+            step_size = float(self.env.get_wrapper_attr("step_size"))
+        except Exception:
+            step_size = 3600.0
+        if step_size <= 0:
+            return 1
+        return max(1, int(round(3600.0 / step_size)))
+
+    def _advance_clock(self) -> None:
+        self._step_idx += 1
+        self._hour_idx = (self._step_idx // self._steps_per_hour) % 8760
+
     def _future_window(self) -> np.ndarray:
         idx = (self._hour_idx + np.arange(self.lookahead)) % 8760
         return self._pv_ratio[idx]
@@ -89,6 +104,8 @@ class PVSignalWrapper(gym.Wrapper):
         return np.array([current, slope, ttp], dtype=np.float32), raw_pv
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, Dict]:
+        self._steps_per_hour = self._infer_steps_per_hour()
+        self._step_idx = 0
         self._hour_idx = 0
         obs, info = self.env.reset(seed=seed, options=options)
         sig, raw = self._signals()
@@ -97,7 +114,7 @@ class PVSignalWrapper(gym.Wrapper):
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         obs, reward, terminated, truncated, info = self.env.step(action)
-        self._hour_idx = (self._hour_idx + 1) % 8760
+        self._advance_clock()
         sig, raw = self._signals()
         info["current_pv_kw"] = raw
         return np.append(obs, sig).astype(np.float32), reward, terminated, truncated, info

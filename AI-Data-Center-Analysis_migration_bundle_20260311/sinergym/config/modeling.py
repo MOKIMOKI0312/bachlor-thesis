@@ -303,6 +303,73 @@ class ModelJSON(object):
                     'Updated timesteps per episode: {}'.format(
                         self.timestep_per_episode))
 
+    def apply_tes_initial_soc_randomization(self, rng: Any = None) -> Optional[Dict[str, float]]:
+        """Randomize the physical initial SOC of the chilled-water TES.
+
+        EnergyPlus initializes ``ThermalStorage:ChilledWater:Mixed`` from the
+        tank setpoint schedule at the start of the environment. To randomize
+        the real tank state without changing the normal charge target, replace
+        the constant setpoint schedule by a compact schedule that holds the
+        sampled initial temperature only for the first simulation timestep and
+        then returns to the nominal cold setpoint.
+        """
+        config = self.config or {}
+        soc_range = config.get('tes_initial_soc_range')
+        if soc_range is None:
+            return None
+        if len(soc_range) != 2:
+            raise ValueError('tes_initial_soc_range must be a 2-element sequence')
+
+        low, high = float(soc_range[0]), float(soc_range[1])
+        if not (0.0 <= low <= high <= 1.0):
+            raise ValueError(
+                f'tes_initial_soc_range must satisfy 0 <= low <= high <= 1, got {soc_range!r}'
+            )
+
+        if rng is not None and hasattr(rng, 'uniform'):
+            soc = float(rng.uniform(low, high))
+        else:
+            soc = float(random.uniform(low, high))
+
+        cold_temp = float(config.get('tes_soc_cold_temp', 6.0))
+        hot_temp = float(config.get('tes_soc_hot_temp', 12.0))
+        nominal_setpoint = float(config.get('tes_charge_setpoint', cold_temp))
+        schedule_name = config.get('tes_initial_schedule_name', 'TES_Charge_Setpoint')
+        until_time = config.get('tes_initial_schedule_until', '00:15')
+        init_temp = hot_temp - soc * (hot_temp - cold_temp)
+
+        self.building.setdefault('Schedule:Constant', {}).pop(schedule_name, None)
+        self.building.setdefault('Schedule:Compact', {})[schedule_name] = {
+            'schedule_type_limits_name': 'Temperature',
+            'data': [
+                {'field': 'Through: 12/31'},
+                {'field': 'For: AllDays'},
+                {'field': f'Until: {until_time}'},
+                {'field': init_temp},
+                {'field': 'Until: 24:00'},
+                {'field': nominal_setpoint},
+            ],
+        }
+
+        state = {
+            'initial_soc': soc,
+            'initial_tank_temperature_c': init_temp,
+            'nominal_setpoint_c': nominal_setpoint,
+            'soc_low': low,
+            'soc_high': high,
+        }
+        self.last_tes_initial_state = state
+        if self.episode_path is not None:
+            metadata_path = os.path.join(self.episode_path, 'tes_initial_state.json')
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2)
+        self.logger.info(
+            'TES initial SOC randomized: SOC={:.3f}, initial tank setpoint={:.3f} C'.format(
+                soc, init_temp
+            )
+        )
+        return state
+
     def save_building_model(self) -> str:
         """Take current building model and save as epJSON in current episode path folder.
 
@@ -566,11 +633,19 @@ class ModelJSON(object):
             self.logger.error('Experiment path is not specified.')
             raise Exception
         else:
-            episode_path = self._get_working_folder(
-                directory_path=self.experiment_path,
-                prefix='episode-')
-            # Create directoy
-            os.makedirs(episode_path)
+            for _ in range(100):
+                episode_path = self._get_working_folder(
+                    directory_path=self.experiment_path,
+                    prefix='episode-')
+                try:
+                    os.makedirs(episode_path)
+                    break
+                except FileExistsError:
+                    time.sleep(random.uniform(0.01, 0.2))
+            else:
+                raise RuntimeError(
+                    f'Could not create a unique episode directory in {self.experiment_path}'
+                )
             # set path like config attribute
             self.episode_path = episode_path
 
@@ -595,12 +670,19 @@ class ModelJSON(object):
         run_kind = self._infer_run_kind(env_name)
         category_dir = os.path.join(CWD, run_kind)
 
-        # Generate experiment dir path
-        experiment_path = self._get_working_folder(
-            directory_path=category_dir,
-            prefix='run-')
-        # Create dir
-        os.makedirs(experiment_path)
+        for _ in range(100):
+            experiment_path = self._get_working_folder(
+                directory_path=category_dir,
+                prefix='run-')
+            try:
+                os.makedirs(experiment_path)
+                break
+            except FileExistsError:
+                time.sleep(random.uniform(0.01, 0.2))
+        else:
+            raise RuntimeError(
+                f'Could not create a unique experiment directory in {category_dir}'
+            )
         # set path like config attribute
         self.experiment_path = experiment_path
 
@@ -719,6 +801,23 @@ class ModelJSON(object):
                         self.logger.critical(
                             'Extra Config: Runperiod specified in extra configuration has an incorrect format (tuple with 6 elements).')
                         raise err
+                elif config_key == 'tes_initial_soc_range':
+                    try:
+                        value = self.config[config_key]
+                        assert len(value) == 2
+                        assert 0.0 <= float(value[0]) <= float(value[1]) <= 1.0
+                    except (AssertionError, TypeError, ValueError) as err:
+                        self.logger.critical(
+                            'Extra Config: tes_initial_soc_range must be a 2-element range within [0, 1].')
+                        raise err
+                elif config_key in (
+                    'tes_soc_cold_temp',
+                    'tes_soc_hot_temp',
+                    'tes_charge_setpoint',
+                    'tes_initial_schedule_until',
+                    'tes_initial_schedule_name',
+                ):
+                    pass
                 else:
                     self.logger.error(
                         'Extra Config: Key name specified in config called [{}] is not available in Sinergym.'.format(config_key))

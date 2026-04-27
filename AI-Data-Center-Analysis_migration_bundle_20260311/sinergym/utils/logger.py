@@ -147,18 +147,36 @@ class CSVLogger(object):
         Returns:
             List: Row content created in order to being logged.
         """
-        return [
-            info.get('timestep')] + list(obs) + list(action) + [
-            info.get('time_elapsed(hours)'),
-            info.get('reward'),
-            info.get('energy_term'),
-            info.get('comfort_term'),
-            info.get('abs_energy_penalty'),
-            info.get('abs_comfort_penalty'),
-            info.get('total_power_demand'),
-            info.get('total_temperature_violation'),
-            terminated,
-            truncated]
+        headers = self.monitor_header.split(',')
+        obs_values = list(obs)
+        if isinstance(action, (np.ndarray, list, tuple)):
+            action_values = list(action)
+        else:
+            action_values = [action]
+
+        obs_start = 1
+        obs_end = obs_start + len(obs_values)
+        action_start = obs_end
+        action_end = action_start + len(action_values)
+
+        aliases = {
+            'time (hours)': 'time_elapsed(hours)',
+        }
+        row = []
+        for idx, name in enumerate(headers):
+            if idx == 0 and name == 'timestep':
+                row.append(info.get('timestep'))
+            elif obs_start <= idx < obs_end:
+                row.append(obs_values[idx - obs_start])
+            elif action_start <= idx < action_end:
+                row.append(action_values[idx - action_start])
+            elif name == 'terminated':
+                row.append(terminated)
+            elif name == 'truncated':
+                row.append(truncated)
+            else:
+                row.append(info.get(aliases.get(name, name)))
+        return row
 
     def _store_step_information(
             self,

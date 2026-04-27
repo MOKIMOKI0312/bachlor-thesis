@@ -302,6 +302,7 @@ class EplusEnv(gym.Env):
 
         # Readapt building to epw
         self.model.adapt_building_to_epw()
+        tes_initial_state = self.model.apply_tes_initial_soc_randomization(self.np_random)
         # Copy stat file to the working dir
         stat_file = os.path.basename(used_weather_path).replace('.epw', '.stat')
         source_path = os.path.join(PKG_DATA_PATH, 'weather', stat_file)
@@ -350,6 +351,11 @@ class EplusEnv(gym.Env):
 
 
         info.update({'timestep': self.timestep})
+        if tes_initial_state is not None:
+            info.update({
+                'tes_initial_soc': tes_initial_state['initial_soc'],
+                'tes_initial_tank_temperature_c': tes_initial_state['initial_tank_temperature_c'],
+            })
         self.last_obs = obs
         self.last_info = info
 

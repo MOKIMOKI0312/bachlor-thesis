@@ -1,6 +1,6 @@
-"""M2 evaluation on CAISO SiliconValley + full wrapper stack.
+"""M2 evaluation on Nanjing + Jiangsu TOU + full wrapper stack.
 
-Loads a single seed's checkpoint + training normalization stats (41-dim M2
+Loads a single seed's checkpoint + training normalization stats (32-dim M2
 env), runs a deterministic year-long evaluation, outputs:
     - PUE / comfort pct / facility MWh / ITE MWh (standard)
     - cost_usd_annual (LMP × P_facility integrated)
@@ -38,23 +38,23 @@ import pandas as pd
 
 from sinergym.utils.common import get_ids
 from sinergym.utils.wrappers import LoggerWrapper, NormalizeObservation
-from sinergym.envs.tes_wrapper import TESIncrementalWrapper
+from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
+from sinergym.envs.tes_wrapper import TESTargetValveWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
-from sinergym.envs.workload_wrapper import WorkloadWrapper
 from tools.dsac_t import DSAC_T
 
 # M2-E3b-v3 (2026-04-22): Nanjing + Jiangsu 2025 TOU 合成电价 (见 run_m2_training.py)
 DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
 DEFAULT_PRICE_CSV = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
 DEFAULT_PV_CSV = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
-DEFAULT_IT_TRACE = "Data/AI Trace Data/Earth_hourly.csv"
 
 # TES sizing (from 建筑模型说明.md) — used for annual cycle estimate
 TES_TANK_M3 = 1400.0
-TES_MAX_FLOW_KG_S = 97.2  # 1400 m³ / 4 h
+TES_MAX_FLOW_KG_S = 389.0  # EMS P_5 Max_Flow, current mixed-tank model
+M2_TIMESTEPS_PER_HOUR = 4
 
 
 def build_env(args) -> gym.Env:
@@ -63,10 +63,19 @@ def build_env(args) -> gym.Env:
         env_name=f"eval-m2-{args.tag}",
         building_file="DRL_DC_evaluation.epJSON",
         weather_files=args.epw,
-        config_params={"runperiod": (1, 1, 2025, 31, 12, 2025), "timesteps_per_hour": 1},
+        config_params={
+            "runperiod": (1, 1, 2025, 31, 12, 2025),
+            "timesteps_per_hour": M2_TIMESTEPS_PER_HOUR,
+        },
         evaluation_flag=1,
     )
-    env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
+    env = TESTargetValveWrapper(
+        env,
+        valve_idx=4,
+        rate_limit=args.tes_valve_rate_limit,
+        soc_low_guard=args.tes_guard_soc_low,
+        soc_high_guard=args.tes_guard_soc_high,
+    )
     env = TimeEncodingWrapper(env)
     # H2c: 6-dim outdoor temperature trend features (tech route §6.1-C)
     env = TempTrendWrapper(
@@ -76,8 +85,7 @@ def build_env(args) -> gym.Env:
     )
     env = PriceSignalWrapper(env, price_csv_path=args.price_csv)
     env = PVSignalWrapper(env, pv_csv_path=args.pv_csv, dc_peak_load_kw=args.dc_peak_load_kw)
-    env = WorkloadWrapper(env, it_trace_csv=args.it_trace, workload_idx=4,
-                          flexible_fraction=args.flexible_fraction)
+    env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
     return env
 
 
@@ -95,13 +103,17 @@ def attach_reward(env: gym.Env, args) -> gym.Env:
         ITE_variables=["ITE-CPU:InteriorEquipment:Electricity"],
         range_comfort_winter=(18.0, 25.0),
         range_comfort_summer=(18.0, 25.0),
-        energy_weight=0.5, lambda_energy=1.0, lambda_temperature=3.0,
+        energy_weight=0.5, lambda_energy=1.0, lambda_temperature=1.0,
         soc_variable="TES_SOC",
         soc_low=0.15, soc_high=0.85,
         # M2-E3b-v4 P3 (2026-04-23): 放松 soc 约束，让 cost_term 主导 TOU 学习
         soc_warn_low=0.15, soc_warn_high=0.85,
         lambda_soc=2.0, lambda_soc_warn=1.0,
         price_series=price, alpha=args.alpha, beta=args.beta,
+        kappa_shape=args.kappa_shape,
+        gamma_pbrs=args.gamma_pbrs,
+        tau_decay=args.tau_decay,
+        p_peak_ref=args.p_peak_ref,
     )
     if args.reward_cls == "rl_cost":
         cls = RL_Cost_Reward
@@ -138,9 +150,9 @@ def evaluate(args) -> dict:
 
     mean = np.loadtxt(args.workspace / "mean.txt", dtype="float")
     var = np.loadtxt(args.workspace / "var.txt", dtype="float")
-    if mean.shape[0] != 41 or var.shape[0] != 41:
+    if mean.shape[0] != 32 or var.shape[0] != 32:
         raise RuntimeError(
-            f"Expected 41-dim M2 normalization stats, got mean={mean.shape}, var={var.shape}. "
+            f"Expected 32-dim M2 normalization stats, got mean={mean.shape}, var={var.shape}. "
             f"Confirm --workspace points to an M2 training run."
         )
 
@@ -153,6 +165,7 @@ def evaluate(args) -> dict:
         env,
         monitor_header=["timestep"] + list(obs_vars) + list(act_vars)
         + ["time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "cost_term",
+           "tes_valve_target", "tes_valve_position", "tes_guard_clipped", "tes_action_mode",
            "terminated", "truncated"],
     )
 
@@ -190,7 +203,7 @@ def evaluate(args) -> dict:
 
     # Parse monitor.csv with pandas (avoids csv.DictReader duplicate-header issue)
     monitor_path = workspace_post / "episode-001" / "monitor.csv"
-    df = pd.read_csv(monitor_path)
+    df = pd.read_csv(monitor_path, index_col=False)
     # L1 fix (2026-04-19): guard against duplicate monitor columns — if a
     # wrapper re-introduces a name clash (see M1 TES_valve_position bug),
     # pandas silently renames the second column to `col.1` and a by-name read
@@ -200,37 +213,85 @@ def evaluate(args) -> dict:
         f"{df.columns[df.columns.duplicated()].tolist()}"
     )
 
-    facility_J = df["Electricity:Facility"].astype(float)
-    ite_J = df["ITE-CPU:InteriorEquipment:Electricity"].astype(float)
+    facility_energy = df["Electricity:Facility"].astype(float)
+    ite_energy = df["ITE-CPU:InteriorEquipment:Electricity"].astype(float)
     temps = df["air_temperature"].astype(float)
     valves = df["TES_valve_wrapper_position"].astype(float)
     soc = df["TES_SOC"].astype(float)
+    valve_active_fraction = float((valves.abs() > 0.05).mean())
+    valve_saturation_fraction = float((valves.abs() > 0.95).mean())
+    charge_fraction = float((valves < -0.05).mean())
+    discharge_fraction = float((valves > 0.05).mean())
 
-    total_facility_MWh = float(facility_J.sum() / 3.6e9)
-    total_ite_MWh = float(ite_J.sum() / 3.6e9)
+    # M2-F1 evaluation includes EnergyScaleWrapper, so monitor.csv energy
+    # columns may already be MWh per timestep. Older runs without that wrapper
+    # still contain raw Joules. Detect by magnitude for backward compatibility.
+    if float(facility_energy.abs().median()) > 1.0e5:
+        facility_MWh_step = (facility_energy / 3.6e9).to_numpy()
+        ite_MWh_step = (ite_energy / 3.6e9).to_numpy()
+        energy_unit = "J"
+    else:
+        facility_MWh_step = facility_energy.to_numpy()
+        ite_MWh_step = ite_energy.to_numpy()
+        energy_unit = "MWh"
+
+    total_facility_MWh = float(facility_MWh_step.sum())
+    total_ite_MWh = float(ite_MWh_step.sum())
     pue = total_facility_MWh / total_ite_MWh if total_ite_MWh > 0 else float("nan")
     comfort_pct = float((temps > 25.0).sum() / max(len(temps), 1) * 100)
 
-    # Cost (USD): facility_MWh * LMP (aligned by hour; CSV has 8760 hourly rows)
+    # Cost (USD): each row is one EnergyPlus timestep; hourly price/PV data is
+    # repeated for all sub-hour timesteps inside that hour.
+    steps_per_hour = M2_TIMESTEPS_PER_HOUR
+    dt_hours = 1.0 / steps_per_hour
     lmp = pd.read_csv(args.price_csv)["price_usd_per_mwh"].to_numpy()
-    facility_MWh_hourly = (facility_J / 3.6e9).to_numpy()
-    n = min(len(lmp), len(facility_MWh_hourly))
-    cost_usd_annual = float((facility_MWh_hourly[:n] * lmp[:n]).sum())
+    hour_idx = (np.arange(len(facility_MWh_step)) // steps_per_hour) % len(lmp)
+    lmp_step = lmp[hour_idx]
+    cost_usd_annual = float((facility_MWh_step * lmp_step).sum())
+    if "price_current_norm" in df.columns:
+        price_signal = df["price_current_norm"].astype(float)
+    else:
+        price_signal = pd.Series(lmp_step, index=df.index, dtype=float)
+    low_price = valves[price_signal <= price_signal.quantile(0.25)]
+    high_price = valves[price_signal >= price_signal.quantile(0.75)]
+    price_low_valve_mean = float(low_price.mean()) if len(low_price) else None
+    price_high_valve_mean = float(high_price.mean()) if len(high_price) else None
+    price_response_high_minus_low = (
+        price_high_valve_mean - price_low_valve_mean
+        if price_high_valve_mean is not None and price_low_valve_mean is not None
+        else None
+    )
 
     # PV self-consumption
     pv = pd.read_csv(args.pv_csv)["power_kw"].to_numpy()
-    facility_kW_hourly = facility_MWh_hourly * 1000.0  # MWh/h = MW → kW
-    self_cons = np.minimum(facility_kW_hourly[:n], pv[:n]).sum()
-    pv_self_consumption_pct = float(self_cons / facility_kW_hourly[:n].sum() * 100
-                                     if facility_kW_hourly[:n].sum() > 0 else 0)
+    pv_step = pv[hour_idx]
+    if "pv_current_ratio" in df.columns:
+        pv_signal = df["pv_current_ratio"].astype(float)
+    else:
+        pv_signal = pd.Series(pv_step, index=df.index, dtype=float)
+    low_pv = valves[pv_signal <= pv_signal.quantile(0.25)]
+    high_pv = valves[pv_signal >= pv_signal.quantile(0.75)]
+    pv_low_valve_mean = float(low_pv.mean()) if len(low_pv) else None
+    pv_high_valve_mean = float(high_pv.mean()) if len(high_pv) else None
+    pv_response_high_minus_low = (
+        pv_high_valve_mean - pv_low_valve_mean
+        if pv_high_valve_mean is not None and pv_low_valve_mean is not None
+        else None
+    )
+    facility_kW_step = facility_MWh_step / dt_hours * 1000.0
+    self_cons_kWh = np.minimum(facility_kW_step, pv_step).sum() * dt_hours
+    facility_kWh = facility_MWh_step.sum() * 1000.0
+    pv_self_consumption_pct = float(
+        self_cons_kWh / facility_kWh * 100 if facility_kWh > 0 else 0
+    )
 
     # TES activation: annual cycles + SOC daily amplitude
-    # 1 cycle = |valve_fraction| × TES_MAX_FLOW integrated over 1 hour / tank_volume
+    # 1 cycle = |valve_fraction| × TES_MAX_FLOW integrated over each timestep / tank_volume
     # Rough proxy: total_charge_volume_kg / rho_water ≈ cumulative valve hours × 97.2 kg/s × 3600
     valve_abs_mean = float(valves.abs().mean())
     # M4 fix (2026-04-19): apply EMS P_5 deadband before the linear scaling.
     # Data/buildings/DRL_DC_{training,evaluation}.epJSON -> Program P_5:
-    #   SET Flow = @Abs TES_Signal * Max_Flow   (Max_Flow = 97.2 kg/s, strictly linear)
+    #   SET Flow = @Abs TES_Signal * Max_Flow   (Max_Flow = 389.0 kg/s, strictly linear)
     #   IF TES_Signal > 0.01         -> charge at Flow
     #   ELSEIF TES_Signal < -0.01    -> discharge at Flow
     #   (else)                       -> Flow = 0  (dead band, avoids valve chatter)
@@ -239,16 +300,23 @@ def evaluate(args) -> dict:
     # wrapper inflate cycles_rough and can flip `tes_activated` spuriously.
     # No upper saturation is needed: the wrapper clips v to [-1, 1] upstream,
     # and P_5 has no other non-linearities (no PID, no hysteresis).
-    # Each timestep is 1h = 3600 s at 97.2 kg/s max. |valve| fraction of that:
-    #   mass_kg_step  = |v|_eff * 97.2 * 3600
+    # Each M2 timestep is 15 min at 389.0 kg/s max. |valve| fraction of that:
+    #   mass_kg_step  = |v|_eff * 389.0 * (3600 / steps_per_hour)
     #   volume_m3     = mass_kg / 1000 (rho_water ~= 1000 kg/m^3)
     #   cycles        = sum(volume_m3) / tank_volume_m3
     valves_effective = np.where(valves.abs() > 0.01, valves.abs(), 0.0)
-    cycles_rough = float(valves_effective.sum() * TES_MAX_FLOW_KG_S * 3600 / 1000 / TES_TANK_M3)
+    cycles_rough = float(
+        valves_effective.sum()
+        * TES_MAX_FLOW_KG_S
+        * (3600 / steps_per_hour)
+        / 1000
+        / TES_TANK_M3
+    )
     # SOC daily amplitude: mean of (daily max - daily min)
     soc_np = soc.to_numpy()
-    n_days = len(soc_np) // 24
-    daily_amp = np.array([soc_np[d*24:(d+1)*24].max() - soc_np[d*24:(d+1)*24].min()
+    steps_per_day = 24 * steps_per_hour
+    n_days = len(soc_np) // steps_per_day
+    daily_amp = np.array([soc_np[d*steps_per_day:(d+1)*steps_per_day].max() - soc_np[d*steps_per_day:(d+1)*steps_per_day].min()
                           for d in range(n_days)])
     soc_daily_amplitude_mean = float(daily_amp.mean()) if len(daily_amp) else 0.0
 
@@ -262,6 +330,7 @@ def evaluate(args) -> dict:
         "total_reward": total_reward,
         "total_facility_MWh": total_facility_MWh,
         "total_ite_MWh": total_ite_MWh,
+        "energy_unit_detected": energy_unit,
         "pue": pue,
         "comfort_violation_pct": comfort_pct,
         "mean_temperature_C": float(temps.mean()),
@@ -273,6 +342,16 @@ def evaluate(args) -> dict:
         "tes_soc_daily_amplitude_mean": soc_daily_amplitude_mean,
         "tes_activated": tes_activated,
         "valve_mean_abs": valve_abs_mean,
+        "valve_active_fraction": valve_active_fraction,
+        "valve_saturation_fraction": valve_saturation_fraction,
+        "charge_fraction": charge_fraction,
+        "discharge_fraction": discharge_fraction,
+        "price_low_valve_mean": price_low_valve_mean,
+        "price_high_valve_mean": price_high_valve_mean,
+        "price_response_high_minus_low": price_response_high_minus_low,
+        "pv_low_valve_mean": pv_low_valve_mean,
+        "pv_high_valve_mean": pv_high_valve_mean,
+        "pv_response_high_minus_low": pv_response_high_minus_low,
         "monitor_csv": str(monitor_path),
         "elapsed_seconds": time.perf_counter() - started,
     }
@@ -287,13 +366,18 @@ def main() -> None:
     ap.add_argument("--epw", default=DEFAULT_EPW)
     ap.add_argument("--price-csv", default=DEFAULT_PRICE_CSV)
     ap.add_argument("--pv-csv", default=DEFAULT_PV_CSV)
-    ap.add_argument("--it-trace", default=DEFAULT_IT_TRACE)
     ap.add_argument("--dc-peak-load-kw", type=float, default=6000.0)
-    ap.add_argument("--flexible-fraction", type=float, default=0.3)
     ap.add_argument("--alpha", type=float, default=2e-3)
     ap.add_argument("--beta", type=float, default=1.0)
     ap.add_argument("--c-pv", type=float, default=0.0)
     ap.add_argument("--pv-threshold-kw", type=float, default=100.0)
+    ap.add_argument("--kappa-shape", type=float, default=0.0)
+    ap.add_argument("--gamma-pbrs", type=float, default=0.99)
+    ap.add_argument("--tau-decay", type=float, default=4.0)
+    ap.add_argument("--p-peak-ref", type=float, default=0.80)
+    ap.add_argument("--tes-valve-rate-limit", type=float, default=0.25)
+    ap.add_argument("--tes-guard-soc-low", type=float, default=0.10)
+    ap.add_argument("--tes-guard-soc-high", type=float, default=0.90)
     ap.add_argument("--out", type=Path, default=None, help="Output JSON path (default: runs/eval_m2/<tag>/result.json)")
     args = ap.parse_args()
 

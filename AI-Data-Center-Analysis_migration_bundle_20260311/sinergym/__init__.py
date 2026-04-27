@@ -123,9 +123,9 @@ _register_if_missing(
         'building_file': 'DRL_DC_evaluation.epJSON',
         'weather_files': 'AUS_NSW_Sydney.Intl.AP.947670_TMYx.2009-2023.epw',
         'action_space': gym.spaces.Box(
-            low=np.array([0, 0, 0, 0, 0, -1], dtype=np.float32),
-            high=np.array([1, 1, 1, 1, 1, 1], dtype=np.float32),
-            shape=(6,),
+            low=np.array([0, 0, 0, 0, -1], dtype=np.float32),
+            high=np.array([1, 1, 1, 1, 1], dtype=np.float32),
+            shape=(5,),
             dtype=np.float32),
         'time_variables': ['month', 'day_of_month', 'hour'],
         'variables': {
@@ -165,8 +165,6 @@ _register_if_missing(
             'act_CT_Pump': (
                 'Pump Mass Flow Rate',
                 'CONDENSER WATER LOOP CONSTANT PUMP'),
-            # [H2b] act_ITE removed — duplicated SustainDC 'workload_current_utilization'
-            # (tech route §6.1-D). If SustainDC queue obs disabled, re-add here.
             'TES_SOC': (
                 'Schedule Value',
                 'TES_SOC_Obs'),
@@ -177,7 +175,7 @@ _register_if_missing(
         "meters": {
             "Electricity:Facility": "Electricity:Facility",
             "ITE-CPU:InteriorEquipment:Electricity": "ITE-CPU:InteriorEquipment:Electricity",
-            # [H2b] Water:Facility removed per tech route §6.1-E (not part of 41-dim obs)
+            # [H2b] Water:Facility removed per tech route §6.1-E (not part of M2 obs)
         },
         'actuators': {
             'CRAH_Fan_DRL': (
@@ -196,10 +194,6 @@ _register_if_missing(
                 'Schedule:Constant',
                 'Schedule Value',
                 'Chiller_T_Set'),
-            'ITE_DRL': (
-                'Schedule:Constant',
-                'Schedule Value',
-                'ITE_Set'),
             'TES_DRL': (
                 'Schedule:Constant',
                 'Schedule Value',
@@ -214,7 +208,7 @@ _register_if_missing(
             'range_comfort_summer': (18.0, 25.0),
             'energy_weight': 1/2,
             'lambda_energy': 1,
-            'lambda_temperature': 1.0,  # M2-E3b: 3.0 → 1.0，workload wrapper 已提供热负载控制，无需 3× 放大（E3 实测 λ=3 导致 comfort 压倒 cost）
+            'lambda_temperature': 1.0,  # M2-E3b: 3.0 -> 1.0; avoid comfort dominating cost/TES learning.
             'soc_variable': 'TES_SOC',
             'soc_low': 0.15,
             'soc_high': 0.85,
@@ -227,7 +221,7 @@ _register_if_missing(
         'env_name': 'DC-DRL-TES',
         'config_params': {
             'runperiod': (1, 1, 2025, 31, 12, 2025),
-            'timesteps_per_hour': 1
+            'timesteps_per_hour': 4
         },
         'evaluation_flag': 0})
 

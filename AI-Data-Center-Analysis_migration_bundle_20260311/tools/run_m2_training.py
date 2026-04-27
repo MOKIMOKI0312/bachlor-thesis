@@ -1,17 +1,19 @@
-"""M2 training launcher — 41-dim obs / 6-dim action, CAISO SiliconValley site.
+"""M2 training launcher — 32-dim obs / 5-dim action, Nanjing + Jiangsu TOU site.
 
 Wrapper chain (inside to outside):
-  EplusEnv (19 raw dims, 6 absolute actions)   — built from Eplus-DC-Cooling-TES
-  → TESIncrementalWrapper  (+1 dim → 20)      — action[5] = Δvalve
+  EplusEnv (19 raw dims, 5 absolute actions, 15-min timestep) — built from Eplus-DC-Cooling-TES
+  → TESTargetValveWrapper  (+1 dim → 20)      — action[4] = target TES valve, rate_limit=0.25
   → TimeEncodingWrapper    (-5 +1 +4 = 20)     — drop raw time & CRAH raw, merge CRAH_diff, add sin/cos
   → TempTrendWrapper       (+6 dim → 26)       — outdoor temperature lookahead trend (§6.1-C)
   → PriceSignalWrapper     (+3 dim → 29)
   → PVSignalWrapper        (+3 dim → 32)
-  → WorkloadWrapper        (+9 dim → 41)       — action[4] = discretised workload
+  → EnergyScaleWrapper     (scale MWh meter obs only)
+  → TESPriceShapingWrapper (training reward shaping only)
   → NormalizeObservation
   → LoggerWrapper
 
-Final obs_dim = 41 (tech route §6.1).
+Final obs_dim = 32. M2 does not include a workload action; ITE load stays on
+the fixed epJSON schedule unless changed outside this agent action stack.
 
 Reward class selectable via --reward-cls {rl_cost, rl_green}. Defaults to
 rl_cost. RL_Cost and RL_Green accept the PriceSignalWrapper / PVSignalWrapper
@@ -32,6 +34,8 @@ from pathlib import Path
 # Torch + EnergyPlus both ship libiomp5md.dll on Windows; allow duplicate
 # (unsafe but universally used workaround — same as M1 env setup).
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -40,18 +44,19 @@ if str(ROOT) not in sys.path:
 import gymnasium as gym
 import numpy as np
 import torch
+torch.set_num_threads(2)
+torch.set_num_interop_threads(1)
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 
 from sinergym.utils.common import get_ids
 from sinergym.utils.training_monitor import StatusCallback, make_probe_logger_factory
 from sinergym.utils.wrappers import LoggerWrapper, NormalizeObservation
-from sinergym.envs.tes_wrapper import TESIncrementalWrapper
+from sinergym.envs.tes_wrapper import TESPriceShapingWrapper, TESTargetValveWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
-from sinergym.envs.workload_wrapper import WorkloadWrapper
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
 
 # M2-E3b-v3 (2026-04-22): CAISO → Nanjing + Jiangsu TOU
@@ -60,7 +65,6 @@ from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
 DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
 DEFAULT_PRICE_CSV = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
 DEFAULT_PV_CSV = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
-DEFAULT_IT_TRACE = "Data/AI Trace Data/Earth_hourly.csv"
 
 
 def set_global_seed(seed: int) -> None:
@@ -78,8 +82,16 @@ def build_env(args) -> gym.Env:
     weather_files = [args.epw]
     config_params = {
         "runperiod": (1, 1, 2025, 31, 12, 2025),
-        "timesteps_per_hour": 1,
+        "timesteps_per_hour": 4,
     }
+    if not args.disable_tes_init_randomization:
+        config_params.update({
+            "tes_initial_soc_range": (args.tes_init_soc_low, args.tes_init_soc_high),
+            "tes_soc_cold_temp": 6.0,
+            "tes_soc_hot_temp": 12.0,
+            "tes_charge_setpoint": 6.0,
+            "tes_initial_schedule_until": "00:15",
+        })
     stamp = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     env_name = f"{stamp}_m2_{args.reward_cls}_seed{args.seed}"
 
@@ -92,7 +104,13 @@ def build_env(args) -> gym.Env:
     )
     env.action_space.seed(args.seed)
 
-    env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
+    env = TESTargetValveWrapper(
+        env,
+        valve_idx=4,
+        rate_limit=args.tes_valve_rate_limit,
+        soc_low_guard=args.tes_guard_soc_low,
+        soc_high_guard=args.tes_guard_soc_high,
+    )
     env = TimeEncodingWrapper(env)
     # H2c: 6-dim outdoor temperature trend features (tech route §6.1-C)
     env = TempTrendWrapper(
@@ -104,19 +122,30 @@ def build_env(args) -> gym.Env:
     env = PVSignalWrapper(
         env, pv_csv_path=args.pv_csv, dc_peak_load_kw=args.dc_peak_load_kw, lookahead_hours=6
     )
-    env = WorkloadWrapper(
-        env,
-        it_trace_csv=args.it_trace,
-        workload_idx=4,
-        flexible_fraction=args.flexible_fraction,
-    )
     # B3 fix (2026-04-23, corrected): Electricity:Facility (idx 13) and
     # ITE-CPU:InteriorEquipment:Electricity (idx 14) are EnergyPlus Output:Meter
     # cumulative-Joules values ~3e10 J/h. obs[12]=TES_avg_temp (NOT energy! 0-indexed,
-    # see expected_names in H2d assertion). All other 39 obs dims sit in [-5e-6, 1560].
+    # see expected_names in H2d assertion). Other obs dims sit in much smaller ranges.
     # Rescale J/h -> MWh/h (÷3.6e9) so NormalizeObservation's RunningMeanStd doesn't
     # lose float32 precision absorbing 10^10-magnitude samples.
     env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
+    if not args.disable_tes_tou_shaping:
+        env = TESPriceShapingWrapper(
+            env,
+            gamma=args.gamma_pbrs,
+            kappa=args.tes_target_soc_kappa,
+            teacher_initial_weight=args.tes_teacher_weight,
+            teacher_decay_episodes=args.tes_teacher_decay_episodes,
+            valve_penalty_weight=args.tes_valve_penalty_weight,
+            high_price_threshold=args.tes_high_price_threshold,
+            low_price_threshold=args.tes_low_price_threshold,
+            near_peak_threshold=args.tes_near_peak_threshold,
+            target_soc_high=args.tes_target_soc_high,
+            target_soc_low=args.tes_target_soc_low,
+            target_soc_neutral=args.tes_target_soc_neutral,
+            soc_charge_limit=args.tes_soc_charge_limit,
+            soc_discharge_limit=args.tes_soc_discharge_limit,
+        )
     return env
 
 
@@ -217,9 +246,7 @@ def main() -> None:
     parser.add_argument("--epw", default=DEFAULT_EPW)
     parser.add_argument("--price-csv", default=DEFAULT_PRICE_CSV)
     parser.add_argument("--pv-csv", default=DEFAULT_PV_CSV)
-    parser.add_argument("--it-trace", default=DEFAULT_IT_TRACE)
     parser.add_argument("--dc-peak-load-kw", type=float, default=6000.0)
-    parser.add_argument("--flexible-fraction", type=float, default=0.3)
     # M2-E3b-v4 (2026-04-23): cost 缩放 5e-4 → 2e-3
     # 目标：在 Jiangsu TOU 下让 cost_term 峰谷量级 >= soc/comfort 惩罚，
     # 避免 agent 感受不到 TOU 峰谷信号。2e-3 × 10.7 MWh × 29 USD/MWh ≈
@@ -231,14 +258,35 @@ def main() -> None:
     parser.add_argument("--beta", type=float, default=1.0, help="Comfort penalty coefficient")
     parser.add_argument("--c-pv", type=float, default=0.0, help="Virtual green-price USD/MWh (RL-Green only)")
     parser.add_argument("--pv-threshold-kw", type=float, default=100.0, help="PV kW above which green price applies")
-    # PBRS v2 — DPBA (analysis/pbrs_upgrade_DPBA_2026-04-23.md)
-    parser.add_argument("--kappa-shape", type=float, default=0.8, help="PBRS potential scaling (v2 default 0.8 → |Φ|≤0.32 under DPBA spread)")
+    parser.add_argument("--tes-init-soc-low", type=float, default=0.20, help="Lower bound for per-episode physical TES initial SOC randomization")
+    parser.add_argument("--tes-init-soc-high", type=float, default=0.80, help="Upper bound for per-episode physical TES initial SOC randomization")
+    parser.add_argument("--disable-tes-init-randomization", action="store_true", help="Keep TES initial state deterministic at the epJSON setpoint")
+    parser.add_argument("--tes-valve-rate-limit", type=float, default=0.25, help="Rate limit for target TES valve command per timestep")
+    parser.add_argument("--tes-guard-soc-low", type=float, default=0.10, help="SOC below which TES discharge commands are clipped toward neutral")
+    parser.add_argument("--tes-guard-soc-high", type=float, default=0.90, help="SOC above which TES charge commands are clipped toward neutral")
+    parser.add_argument("--disable-tes-tou-shaping", action="store_true", help="Disable M2-F1 TES TOU shaping wrapper")
+    parser.add_argument("--tes-target-soc-kappa", type=float, default=1.0, help="Target-SOC PBRS potential scale")
+    parser.add_argument("--tes-teacher-weight", type=float, default=0.0, help="Initial short-term TES direction teacher weight; default 0 keeps M2-F1 PBRS-only")
+    parser.add_argument("--tes-teacher-decay-episodes", type=float, default=15.0, help="Episode count over which TES teacher weight decays to zero")
+    parser.add_argument("--tes-valve-penalty-weight", type=float, default=0.02, help="Quadratic TES valve regularization weight")
+    parser.add_argument("--tes-high-price-threshold", type=float, default=0.75, help="price_current_norm threshold for high-price discharge target")
+    parser.add_argument("--tes-low-price-threshold", type=float, default=-0.50, help="price_current_norm threshold for low-price charge target")
+    parser.add_argument("--tes-near-peak-threshold", type=float, default=0.40, help="price_hours_to_next_peak_norm threshold for near-peak charge preparation")
+    parser.add_argument("--tes-target-soc-high", type=float, default=0.85, help="Target SOC before upcoming peaks")
+    parser.add_argument("--tes-target-soc-low", type=float, default=0.30, help="Target SOC during high-price periods")
+    parser.add_argument("--tes-target-soc-neutral", type=float, default=0.50, help="Target SOC during neutral price periods")
+    parser.add_argument("--tes-soc-charge-limit", type=float, default=0.85, help="SOC above which low-price teacher stops encouraging charge")
+    parser.add_argument("--tes-soc-discharge-limit", type=float, default=0.20, help="SOC below which high-price teacher stops encouraging discharge")
+    # Legacy DPBA PBRS (analysis/pbrs_upgrade_DPBA_2026-04-23.md). M2-F1
+    # defaults this off so the active shaping signal is the target-SOC PBRS
+    # in TESPriceShapingWrapper. Pass --kappa-shape 0.8 for a DPBA ablation.
+    parser.add_argument("--kappa-shape", type=float, default=0.0, help="Legacy DPBA potential scaling; default 0 disables it so target-SOC PBRS is the only default TES PBRS")
     parser.add_argument("--gamma-pbrs", type=float, default=0.99, help="PBRS discount (must match SAC/DSAC-T gamma)")
     parser.add_argument("--tau-decay", type=float, default=4.0, help="DPBA exp-decay scale in hours (shorter = sharper near-peak signal)")
     parser.add_argument("--p-peak-ref", type=float, default=0.80, help="Reference peak price_norm (Jiangsu TOU: $160-200 / 250 ≈ 0.80)")
-    # M2-PBRS-v2 (2026-04-23, Xu 2023 discrete SAC): target_entropy = -|A|/3
-    # Default SAC uses -|A|=-6; under DPBA shaping -2.0 prevents ent_coef collapse.
-    parser.add_argument("--target-entropy", type=float, default=-2.0, help="SAC/DSAC-T target entropy (Xu 2023: -dim(A)/3 = -2.0 for 6-dim action)")
+    # M2-PBRS-v2 (2026-04-23, Xu 2023 discrete SAC): target_entropy = -|A|/3.
+    # With the unused workload/ITE action removed, |A|=5.
+    parser.add_argument("--target-entropy", type=float, default=-(5.0 / 3.0), help="SAC/DSAC-T target entropy (Xu 2023: -dim(A)/3 = -1.6667 for 5-dim action)")
     args = parser.parse_args()
 
     if "Eplus-DC-Cooling-TES" not in get_ids():
@@ -251,22 +299,22 @@ def main() -> None:
 
     # Verify shapes before moving on.
     # Post H2a/H2b/H2c/H2d: 20 (TimeEncoding output) + 6 (TempTrend) + 3 (Price)
-    #                       + 3 (PV) + 9 (Workload) = 41, aligned with tech route §6.1.
-    expected_obs_dim = 20 + 6 + 3 + 3 + 9  # 41
+    #                       + 3 (PV) = 32.
+    expected_obs_dim = 20 + 6 + 3 + 3  # 32
     assert env.observation_space.shape == (expected_obs_dim,), (
         f"Expected M2 obs_dim={expected_obs_dim}, got {env.observation_space.shape}"
     )
-    assert env.action_space.shape == (6,), (
-        f"Expected action_dim=6, got {env.action_space.shape}"
+    assert env.action_space.shape == (5,), (
+        f"Expected action_dim=5, got {env.action_space.shape}"
     )
-    print(f"Env wrapper stack OK: obs_dim={expected_obs_dim}, action_dim=6")
+    print(f"Env wrapper stack OK: obs_dim={expected_obs_dim}, action_dim=5")
 
     obs_vars = env.get_wrapper_attr("observation_variables")
     act_vars = env.get_wrapper_attr("action_variables")
 
     # [H2d] Check observation_variables names match tech route §6.1 layout.
-    # 41 dims total; wrapper application order: TES → TimeEncoding → TempTrend
-    # → Price → PV → Workload. Names follow the wrapper append order, not the
+    # 32 dims total; wrapper application order: TES → TimeEncoding → TempTrend
+    # → Price → PV. Names follow the wrapper append order, not the
     # abstract §6.1 group order (groups are interleaved accordingly).
     expected_names = [
         # B: outdoor 2
@@ -275,11 +323,11 @@ def main() -> None:
         'air_temperature', 'air_humidity', 'CT_temperature', 'CW_temperature',
         'CRAH_temp_diff',
         'act_Fan', 'act_Chiller_T', 'act_Chiller_Pump', 'act_CT_Pump',
-        # I (partial): TES SOC + avg_temp (valve injected by TESIncrementalWrapper at end)
+        # I (partial): TES SOC + avg_temp (valve injected by TESTargetValveWrapper at end)
         'TES_SOC', 'TES_avg_temp',
         # E: energy 2
         'Electricity:Facility', 'ITE-CPU:InteriorEquipment:Electricity',
-        # I (remainder): TES valve position from TESIncrementalWrapper
+        # I (remainder): TES valve position from TESTargetValveWrapper
         'TES_valve_wrapper_position',
         # A: sin/cos time 4
         'hour_sin', 'hour_cos', 'month_sin', 'month_cos',
@@ -290,12 +338,6 @@ def main() -> None:
         'price_current_norm', 'price_delta_next_1h', 'price_hours_to_next_peak_norm',
         # H: PV 3
         'pv_current_ratio', 'pv_future_slope', 'time_to_pv_peak',
-        # F: queue 9
-        'workload_current_utilization', 'workload_queue_norm',
-        'workload_oldest_age_norm', 'workload_avg_age_norm',
-        'workload_hist_0_6h', 'workload_hist_6_12h',
-        'workload_hist_12_18h', 'workload_hist_18_24h',
-        'workload_hist_24h_plus',
     ]
     actual_names = list(obs_vars)
     assert actual_names == expected_names, (
@@ -314,7 +356,13 @@ def main() -> None:
             recent_step_window=args.probe_recent_window,
         ),
         monitor_header=["timestep"] + list(obs_vars) + list(act_vars)
-        + ["time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "cost_term", "terminated", "truncated"],
+        + [
+            "time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "cost_term",
+            "tes_valve_target", "tes_valve_position", "tes_guard_clipped", "tes_action_mode",
+            "tes_soc_target", "tes_pbrs_term", "tes_teacher_term", "tes_teacher_weight",
+            "tes_valve_penalty", "tes_shaping_total",
+            "terminated", "truncated",
+        ],
     )
 
     # B4 fix (2026-04-23): warmup RunningMeanStd with a baseline-policy episode,
@@ -322,13 +370,10 @@ def main() -> None:
     # DSAC-T critic during ep60-80 transient window. Skipped on --resume so we
     # keep the obs_rms that rides along with the checkpointed policy.
     #
-    # B4-v2 (2026-04-23): center_action=[0.5,...,0.0] caused TES_valve (dim 15)
-    # and workload_hist_{6_12h,...,24h_plus} (dims 36-40) to stay at 0 throughout
-    # warmup → obs_rms.var collapsed to epsilon (1e-8). During training, (obs - μ)
-    # / sqrt(var + eps) then amplified any nonzero sample to ~10^4, blowing up
-    # the DSAC-T critic (σ=642, ent=1.835 by ep3). Fix:
-    #   (1) Use random actions (action_space.sample) — TES valve Δ and workload
-    #       action cover their full ranges, so var reflects realistic spread.
+    # B4-v2 (2026-04-23): use random actions during warmup so the TES valve
+    # dimension covers its range, then clamp near-zero variances to avoid
+    # excessive normalization gain.
+    #   (1) Use random actions (action_space.sample).
     #   (2) Clamp obs_rms.var to a floor of 1e-2 after freezing, bounding max
     #       normalization amplification to 10× (= 1/sqrt(1e-2)).
     if not args.resume:
@@ -348,8 +393,7 @@ def main() -> None:
         print(f"[B4] automatic_update after freeze: {env.get_wrapper_attr('automatic_update')}")
 
         # B4-v2 safety: clamp obs_rms.var to a floor so dims with zero/near-zero
-        # activity during warmup (e.g., workload_hist_24h_plus when queue never
-        # reached 24h of backlog) don't amplify by 10^4×. Floor 1e-2 caps max
+        # activity during warmup don't amplify by 10^4×. Floor 1e-2 caps max
         # amplification at 10× (= 1/sqrt(1e-2)).
         var_floor = 1e-2
         try:
@@ -371,7 +415,7 @@ def main() -> None:
         )
 
     # M2-D2 网络升级：从 M1 的 [512] 1 层升级到 [256, 256] 2 层
-    # 理由：41 维 obs + 9 类异构信号需要 2 层才能学"条件组合型"决策
+    # 理由：32 维 obs + 异构时序/价格/PV/TES 信号需要 2 层才能学"条件组合型"决策
     # 参考：DSAC-T 原论文 + SB3 默认 + Xiao & You 2026 都用 [256, 256]
     policy_kwargs = dict(net_arch=[256, 256])
     if args.algo == "dsac_t":
@@ -399,7 +443,7 @@ def main() -> None:
             learning_rate=5e-5,   # M2-E3b: 1e-4 → 5e-5（lr=1e-4 下 3/4 seed policy collapse, 回退 M1 验证值恢复 DSAC-T R3 阻尼裕度, 保留 [256,256] 网络）
             learning_starts=8760,
             gamma=0.99,
-            target_entropy=args.target_entropy,  # M2-PBRS-v2 (2026-04-23, Xu 2023): -dim(A)/3 = -2.0 instead of default -6, prevents ent_coef collapse
+            target_entropy=args.target_entropy,  # M2-PBRS-v2: -dim(A)/3 = -1.6667 for 5-dim action.
             policy_kwargs=policy_kwargs,
             verbose=1,
             seed=args.seed,

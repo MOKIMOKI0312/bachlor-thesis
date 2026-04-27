@@ -1,19 +1,16 @@
 """B4-v2 warmup smoke test — verify random-action warmup + var floor clamp.
 
 Pre-fix pathology (2026-04-23):
-  center_action=[0.5,0.5,0.5,0.5,0.5,0.0] → action[5]=0 (TES valve Δ=0) →
+  center_action=[0.5,0.5,0.5,0.5,0.0] -> action[4]=0 (TES valve Δ=0) ->
   valve stays at 0 throughout warmup → obs_rms.var for dim 15 collapses to
-  epsilon (1.14e-8). Same story for workload_hist_{6_12h, 12_18h, 18_24h,
-  24h_plus} (dims 36-40) because action[4]=0.5 "process" mode keeps queue
-  short so those histogram buckets never populate.
+  epsilon (1.14e-8).
 
   Consequence: during training, (obs - μ) / sqrt(var + eps) amplifies any
   nonzero sample by ~10^4, triggering DSAC-T critic explosion
   (σ=642, ent=1.835 by ep3).
 
 Post-fix:
-  (1) action = env.action_space.sample() covers TES Δ ∈ [-1, 1] and workload
-      discrete action uniformly.
+  (1) action = env.action_space.sample() covers TES Δ ∈ [-1, 1].
   (2) obs_rms.var clamped to floor 1e-2 after freeze, capping normalization
       amplification at 10× for any dim.
 
@@ -44,7 +41,6 @@ from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
-from sinergym.envs.workload_wrapper import WorkloadWrapper
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
 
 
@@ -57,7 +53,6 @@ def main() -> int:
     epw = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
     price_csv = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
     pv_csv = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
-    it_trace = "Data/AI Trace Data/Earth_hourly.csv"
 
     stamp = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     env = gym.make(
@@ -67,29 +62,28 @@ def main() -> int:
         weather_files=[epw],
         config_params={
             "runperiod": (1, 1, 2025, 31, 12, 2025),
-            "timesteps_per_hour": 1,
+            "timesteps_per_hour": 4,
         },
     )
     env.action_space.seed(42)
 
     # Mirror full training wrapper chain (run_m2_training.build_env).
-    env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
+    env = TESIncrementalWrapper(env, valve_idx=4, delta_max=0.25)
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(env, epw_path=Path("Data/weather") / epw, lookahead_hours=6)
     env = PriceSignalWrapper(env, price_csv_path=price_csv, lookahead_hours=6)
     env = PVSignalWrapper(env, pv_csv_path=pv_csv, dc_peak_load_kw=6000.0, lookahead_hours=6)
-    env = WorkloadWrapper(env, it_trace_csv=it_trace, workload_idx=4, flexible_fraction=0.3)
     env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
 
     # Obs-variable names (for per-dim diagnostics).
     obs_names = list(env.get_wrapper_attr("observation_variables"))
-    assert len(obs_names) == 41, f"expected 41-dim obs, got {len(obs_names)}"
+    assert len(obs_names) == 32, f"expected 32-dim obs, got {len(obs_names)}"
 
     env = NormalizeObservation(env)
     # No LoggerWrapper here — keeps smoke test focused on obs_rms state.
 
-    print(f"[B4-smoke] obs_dim = {env.observation_space.shape[0]} (expect 41)")
-    assert env.observation_space.shape[0] == 41
+    print(f"[B4-smoke] obs_dim = {env.observation_space.shape[0]} (expect 32)")
+    assert env.observation_space.shape[0] == 32
 
     # === Run 1 random-action warmup episode (mirrors B4-v2 in run_m2_training) ===
     print("[B4-smoke] Running 1 random-action warmup episode (this is 1 full E+ year)...")

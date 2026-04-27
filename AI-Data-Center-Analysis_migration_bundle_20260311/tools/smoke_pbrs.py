@@ -32,7 +32,6 @@ from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
-from sinergym.envs.workload_wrapper import WorkloadWrapper
 from sinergym.utils.rewards import RL_Cost_Reward
 
 
@@ -114,9 +113,9 @@ def main() -> int:
         env_name=f"{stamp}_smoke_pbrs",
         building_file=["DRL_DC_training.epJSON"],
         weather_files=["CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"],
-        config_params={"runperiod": (1, 1, 2025, 31, 12, 2025), "timesteps_per_hour": 1},
+        config_params={"runperiod": (1, 1, 2025, 31, 12, 2025), "timesteps_per_hour": 4},
     )
-    env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
+    env = TESIncrementalWrapper(env, valve_idx=4, delta_max=0.25)
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(
         env,
@@ -125,7 +124,6 @@ def main() -> int:
     )
     env = PriceSignalWrapper(env, price_csv_path="Data/prices/Jiangsu_TOU_2025_hourly.csv")
     env = PVSignalWrapper(env, pv_csv_path="Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv")
-    env = WorkloadWrapper(env, it_trace_csv="Data/AI Trace Data/Earth_hourly.csv", workload_idx=4)
 
     # --- RL_Cost_Reward WITH PBRS v2 (DPBA) ------------------------------
     price = pd.read_csv("Data/prices/Jiangsu_TOU_2025_hourly.csv")["price_usd_per_mwh"].to_numpy()
@@ -167,11 +165,11 @@ def main() -> int:
     assert reward_fn._prev_phi == 0.0
 
     # --- Step loop ------------------------------------------------------
-    rng = np.random.default_rng(42)
+    env.action_space.seed(42)
     results = []
 
     for i in range(3):
-        a = rng.uniform(-1, 1, size=(6,)).astype(np.float32)
+        a = env.action_space.sample().astype(np.float32)
         obs, r, term, trunc, info = env.step(a)
 
         shaping = info.get('shaping_term', None)

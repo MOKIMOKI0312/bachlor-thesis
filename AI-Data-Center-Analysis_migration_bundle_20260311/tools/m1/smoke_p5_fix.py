@@ -17,19 +17,18 @@ import argparse
 import csv
 import datetime as _dt
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-# NOTE: fix-p5-chiller-b068 worktree 的 vendor/ 不包含 E+。直接用 great-hugle 的
-# 安装（同一台机器上另一个 worktree 的副本，位置固定）。
-# 如果该路径不在，脚本会报错，用户需自行指定 --eplus-exe。
 DEFAULT_EPLUS = Path(
-    "C:/Users/18430/Desktop/毕业设计代码/.claude/worktrees/great-hugle-fb3530"
-    "/AI-Data-Center-Analysis_migration_bundle_20260311"
-    "/vendor/EnergyPlus-23.1.0-87ed9199d4-Windows-x86_64/energyplus.exe"
+    os.environ.get(
+        "EPLUS_EXE",
+        str(ROOT / "vendor" / "EnergyPlus-23.1.0-87ed9199d4-Windows-x86_64" / "energyplus.exe"),
+    )
 )
 BUILDINGS = ROOT / "Data" / "buildings"
 WEATHER = ROOT / "Data" / "weather" / "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
@@ -260,7 +259,7 @@ def _analyze_scenario(name: str, tes_set_val: float, parsed: dict) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--eplus-exe", default=str(DEFAULT_EPLUS),
-                        help="Path to energyplus.exe (defaults to great-hugle worktree's copy)")
+                        help="Path to energyplus.exe (defaults to EPLUS_EXE or this repo's vendor copy)")
     parser.add_argument("--only", choices=["A", "B"], default=None,
                         help="Only run scenario A (charge) or B (discharge)")
     parser.add_argument("--days", type=int, default=1,

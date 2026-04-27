@@ -30,7 +30,6 @@ from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
-from sinergym.envs.workload_wrapper import WorkloadWrapper
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
 
 
@@ -38,7 +37,6 @@ def main() -> int:
     epw = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
     price_csv = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
     pv_csv = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
-    it_trace = "Data/AI Trace Data/Earth_hourly.csv"
 
     env = gym.make(
         "Eplus-DC-Cooling-TES",
@@ -47,22 +45,21 @@ def main() -> int:
         weather_files=[epw],
         config_params={
             "runperiod": (1, 1, 2025, 31, 12, 2025),
-            "timesteps_per_hour": 1,
+            "timesteps_per_hour": 4,
         },
     )
     env.action_space.seed(0)
 
-    env = TESIncrementalWrapper(env, valve_idx=5, delta_max=0.20)
+    env = TESIncrementalWrapper(env, valve_idx=4, delta_max=0.25)
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(env, epw_path=Path("Data/weather") / epw, lookahead_hours=6)
     env = PriceSignalWrapper(env, price_csv_path=price_csv, lookahead_hours=6)
     env = PVSignalWrapper(env, pv_csv_path=pv_csv, dc_peak_load_kw=6000.0, lookahead_hours=6)
-    env = WorkloadWrapper(env, it_trace_csv=it_trace, workload_idx=4, flexible_fraction=0.3)
     # The fix under test:
     env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
 
-    print(f"[B3-smoke] obs_dim = {env.observation_space.shape[0]} (expect 41)")
-    assert env.observation_space.shape[0] == 41, "obs_dim must stay 41"
+    print(f"[B3-smoke] obs_dim = {env.observation_space.shape[0]} (expect 32)")
+    assert env.observation_space.shape[0] == 32, "obs_dim must stay 32"
 
     obs, _ = env.reset(seed=0)
     print(f"[B3-smoke] after reset:")

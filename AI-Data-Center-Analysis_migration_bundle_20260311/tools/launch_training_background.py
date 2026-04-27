@@ -8,12 +8,15 @@ from pathlib import Path
 
 
 def resolve_eplus_path(repo: Path) -> Path:
+    env_path = os.environ.get('EPLUS_PATH')
     candidates = [
+        Path(env_path) if env_path else None,
         repo / 'vendor' / 'EnergyPlus-23.1.0-87ed9199d4-Windows-x86_64',
         repo / 'EnergyPlus-23.1.0' / 'EnergyPlus-23.1.0-87ed9199d4-Windows-x86_64',
+        Path.home() / 'EnergyPlus-23.1.0' / 'EnergyPlus-23.1.0-87ed9199d4-Windows-x86_64',
     ]
     for candidate in candidates:
-        if candidate.exists():
+        if candidate is not None and candidate.exists():
             return candidate
     raise FileNotFoundError(f'EnergyPlus path not found. Checked: {candidates}')
 

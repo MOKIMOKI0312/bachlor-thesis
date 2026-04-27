@@ -34,6 +34,10 @@ DEFAULT_EPLUS = Path(
     "C:/Users/18430/EnergyPlus-23.1.0/"
     "EnergyPlus-23.1.0-87ed9199d4-Windows-x86_64"
 )
+TES_OBJECT_TYPES = (
+    "ThermalStorage:ChilledWater:Mixed",
+    "ThermalStorage:ChilledWater:Stratified",
+)
 
 BUILDING_FILES = {
     "data_training": DATA_BUILDINGS / "DRL_DC_training.epJSON",
@@ -55,8 +59,26 @@ SCENARIOS = [
     },
     {
         "id": "tes_charge",
-        "desc": "TES charge via negative action",
+        "desc": "TES negative action opens source side from cold initial tank",
         "schedules": {"TES_Set": -1.0, "ITE_Set": 0.45},
+    },
+    {
+        "id": "tes_cycle",
+        "desc": "TES phased discharge then charge cycle",
+        "schedules": {"ITE_Set": 0.45},
+        "run_days": 7,
+        "compact_schedules": {
+            "TES_Set": [
+                "Through: 1/3",
+                "For: AllDays",
+                "Until: 24:00",
+                "0.5",
+                "Through: 12/31",
+                "For: AllDays",
+                "Until: 24:00",
+                "-0.5",
+            ]
+        },
     },
     {
         "id": "chiller_low_it",
@@ -148,6 +170,22 @@ def branch_has_component(data: dict[str, Any], branch: str, obj_type: str, name:
     )
 
 
+def branch_has_tes(data: dict[str, Any], branch: str, name: str) -> bool:
+    return any(branch_has_component(data, branch, obj_type, name) for obj_type in TES_OBJECT_TYPES)
+
+
+def tes_object_types_present(data: dict[str, Any]) -> list[str]:
+    return [
+        obj_type
+        for obj_type in TES_OBJECT_TYPES
+        if name_exists(data.get(obj_type, {}), "Chilled Water Tank")
+    ]
+
+
+def name_exists(objects: dict[str, Any], name: str) -> bool:
+    return name in objects
+
+
 def static_audit(data: dict[str, Any]) -> list[dict[str, Any]]:
     actuators = data.get("EnergyManagementSystem:Actuator", {})
     programs = data.get("EnergyManagementSystem:Program", {})
@@ -158,9 +196,9 @@ def static_audit(data: dict[str, Any]) -> list[dict[str, Any]]:
         check("Chilled Water Loop" in plant_loops, "Chilled Water Loop exists"),
         check("Condenser Water Loop" in plant_loops, "Condenser Water Loop exists"),
         check(
-            "Chilled Water Tank"
-            in data.get("ThermalStorage:ChilledWater:Stratified", {}),
-            "TES stratified chilled-water tank exists",
+            bool(tes_object_types_present(data)),
+            "TES chilled-water tank exists",
+            tes_object_types_present(data),
         ),
         check(bool(data.get("Chiller:Electric:EIR")), "Chiller exists", list(data.get("Chiller:Electric:EIR", {}))),
         check(bool(data.get("CoolingTower:VariableSpeed")), "Cooling tower exists"),
@@ -175,21 +213,11 @@ def static_audit(data: dict[str, Any]) -> list[dict[str, Any]]:
         check("ITE_Set" in schedules, "ITE_Set schedule retained as wrapper/agent entry"),
         check("TES_Set" in schedules, "TES_Set schedule retained as TES entry"),
         check(
-            branch_has_component(
-                data,
-                "Chilled Water Loop Supply Branch 3",
-                "ThermalStorage:ChilledWater:Stratified",
-                "Chilled Water Tank",
-            ),
+            branch_has_tes(data, "Chilled Water Loop Supply Branch 3", "Chilled Water Tank"),
             "TES Use side is on Chilled Water Loop Supply Branch 3",
         ),
         check(
-            branch_has_component(
-                data,
-                "Chilled Water Loop Demand Branch 3",
-                "ThermalStorage:ChilledWater:Stratified",
-                "Chilled Water Tank",
-            ),
+            branch_has_tes(data, "Chilled Water Loop Demand Branch 3", "Chilled Water Tank"),
             "TES Source side is on Chilled Water Loop Demand Branch 3",
         ),
         check(
@@ -228,20 +256,31 @@ def ensure_output_variable(data: dict[str, Any], key: str, variable: str, tag: s
     }
 
 
-def patched_model(base: dict[str, Any], schedules: dict[str, float]) -> dict[str, Any]:
+def patched_model(
+    base: dict[str, Any],
+    schedules: dict[str, float],
+    run_days: int = 1,
+    compact_schedules: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
     data = json.loads(json.dumps(base))
     sch = data.setdefault("Schedule:Constant", {})
     for name, value in schedules.items():
         if name not in sch:
             raise KeyError(f"Schedule:Constant {name!r} missing")
         sch[name]["hourly_value"] = value
+    for name, fields in (compact_schedules or {}).items():
+        data.get("Schedule:Constant", {}).pop(name, None)
+        data.setdefault("Schedule:Compact", {})[name] = {
+            "schedule_type_limits_name": "Any Number",
+            "data": [{"field": field} for field in fields]
+        }
     data["RunPeriod"] = {
         "RP_audit": {
             "begin_month": 1,
             "begin_day_of_month": 1,
             "begin_year": 2025,
             "end_month": 1,
-            "end_day_of_month": 1,
+            "end_day_of_month": run_days,
             "end_year": 2025,
             "day_of_week_for_start_day": "Wednesday",
             "apply_weekend_holiday_rule": "No",
@@ -345,7 +384,12 @@ def run_scenario(eplus_exe: Path, base_model: dict[str, Any], out_dir: Path, sce
     work = out_dir / scenario["id"]
     work.mkdir(parents=True, exist_ok=True)
     input_path = work / "input.epJSON"
-    model = patched_model(base_model, scenario["schedules"])
+    model = patched_model(
+        base_model,
+        scenario["schedules"],
+        run_days=int(scenario.get("run_days", 1)),
+        compact_schedules=scenario.get("compact_schedules"),
+    )
     with input_path.open("w", encoding="utf-8") as f:
         json.dump(model, f, indent=2, ensure_ascii=False)
 
@@ -432,14 +476,34 @@ def component_assertions(scenarios: list[dict[str, Any]]) -> list[dict[str, Any]
             ),
             check(
                 gt(
-                    metric(by_id, "tes_charge", "tes_source_heat", "abs_mean"),
+                    metric(by_id, "tes_charge", "tes_source_avail", "mean"),
+                    metric(by_id, "tes_idle", "tes_source_avail", "mean"),
+                    0.5,
+                ),
+                "TES negative command opens source side vs idle",
+                {
+                    "idle": metric(by_id, "tes_idle", "tes_source_avail", "mean"),
+                    "charge": metric(by_id, "tes_charge", "tes_source_avail", "mean"),
+                    "source_heat_abs_mean": metric(by_id, "tes_charge", "tes_source_heat", "abs_mean"),
+                },
+            ),
+            check(
+                gt(
+                    metric(by_id, "tes_cycle", "tes_source_heat", "abs_mean"),
                     metric(by_id, "tes_idle", "tes_source_heat", "abs_mean"),
                     1_000,
+                )
+                and gt(
+                    metric(by_id, "tes_cycle", "tes_soc", "max"),
+                    metric(by_id, "tes_cycle", "tes_soc", "min"),
+                    0.1,
                 ),
-                "TES negative command increases source-side heat vs idle",
+                "TES phased cycle produces source-side charge heat after discharge",
                 {
-                    "idle": metric(by_id, "tes_idle", "tes_source_heat", "abs_mean"),
-                    "charge": metric(by_id, "tes_charge", "tes_source_heat", "abs_mean"),
+                    "idle_source_heat": metric(by_id, "tes_idle", "tes_source_heat", "abs_mean"),
+                    "cycle_source_heat": metric(by_id, "tes_cycle", "tes_source_heat", "abs_mean"),
+                    "cycle_soc_min": metric(by_id, "tes_cycle", "tes_soc", "min"),
+                    "cycle_soc_max": metric(by_id, "tes_cycle", "tes_soc", "max"),
                 },
             ),
             check(

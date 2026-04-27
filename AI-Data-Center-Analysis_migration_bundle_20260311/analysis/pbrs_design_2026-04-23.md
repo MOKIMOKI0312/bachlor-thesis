@@ -31,8 +31,8 @@
 ## 2. 对本项目的映射
 
 - **当前 reward class**: `PUE_TES_Reward` in `sinergym/utils/rewards.py:1660` — 扩展 `PUE_Reward` + soc_penalty (warning quadratic [0.30,0.70] + sharp linear [0.15,0.85])
-- **Config**: `sinergym/__init__.py:209-225` 注册 `DC-DRL-TES` with `PUE_TES_Reward`. `runperiod=(1,1,2025,31,12,2025)`, `timesteps_per_hour=1` → **8760 steps/episode**, continuing episodic
-- **Action**: `action[5] ∈ [-1, 1]` = Δv, wrapper 累加 valve_position。"idle" policy (Δv=0) 是 null action；PBRS 必须让 idling 严格差于正确的充放电
+- **Config**: `sinergym/__init__.py:209-225` 注册 `DC-DRL-TES` with `PUE_TES_Reward`. 当前 M2 训练入口使用 `runperiod=(1,1,2025,31,12,2025)`, `timesteps_per_hour=4` → **约 35040 steps/episode**，continuing episodic
+- **Action**: 当前 M2 删除 workload/ITE 空置动作后，`action[4] ∈ [-1, 1]` = TES Δv，wrapper 累加 valve_position。"idle" policy (Δv=0) 是 null action；PBRS 必须让 idling 严格差于正确的充放电
 - **DSAC-T**: distributional critic, γ=0.99。PBRS 加 constant per transition；critic 吸收；不干扰 DSAC-T 的 quantile targets
 - **Price signals**: `price_current_norm` ∈ [0,1] 在 obs dim 26（post bc10db0）
 - **已有 cost_term**: `α=2e-3` 已挂 RL_Cost_Reward
@@ -147,13 +147,15 @@ class RL_Cost_Reward(PUE_TES_Reward):
         return reward, terms
 ```
 
-### 初始 SOC 随机化（Liu-Henze 2006）
+### 初始 SOC 随机化（Liu-Henze 2006，当前未直接实现）
 
 ```python
-# In env.reset() or TESIncrementalWrapper.reset():
+# Desired; not enabled in the current training entry:
 init_soc = np.random.uniform(0.20, 0.80)  # truncated uniform
-# Warm-start tank temperature via EMS actuator
+# Requires a physical way to set tank thermal state, not just wrapper obs.
 ```
+
+2026-04-25 后 active M2 模型使用 `ThermalStorage:ChilledWater:Mixed`。Mixed 水罐的初始热状态由 EnergyPlus 在环境初始化时按 `TES_Charge_Setpoint=6.0°C` 建立；`TESIncrementalWrapper.reset()` 随机化 valve_position 只能改变初始控制命令，不能改变水罐热状态。因此当前入口仍不启用初始 SOC 随机化。若后续要做，应通过 episode-specific 初始化 setpoint schedule 或预处理仿真生成不同真实罐温，而不是只改观测值。
 
 ### 超参数
 
@@ -162,7 +164,7 @@ init_soc = np.random.uniform(0.20, 0.80)  # truncated uniform
 | `kappa_shape` | 2.0 | 保证 \|Φ\| ≤ 0.5，per-step \|F\| ≤ ~0.05 |
 | `gamma_pbrs` | 0.99 | 必须与 DSAC-T γ 一致 |
 | `alpha_cost` | 2e-3 | 保持 M2-E3b-v4 已验证值 |
-| `init_soc_low/high` | 0.20 / 0.80 | Liu-Henze 2006 truncated uniform |
+| `init_soc_low/high` | 0.20 / 0.80 | 目标值；当前未接入训练入口。后续可通过 episode-specific 初始化 setpoint schedule 或预处理仿真实现 |
 
 ## 5. 实施计划
 
@@ -170,7 +172,7 @@ init_soc = np.random.uniform(0.20, 0.80)  # truncated uniform
 
 1. `sinergym/utils/rewards.py` — `RL_Cost_Reward.__call__` 加 PBRS 项 + `reset_episode()` 方法
 2. `sinergym/envs/eplus_env.py` — `reset()` 调 `self.reward_fn.reset_episode()` if available
-3. `sinergym/envs/tes_wrapper.py` — `reset()` 随机化 valve_position (间接影响 SOC)
+3. `sinergym/envs/tes_wrapper.py` — 保持 valve neutral；不要用随机 valve 伪造初始 SOC
 4. `sinergym/__init__.py` — 如果需要新参数接入 reward_kwargs
 5. `tools/run_m2_training.py` — 确认 `--alpha` 默认 2e-3 不变
 

@@ -71,7 +71,7 @@ H_NORM_SCALE = 24.0  # price_hours_to_next_peak_norm ∈ [0,1] → h ∈ [0, 24]
 # 在 run_m2_training.py 的 model 构造前:
 DSAC_T(
     ...,
-    target_entropy = -float(action_dim) / 3.0,  # -2.0 instead of -6.0
+    target_entropy = -float(action_dim) / 3.0,  # now -1.6667 for 5-dim M2 action
     # log_alpha clip 在 DSAC-T 训练内加 (需 code-fixer 改 dsac_t.py):
     #   self.log_ent_coef.clamp_(min=math.log(0.05))
 )
@@ -82,7 +82,7 @@ DSAC_T(
 | # | 文件 | 改动 | 行数 |
 |---|------|------|------|
 | 1 | `sinergym/utils/rewards.py` | `RL_Cost_Reward.__init__` 新增 `tau_decay`, `p_peak_ref` 参数；`_phi()` 重写按新公式 | +20 |
-| 2 | `tools/run_m2_training.py` | CLI `--tau-decay` / `--p-peak-ref`；model 构造时传 `target_entropy=-2.0` | +5 |
+| 2 | `tools/run_m2_training.py` | CLI `--tau-decay` / `--p-peak-ref`；model 构造时传 `target_entropy=-5/3`（5 维 M2 action） | +5 |
 | 3 | `tools/dsac_t.py` | ent_coef optimizer step 后加 `log_alpha.clamp_(min=log(0.05))` | +3 |
 | 4 | `tools/smoke_pbrs.py` | 更新量级断言 |Φ|≤0.40, 验证 15:00 时 dΦ/dSOC>0 | +10 |
 

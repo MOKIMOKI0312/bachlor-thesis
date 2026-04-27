@@ -1,0 +1,38 @@
+{
+  "seed1": {
+    "ent_samples": 141,
+    "ent_min": 0.0547,
+    "ent_max": 1.98,
+    "ent_final": 1.26,
+    "actor_min": 22.8,
+    "actor_max": 12100.0,
+    "critic_mean": 3.4972340425531914
+  },
+  "seed2": {
+    "ent_samples": 133,
+    "ent_min": 0.0471,
+    "ent_max": 30.3,
+    "ent_final": 24.4,
+    "actor_min": -41300.0,
+    "actor_max": 269.0,
+    "critic_mean": 2.21390977443609
+  },
+  "seed3": {
+    "ent_samples": 144,
+    "ent_min": 0.046,
+    "ent_max": 12.0,
+    "ent_final": 11.7,
+    "actor_min": -7110.0,
+    "actor_max": 340.0,
+    "critic_mean": 3.6403472222222226
+  },
+  "seed4": {
+    "ent_samples": 150,
+    "ent_min": 0.0412,
+    "ent_max": 0.632,
+    "ent_final": 0.227,
+    "actor_min": 9.63,
+    "actor_max": 4730.0,
+    "critic_mean": 3.5455333333333336
+  }
+}

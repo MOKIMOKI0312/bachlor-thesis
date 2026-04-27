@@ -1,0 +1,21 @@
+{
+  "num_timesteps": 1176000,
+  "approx_episode": 135,
+  "elapsed_seconds": 43489.9630191,
+  "last_update_epoch": 1776673264.093386,
+  "workspace_path": "C:\\Users\\18430\\Desktop\\毕业设计代码\\.claude\\worktrees\\great-hugle-fb3530\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\run\\run-027",
+  "probe_dir": "C:\\Users\\18430\\Desktop\\毕业设计代码\\.claude\\worktrees\\great-hugle-fb3530\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\run\\run-027\\probe",
+  "progress_file": "C:\\Users\\18430\\Desktop\\毕业设计代码\\.claude\\worktrees\\great-hugle-fb3530\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\run\\run-027\\progress.csv",
+  "finished": false,
+  "training_metrics": {
+    "train/learning_rate": 0.0001,
+    "train/n_updates": 1167239,
+    "train/ent_coef": 23.768766403198242,
+    "train/actor_loss": -23656.208984375,
+    "train/critic_loss": 1.871181845664978,
+    "train/sigma_mean": 27834.79052734375,
+    "train/clip_b": 86634.48879512402,
+    "train/omega": 2353675794.725536,
+    "train/ent_coef_loss": 0.9275716543197632
+  }
+}

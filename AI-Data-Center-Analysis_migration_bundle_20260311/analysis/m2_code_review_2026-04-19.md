@@ -1,5 +1,7 @@
 # M2 代码审查报告 — 2026-04-19
 
+> **2026-04-25 superseded note**: 本文审查的是曾计划加入 `WorkloadWrapper` 的 41 维观测 / 6 维动作 M2 草案。当前 M2 已删除 workload/ITE 空置动作维，实际 agent 空间为 32 维观测 / 5 维动作：4 个 HVAC 动作 + `TES_DRL`。因此本文中关于 workload action、`action[4]` ITE 调度、`obs_dim=41`、`action_dim=6` 的建议仅作为历史记录，不再代表当前训练环境。
+
 审查范围：M2-A（数据下载）→ M2-D1（冒烟 + evaluate_m2）共 10 个文件，对照
 `项目目标/code-review-request-M2-2026-04-19.md` §1 的文件清单 + §2 的 M1 坑 A–F。
 
@@ -145,6 +147,8 @@
   显现但不会倒置结论。
 
 ### M3. PriceSignal / PVSignal / Workload wrapper 维护独立 hour 计数器，与 EnergyPlus 时钟可能不同步
+
+> **2026-04-25 update**: M2 已切到 `timesteps_per_hour=4`。`PriceSignalWrapper`、`PVSignalWrapper`、`TempTrendWrapper` 现在通过底层 `step_size` 推断 `steps_per_hour`，同一小时内 4 个 15-min timestep 使用同一小时索引，不再每步快进 1 小时。M2 未加入 `WorkloadWrapper`，所以 workload 时钟问题不影响当前训练环境。
 
 - 位置：[price_signal_wrapper.py:59, 99](sinergym/envs/price_signal_wrapper.py#L59)、
   [pv_signal_wrapper.py:49, 100](sinergym/envs/pv_signal_wrapper.py#L49)、

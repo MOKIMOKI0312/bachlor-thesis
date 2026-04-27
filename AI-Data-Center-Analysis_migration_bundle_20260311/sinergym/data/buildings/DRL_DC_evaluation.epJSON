@@ -82,7 +82,6 @@
       "air_outlet_node_name": "DataCenter ZN VAV terminal Outlet Air Node",
       "availability_schedule_name": "Always On Discrete",
       "constant_minimum_air_flow_fraction": 0.1,
-      "fixed_minimum_air_flow_rate": "Autosize",
       "maximum_air_flow_rate": "Autosize",
       "zone_minimum_air_flow_input_method": "Constant"
     }
@@ -347,7 +346,7 @@
     "Chilled Water Loop Supply Branch 3": {
       "components": [
         {
-          "component_object_type": "ThermalStorage:ChilledWater:Stratified",
+          "component_object_type": "ThermalStorage:ChilledWater:Mixed",
           "component_name": "Chilled Water Tank",
           "component_inlet_node_name": "CW Tank Use Inlet Node",
           "component_outlet_node_name": "CW Tank Use Outlet Node"
@@ -357,7 +356,7 @@
     "Chilled Water Loop Demand Branch 3": {
       "components": [
         {
-          "component_object_type": "ThermalStorage:ChilledWater:Stratified",
+          "component_object_type": "ThermalStorage:ChilledWater:Mixed",
           "component_name": "Chilled Water Tank",
           "component_inlet_node_name": "CW Tank Source Inlet Node",
           "component_outlet_node_name": "CW Tank Source Outlet Node"
@@ -466,24 +465,24 @@
       "surface_type": "Floor",
       "vertices": [
         {
-          "vertex_x_coordinate": 0.0,
-          "vertex_y_coordinate": 0.0,
-          "vertex_z_coordinate": 0.0
+          "vertex_x_coordinate": 0,
+          "vertex_y_coordinate": 0,
+          "vertex_z_coordinate": 0
         },
         {
-          "vertex_x_coordinate": 0.0,
+          "vertex_x_coordinate": 0,
           "vertex_y_coordinate": 18.288,
-          "vertex_z_coordinate": 0.0
+          "vertex_z_coordinate": 0
         },
         {
           "vertex_x_coordinate": 30.48,
           "vertex_y_coordinate": 18.288,
-          "vertex_z_coordinate": 0.0
+          "vertex_z_coordinate": 0
         },
         {
           "vertex_x_coordinate": 30.48,
-          "vertex_y_coordinate": 0.0,
-          "vertex_z_coordinate": 0.0
+          "vertex_y_coordinate": 0,
+          "vertex_z_coordinate": 0
         }
       ],
       "wind_exposure": "NoWind",
@@ -496,23 +495,23 @@
       "surface_type": "Wall",
       "vertices": [
         {
-          "vertex_x_coordinate": 0.0,
+          "vertex_x_coordinate": 0,
           "vertex_y_coordinate": 18.288,
           "vertex_z_coordinate": 4.2672
         },
         {
-          "vertex_x_coordinate": 0.0,
+          "vertex_x_coordinate": 0,
           "vertex_y_coordinate": 18.288,
-          "vertex_z_coordinate": 0.0
+          "vertex_z_coordinate": 0
         },
         {
-          "vertex_x_coordinate": 0.0,
-          "vertex_y_coordinate": 0.0,
-          "vertex_z_coordinate": 0.0
+          "vertex_x_coordinate": 0,
+          "vertex_y_coordinate": 0,
+          "vertex_z_coordinate": 0
         },
         {
-          "vertex_x_coordinate": 0.0,
-          "vertex_y_coordinate": 0.0,
+          "vertex_x_coordinate": 0,
+          "vertex_y_coordinate": 0,
           "vertex_z_coordinate": 4.2672
         }
       ],
@@ -533,15 +532,15 @@
         {
           "vertex_x_coordinate": 30.48,
           "vertex_y_coordinate": 18.288,
-          "vertex_z_coordinate": 0.0
+          "vertex_z_coordinate": 0
         },
         {
-          "vertex_x_coordinate": 0.0,
+          "vertex_x_coordinate": 0,
           "vertex_y_coordinate": 18.288,
-          "vertex_z_coordinate": 0.0
+          "vertex_z_coordinate": 0
         },
         {
-          "vertex_x_coordinate": 0.0,
+          "vertex_x_coordinate": 0,
           "vertex_y_coordinate": 18.288,
           "vertex_z_coordinate": 4.2672
         }
@@ -557,18 +556,18 @@
       "vertices": [
         {
           "vertex_x_coordinate": 30.48,
-          "vertex_y_coordinate": 0.0,
+          "vertex_y_coordinate": 0,
           "vertex_z_coordinate": 4.2672
         },
         {
           "vertex_x_coordinate": 30.48,
-          "vertex_y_coordinate": 0.0,
-          "vertex_z_coordinate": 0.0
+          "vertex_y_coordinate": 0,
+          "vertex_z_coordinate": 0
         },
         {
           "vertex_x_coordinate": 30.48,
           "vertex_y_coordinate": 18.288,
-          "vertex_z_coordinate": 0.0
+          "vertex_z_coordinate": 0
         },
         {
           "vertex_x_coordinate": 30.48,
@@ -586,23 +585,23 @@
       "surface_type": "Wall",
       "vertices": [
         {
-          "vertex_x_coordinate": 0.0,
-          "vertex_y_coordinate": 0.0,
+          "vertex_x_coordinate": 0,
+          "vertex_y_coordinate": 0,
           "vertex_z_coordinate": 4.2672
         },
         {
-          "vertex_x_coordinate": 0.0,
-          "vertex_y_coordinate": 0.0,
-          "vertex_z_coordinate": 0.0
+          "vertex_x_coordinate": 0,
+          "vertex_y_coordinate": 0,
+          "vertex_z_coordinate": 0
         },
         {
           "vertex_x_coordinate": 30.48,
-          "vertex_y_coordinate": 0.0,
-          "vertex_z_coordinate": 0.0
+          "vertex_y_coordinate": 0,
+          "vertex_z_coordinate": 0
         },
         {
           "vertex_x_coordinate": 30.48,
-          "vertex_y_coordinate": 0.0,
+          "vertex_y_coordinate": 0,
           "vertex_z_coordinate": 4.2672
         }
       ],
@@ -617,7 +616,7 @@
       "vertices": [
         {
           "vertex_x_coordinate": 30.48,
-          "vertex_y_coordinate": 0.0,
+          "vertex_y_coordinate": 0,
           "vertex_z_coordinate": 4.2672
         },
         {
@@ -626,13 +625,13 @@
           "vertex_z_coordinate": 4.2672
         },
         {
-          "vertex_x_coordinate": 0.0,
+          "vertex_x_coordinate": 0,
           "vertex_y_coordinate": 18.288,
           "vertex_z_coordinate": 4.2672
         },
         {
-          "vertex_x_coordinate": 0.0,
-          "vertex_y_coordinate": 0.0,
+          "vertex_x_coordinate": 0,
+          "vertex_y_coordinate": 0,
           "vertex_z_coordinate": 4.2672
         }
       ],
@@ -843,41 +842,15 @@
       "layer_3": "Metal Roof Surface",
       "outside_layer": "Roof Membrane"
     },
-    "Typical Insulated Carpeted 8in Slab Floor": {
-      "layer_2": "Typical Carpet Pad",
-      "outside_layer": "8 in. Normalweight Concrete Floor"
-    },
-    "Typical Insulated Steel Framed Exterior Floor R-26.32": {
-      "layer_2": "5/8 in. Gypsum Board",
-      "layer_3": "Typical Insulation R-22.67",
-      "layer_4": "5/8 in. Gypsum Board",
-      "layer_5": "Typical Carpet Pad",
-      "outside_layer": "25mm Stucco"
-    },
     "Typical Insulated Steel Framed Exterior Wall R-15.63": {
       "layer_2": "5/8 in. Gypsum Board",
       "layer_3": "Typical Insulation R-13.45",
       "layer_4": "5/8 in. Gypsum Board",
       "outside_layer": "25mm Stucco"
     },
-    "Typical Interior Ceiling": {
-      "layer_2": "100mm Normalweight concrete floor",
-      "outside_layer": "CP02 CARPET PAD"
-    },
     "Typical Interior Floor": {
       "layer_2": "CP02 CARPET PAD",
       "outside_layer": "100mm Normalweight concrete floor"
-    },
-    "Typical Interior Wall": {
-      "layer_2": "G01 13mm gypsum board",
-      "outside_layer": "G01 13mm gypsum board"
-    }
-  },
-  "Construction:FfactorGroundFloor": {
-    "Foundation F 09 Perim 9754 Area 55742": {
-      "area": 557.41824,
-      "f_factor": 0.899982026513123,
-      "perimeterexposed": 97.536
     }
   },
   "Controller:MechanicalVentilation": {
@@ -1024,7 +997,7 @@
   "DesignSpecification:OutdoorAir": {
     "LargeDataCenterHighITE StandaloneDataCenter Ventilation": {
       "outdoor_air_flow_air_changes_per_hour": 0,
-      "outdoor_air_flow_per_person": 0.002359737216,
+      "outdoor_air_flow_per_person": 0,
       "outdoor_air_flow_per_zone": 0,
       "outdoor_air_flow_per_zone_floor_area": 0.0003048,
       "outdoor_air_method": "Sum"
@@ -1363,7 +1336,7 @@
     "P_6": {
       "lines": [
         {
-          "program_line": "SET T_tank_avg = (T_node_1 + T_node_2 + T_node_3 + T_node_4 + T_node_5 + T_node_6 + T_node_7 + T_node_8 + T_node_9 + T_node_10) / 10.0"
+          "program_line": "SET T_tank_avg = T_tank"
         },
         {
           "program_line": "SET SOC = (12.0 - T_tank_avg) / 6.0"
@@ -1548,45 +1521,9 @@
       "output_variable_or_output_meter_index_key_name": "DataCenter ZN",
       "output_variable_or_output_meter_name": "Zone Air Temperature"
     },
-    "T_node_1": {
+    "T_tank": {
       "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 1"
-    },
-    "T_node_2": {
-      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 2"
-    },
-    "T_node_3": {
-      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 3"
-    },
-    "T_node_4": {
-      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 4"
-    },
-    "T_node_5": {
-      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 5"
-    },
-    "T_node_6": {
-      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 6"
-    },
-    "T_node_7": {
-      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 7"
-    },
-    "T_node_8": {
-      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 8"
-    },
-    "T_node_9": {
-      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 9"
-    },
-    "T_node_10": {
-      "output_variable_or_output_meter_index_key_name": "Chilled Water Tank",
-      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Temperature Node 10"
+      "output_variable_or_output_meter_name": "Chilled Water Thermal Storage Tank Temperature"
     },
     "TES_Set_Sensor": {
       "output_variable_or_output_meter_index_key_name": "TES_Set",
@@ -1675,498 +1612,6 @@
       "length_of_study_period_in_years": 25,
       "real_discount_rate": 0.03,
       "service_date_year": 2011
-    }
-  },
-  "LifeCycleCost:UsePriceEscalation": {
-    "LifeCycleCost:UsePriceEscalation 1": {
-      "escalation_start_month": "January",
-      "escalation_start_year": 2011,
-      "escalations": [
-        {
-          "year_escalation": 0.9838
-        },
-        {
-          "year_escalation": 0.973
-        },
-        {
-          "year_escalation": 0.9632
-        },
-        {
-          "year_escalation": 0.9611
-        },
-        {
-          "year_escalation": 0.9571
-        },
-        {
-          "year_escalation": 0.9553
-        },
-        {
-          "year_escalation": 0.9539
-        },
-        {
-          "year_escalation": 0.9521
-        },
-        {
-          "year_escalation": 0.9546
-        },
-        {
-          "year_escalation": 0.955
-        },
-        {
-          "year_escalation": 0.9553
-        },
-        {
-          "year_escalation": 0.9564
-        },
-        {
-          "year_escalation": 0.9575
-        },
-        {
-          "year_escalation": 0.9596
-        },
-        {
-          "year_escalation": 0.9618
-        },
-        {
-          "year_escalation": 0.9614
-        },
-        {
-          "year_escalation": 0.9618
-        },
-        {
-          "year_escalation": 0.9618
-        },
-        {
-          "year_escalation": 0.9593
-        },
-        {
-          "year_escalation": 0.9589
-        },
-        {
-          "year_escalation": 0.9607
-        },
-        {
-          "year_escalation": 0.9625
-        },
-        {
-          "year_escalation": 0.965
-        },
-        {
-          "year_escalation": 0.9708
-        },
-        {
-          "year_escalation": 0.9751
-        },
-        {
-          "year_escalation": 0.9762
-        },
-        {
-          "year_escalation": 0.9766
-        },
-        {
-          "year_escalation": 0.9766
-        },
-        {
-          "year_escalation": 0.9769
-        },
-        {
-          "year_escalation": 0.9773
-        }
-      ],
-      "lcc_price_escalation_name": "U.S. Avg  Commercial-Electricity",
-      "resource": "Electricity"
-    },
-    "LifeCycleCost:UsePriceEscalation 2": {
-      "escalation_start_month": "January",
-      "escalation_start_year": 2011,
-      "escalations": [
-        {
-          "year_escalation": 0.9714
-        },
-        {
-          "year_escalation": 0.973
-        },
-        {
-          "year_escalation": 0.9942
-        },
-        {
-          "year_escalation": 1.0164
-        },
-        {
-          "year_escalation": 1.0541
-        },
-        {
-          "year_escalation": 1.0928
-        },
-        {
-          "year_escalation": 1.1267
-        },
-        {
-          "year_escalation": 1.158
-        },
-        {
-          "year_escalation": 1.1792
-        },
-        {
-          "year_escalation": 1.1967
-        },
-        {
-          "year_escalation": 1.22
-        },
-        {
-          "year_escalation": 1.2333
-        },
-        {
-          "year_escalation": 1.2566
-        },
-        {
-          "year_escalation": 1.2709
-        },
-        {
-          "year_escalation": 1.2826
-        },
-        {
-          "year_escalation": 1.2985
-        },
-        {
-          "year_escalation": 1.3102
-        },
-        {
-          "year_escalation": 1.325
-        },
-        {
-          "year_escalation": 1.3261
-        },
-        {
-          "year_escalation": 1.3282
-        },
-        {
-          "year_escalation": 1.3324
-        },
-        {
-          "year_escalation": 1.3356
-        },
-        {
-          "year_escalation": 1.3431
-        },
-        {
-          "year_escalation": 1.351
-        },
-        {
-          "year_escalation": 1.3568
-        },
-        {
-          "year_escalation": 1.3606
-        },
-        {
-          "year_escalation": 1.3637
-        },
-        {
-          "year_escalation": 1.3674
-        },
-        {
-          "year_escalation": 1.3706
-        },
-        {
-          "year_escalation": 1.3743
-        }
-      ],
-      "lcc_price_escalation_name": "U.S. Avg  Commercial-Distillate Oil",
-      "resource": "FuelOilNo1"
-    },
-    "LifeCycleCost:UsePriceEscalation 3": {
-      "escalation_start_month": "January",
-      "escalation_start_year": 2011,
-      "escalations": [
-        {
-          "year_escalation": 0.8469
-        },
-        {
-          "year_escalation": 0.8257
-        },
-        {
-          "year_escalation": 0.8681
-        },
-        {
-          "year_escalation": 0.8988
-        },
-        {
-          "year_escalation": 0.9289
-        },
-        {
-          "year_escalation": 0.9604
-        },
-        {
-          "year_escalation": 0.9897
-        },
-        {
-          "year_escalation": 1.0075
-        },
-        {
-          "year_escalation": 1.0314
-        },
-        {
-          "year_escalation": 1.0554
-        },
-        {
-          "year_escalation": 1.0861
-        },
-        {
-          "year_escalation": 1.1278
-        },
-        {
-          "year_escalation": 1.1497
-        },
-        {
-          "year_escalation": 1.162
-        },
-        {
-          "year_escalation": 1.1743
-        },
-        {
-          "year_escalation": 1.1852
-        },
-        {
-          "year_escalation": 1.1948
-        },
-        {
-          "year_escalation": 1.2037
-        },
-        {
-          "year_escalation": 1.2071
-        },
-        {
-          "year_escalation": 1.2119
-        },
-        {
-          "year_escalation": 1.2139
-        },
-        {
-          "year_escalation": 1.2194
-        },
-        {
-          "year_escalation": 1.2276
-        },
-        {
-          "year_escalation": 1.2365
-        },
-        {
-          "year_escalation": 1.242
-        },
-        {
-          "year_escalation": 1.2461
-        },
-        {
-          "year_escalation": 1.2509
-        },
-        {
-          "year_escalation": 1.255
-        },
-        {
-          "year_escalation": 1.2591
-        },
-        {
-          "year_escalation": 1.2638
-        }
-      ],
-      "lcc_price_escalation_name": "U.S. Avg  Commercial-Residual Oil",
-      "resource": "FuelOilNo2"
-    },
-    "LifeCycleCost:UsePriceEscalation 4": {
-      "escalation_start_month": "January",
-      "escalation_start_year": 2011,
-      "escalations": [
-        {
-          "year_escalation": 0.9823
-        },
-        {
-          "year_escalation": 0.9557
-        },
-        {
-          "year_escalation": 0.9279
-        },
-        {
-          "year_escalation": 0.9257
-        },
-        {
-          "year_escalation": 0.9346
-        },
-        {
-          "year_escalation": 0.9412
-        },
-        {
-          "year_escalation": 0.9512
-        },
-        {
-          "year_escalation": 0.9645
-        },
-        {
-          "year_escalation": 0.9856
-        },
-        {
-          "year_escalation": 1.0067
-        },
-        {
-          "year_escalation": 1.0222
-        },
-        {
-          "year_escalation": 1.041
-        },
-        {
-          "year_escalation": 1.061
-        },
-        {
-          "year_escalation": 1.0787
-        },
-        {
-          "year_escalation": 1.0942
-        },
-        {
-          "year_escalation": 1.1098
-        },
-        {
-          "year_escalation": 1.122
-        },
-        {
-          "year_escalation": 1.1308
-        },
-        {
-          "year_escalation": 1.1386
-        },
-        {
-          "year_escalation": 1.1486
-        },
-        {
-          "year_escalation": 1.1619
-        },
-        {
-          "year_escalation": 1.1763
-        },
-        {
-          "year_escalation": 1.1918
-        },
-        {
-          "year_escalation": 1.2118
-        },
-        {
-          "year_escalation": 1.2284
-        },
-        {
-          "year_escalation": 1.2439
-        },
-        {
-          "year_escalation": 1.2605
-        },
-        {
-          "year_escalation": 1.2772
-        },
-        {
-          "year_escalation": 1.2938
-        },
-        {
-          "year_escalation": 1.3115
-        }
-      ],
-      "lcc_price_escalation_name": "U.S. Avg  Commercial-Natural gas",
-      "resource": "NaturalGas"
-    },
-    "LifeCycleCost:UsePriceEscalation 5": {
-      "escalation_start_month": "January",
-      "escalation_start_year": 2011,
-      "escalations": [
-        {
-          "year_escalation": 0.997
-        },
-        {
-          "year_escalation": 1.0089
-        },
-        {
-          "year_escalation": 1.0089
-        },
-        {
-          "year_escalation": 0.9941
-        },
-        {
-          "year_escalation": 0.9941
-        },
-        {
-          "year_escalation": 1.0
-        },
-        {
-          "year_escalation": 1.003
-        },
-        {
-          "year_escalation": 1.0059
-        },
-        {
-          "year_escalation": 1.0089
-        },
-        {
-          "year_escalation": 1.0119
-        },
-        {
-          "year_escalation": 1.0148
-        },
-        {
-          "year_escalation": 1.0178
-        },
-        {
-          "year_escalation": 1.0208
-        },
-        {
-          "year_escalation": 1.0267
-        },
-        {
-          "year_escalation": 1.0297
-        },
-        {
-          "year_escalation": 1.0356
-        },
-        {
-          "year_escalation": 1.0415
-        },
-        {
-          "year_escalation": 1.0534
-        },
-        {
-          "year_escalation": 1.0564
-        },
-        {
-          "year_escalation": 1.0593
-        },
-        {
-          "year_escalation": 1.0653
-        },
-        {
-          "year_escalation": 1.0712
-        },
-        {
-          "year_escalation": 1.0742
-        },
-        {
-          "year_escalation": 1.0801
-        },
-        {
-          "year_escalation": 1.0831
-        },
-        {
-          "year_escalation": 1.0831
-        },
-        {
-          "year_escalation": 1.0861
-        },
-        {
-          "year_escalation": 1.089
-        },
-        {
-          "year_escalation": 1.092
-        },
-        {
-          "year_escalation": 1.095
-        }
-      ],
-      "lcc_price_escalation_name": "U.S. Avg  Commercial-Coal",
-      "resource": "Coal"
     }
   },
   "Lights": {
@@ -2387,10 +1832,6 @@
       "key_name": "Electricity:Facility",
       "reporting_frequency": "Timestep"
     },
-    "Output:Meter 2": {
-      "key_name": "ElectricityProduced:Facility",
-      "reporting_frequency": "Timestep"
-    },
     "Output:Meter 3": {
       "key_name": "ITE-CPU:InteriorEquipment:Electricity",
       "reporting_frequency": "Timestep"
@@ -2405,14 +1846,6 @@
     }
   },
   "Output:Meter:MeterFileOnly": {
-    "Output:Meter:MeterFileOnly 1": {
-      "key_name": "NaturalGas:Facility",
-      "reporting_frequency": "Daily"
-    },
-    "Output:Meter:MeterFileOnly 2": {
-      "key_name": "Electricity:Facility",
-      "reporting_frequency": "Timestep"
-    },
     "Output:Meter:MeterFileOnly 3": {
       "key_name": "Electricity:Facility",
       "reporting_frequency": "Daily"
@@ -2421,428 +1854,6 @@
   "Output:SQLite": {
     "Output:SQLite 1": {
       "option_type": "SimpleAndTabular"
-    }
-  },
-  "Output:Table:Monthly": {
-    "Building Energy Performance - District Cooling": {
-      "digits_after_decimal": 2,
-      "variable_details": [
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "InteriorLights:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "ExteriorLights:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "InteriorEquipment:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "ExteriorEquipment:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Fans:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Pumps:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Heating:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Cooling:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "HeatRejection:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Humidifier:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "HeatRecovery:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "WaterSystems:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Cogeneration:DistrictCooling"
-        }
-      ]
-    },
-    "Building Energy Performance - District Cooling Peak Demand": {
-      "digits_after_decimal": 2,
-      "variable_details": [
-        {
-          "aggregation_type_for_variable_or_meter": "Maximum",
-          "variable_or_meter_name": "DistrictCooling:Facility"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "InteriorLights:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "ExteriorLights:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "InteriorEquipment:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "ExteriorEquipment:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Fans:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Pumps:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Heating:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Cooling:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "HeatRejection:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Humidifier:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "HeatRecovery:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "WaterSystems:DistrictCooling"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Cogeneration:DistrictCooling"
-        }
-      ]
-    },
-    "Building Energy Performance - District Heating": {
-      "digits_after_decimal": 2,
-      "variable_details": [
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "InteriorLights:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "ExteriorLights:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "InteriorEquipment:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "ExteriorEquipment:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Fans:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Pumps:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Heating:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Cooling:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "HeatRejection:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Humidifier:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "HeatRecovery:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "WaterSystems:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Cogeneration:DistrictHeating"
-        }
-      ]
-    },
-    "Building Energy Performance - District Heating Peak Demand": {
-      "digits_after_decimal": 2,
-      "variable_details": [
-        {
-          "aggregation_type_for_variable_or_meter": "Maximum",
-          "variable_or_meter_name": "DistrictHeating:Facility"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "InteriorLights:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "ExteriorLights:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "InteriorEquipment:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "ExteriorEquipment:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Fans:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Pumps:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Heating:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Cooling:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "HeatRejection:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Humidifier:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "HeatRecovery:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "WaterSystems:DistrictHeating"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Cogeneration:DistrictHeating"
-        }
-      ]
-    },
-    "Building Energy Performance - Electricity": {
-      "digits_after_decimal": 2,
-      "variable_details": [
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "InteriorLights:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "ExteriorLights:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "InteriorEquipment:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "ExteriorEquipment:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Fans:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Pumps:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Heating:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Cooling:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "HeatRejection:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Humidifier:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "HeatRecovery:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "WaterSystems:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Cogeneration:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Refrigeration:Electricity"
-        }
-      ]
-    },
-    "Building Energy Performance - Electricity Peak Demand": {
-      "digits_after_decimal": 2,
-      "variable_details": [
-        {
-          "aggregation_type_for_variable_or_meter": "Maximum",
-          "variable_or_meter_name": "Electricity:Facility"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "InteriorLights:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "ExteriorLights:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "InteriorEquipment:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "ExteriorEquipment:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Fans:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Pumps:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Heating:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Cooling:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "HeatRejection:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Humidifier:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "HeatRecovery:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "WaterSystems:Electricity"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Cogeneration:Electricity"
-        }
-      ]
-    },
-    "Building Energy Performance - Natural Gas": {
-      "digits_after_decimal": 2,
-      "variable_details": [
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "InteriorEquipment:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "ExteriorEquipment:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Heating:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Cooling:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "WaterSystems:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "SumOrAverage",
-          "variable_or_meter_name": "Cogeneration:NaturalGas"
-        }
-      ]
-    },
-    "Building Energy Performance - Natural Gas Peak Demand": {
-      "digits_after_decimal": 2,
-      "variable_details": [
-        {
-          "aggregation_type_for_variable_or_meter": "Maximum",
-          "variable_or_meter_name": "NaturalGas:Facility"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "InteriorEquipment:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "ExteriorEquipment:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Heating:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Cooling:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "WaterSystems:NaturalGas"
-        },
-        {
-          "aggregation_type_for_variable_or_meter": "ValueWhenMaximumOrMinimum",
-          "variable_or_meter_name": "Cogeneration:NaturalGas"
-        }
-      ]
     }
   },
   "Output:Table:SummaryReports": {
@@ -2862,12 +1873,12 @@
     },
     "Output:Variable 2": {
       "key_value": "Environment",
-      "variable_name": "Diffuse Solar",
+      "variable_name": "Site Diffuse Solar Radiation Rate per Area",
       "reporting_frequency": "Timestep"
     },
     "Output:Variable 3": {
       "key_value": "Environment",
-      "variable_name": "Direct Solar",
+      "variable_name": "Site Direct Solar Radiation Rate per Area",
       "reporting_frequency": "Timestep"
     },
     "Output:Variable 4": {
@@ -2952,7 +1963,7 @@
     },
     "Output:Variable 20": {
       "key_value": "Chilled Water Tank",
-      "variable_name": "Chilled Water Thermal Storage Tank Heat Loss Rate",
+      "variable_name": "Chilled Water Thermal Storage Tank Heat Gain Rate",
       "reporting_frequency": "Timestep"
     },
     "Output:Variable 21": {
@@ -3069,7 +2080,7 @@
           "equipment_object_type": "Chiller:Electric:EIR"
         },
         {
-          "equipment_object_type": "ThermalStorage:ChilledWater:Stratified",
+          "equipment_object_type": "ThermalStorage:ChilledWater:Mixed",
           "equipment_name": "Chilled Water Tank"
         }
       ]
@@ -3097,7 +2108,7 @@
       "operation_2_type": "Cooling",
       "setpoint_1_node_name": "Chilled Water Loop Primary Pump Inlet Water Node",
       "setpoint_2_node_name": "90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton Supply Outlet Water Node",
-      "equipment_3_object_type": "ThermalStorage:ChilledWater:Stratified",
+      "equipment_3_object_type": "ThermalStorage:ChilledWater:Mixed",
       "equipment_3_name": "Chilled Water Tank",
       "demand_calculation_3_node_name": "CW Tank Use Inlet Node",
       "setpoint_3_node_name": "CW Tank Use Outlet Node",
@@ -3266,7 +2277,7 @@
           "field": "Until: 24:00"
         },
         {
-          "field": 4.0
+          "field": 4
         }
       ],
       "schedule_type_limits_name": "DataCenter ZN Thermostat Schedule Type Limits"
@@ -3274,52 +2285,63 @@
   },
   "Schedule:Constant": {
     "Always Off Discrete": {
-      "hourly_value": 0
+      "hourly_value": 0,
+      "schedule_type_limits_name": "OnOff"
     },
     "Always On Continuous": {
-      "hourly_value": 1
+      "hourly_value": 1,
+      "schedule_type_limits_name": "Fractional"
     },
     "Always On Discrete": {
       "hourly_value": 1,
       "schedule_type_limits_name": "Always On Discrete Limits"
     },
     "CRAH_Fan_Set": {
-      "hourly_value": 0
+      "hourly_value": 0,
+      "schedule_type_limits_name": "Any Number"
     },
     "CRAH_T_Set": {
-      "hourly_value": 0
+      "hourly_value": 0,
+      "schedule_type_limits_name": "Any Number"
     },
     "CT_Pump_Set": {
-      "hourly_value": 0
+      "hourly_value": 0,
+      "schedule_type_limits_name": "Any Number"
     },
     "Chiller_Pump_Set": {
-      "hourly_value": 0
+      "hourly_value": 0,
+      "schedule_type_limits_name": "Any Number"
     },
     "Chiller_T_Set": {
-      "hourly_value": 0
+      "hourly_value": 0,
+      "schedule_type_limits_name": "Any Number"
     },
     "Grid CF": {
-      "hourly_value": 0
+      "hourly_value": 0,
+      "schedule_type_limits_name": "Any Number"
     },
     "Grid Price": {
-      "hourly_value": 0
+      "hourly_value": 0,
+      "schedule_type_limits_name": "Any Number"
     },
     "ITE_Set": {
-      "hourly_value": 1
+      "hourly_value": 1,
+      "schedule_type_limits_name": "Any Number"
     },
     "TES_Charge_Setpoint": {
-      "hourly_value": 6.0,
+      "hourly_value": 6,
       "schedule_type_limits_name": "Temperature"
     },
     "TES_Set": {
-      "hourly_value": 0.0
+      "hourly_value": 0,
+      "schedule_type_limits_name": "Any Number"
     },
     "TES_Use_Avail_Sch": {
-      "hourly_value": 0.0,
+      "hourly_value": 0,
       "schedule_type_limits_name": "Always On Discrete Limits"
     },
     "TES_Source_Avail_Sch": {
-      "hourly_value": 0.0,
+      "hourly_value": 0,
       "schedule_type_limits_name": "Always On Discrete Limits"
     },
     "TES_SOC_Obs": {
@@ -3327,11 +2349,12 @@
       "schedule_type_limits_name": "Fractional"
     },
     "Chiller_Avail_Sch": {
-      "hourly_value": 1.0,
+      "hourly_value": 1,
       "schedule_type_limits_name": "Always On Discrete Limits"
     },
     "TES_Avg_Temp_Obs": {
-      "hourly_value": 10.0
+      "hourly_value": 10,
+      "schedule_type_limits_name": "Temperature"
     }
   },
   "Schedule:Day:Interval": {
@@ -3339,7 +2362,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 11.0
+          "value_until_time": 11
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3359,7 +2382,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 35.0
+          "value_until_time": 35
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3369,7 +2392,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 35.0
+          "value_until_time": 35
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3379,7 +2402,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 35.0
+          "value_until_time": 35
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3539,7 +2562,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 15.0
+          "value_until_time": 15
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3549,7 +2572,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 15.0
+          "value_until_time": 15
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3559,7 +2582,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 15.0
+          "value_until_time": 15
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3569,7 +2592,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 1.0
+          "value_until_time": 1
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3579,7 +2602,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 1.0
+          "value_until_time": 1
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3589,7 +2612,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 1.0
+          "value_until_time": 1
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3599,7 +2622,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 8.0
+          "value_until_time": 8
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3609,7 +2632,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 8.0
+          "value_until_time": 8
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3619,7 +2642,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 8.0
+          "value_until_time": 8
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3629,7 +2652,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 1.0
+          "value_until_time": 1
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3639,7 +2662,7 @@
       "data": [
         {
           "time": "24:00",
-          "value_until_time": 1.0
+          "value_until_time": 1
         }
       ],
       "interpolate_to_timestep": "No",
@@ -3652,7 +2675,8 @@
           "value_until_time": 0.7
         }
       ],
-      "interpolate_to_timestep": "No"
+      "interpolate_to_timestep": "No",
+      "schedule_type_limits_name": "Fractional"
     },
     "LargeDataCenterHighITE ReturnApproachTemp_SCH Default": {
       "data": [
@@ -5610,6 +4634,9 @@
       "numeric_type": "Continuous",
       "unit_type": "Temperature",
       "upper_limit_value": 0
+    },
+    "Any Number": {
+      "numeric_type": "Continuous"
     }
   },
   "SetpointManager:FollowOutdoorAirTemperature": {
@@ -5715,11 +4742,11 @@
     }
   },
   "Site:Location": {
-    "sydney.intl.ap_nsw_aus design_conditions": {
-      "latitude": -33.95,
-      "longitude": 151.17,
-      "time_zone": 10.0,
-      "elevation": 6.4
+    "Nanjing JS CHN SRC-TMYx 582380": {
+      "latitude": 31.9316,
+      "longitude": 118.8996,
+      "time_zone": 8,
+      "elevation": 14.9
     }
   },
   "Site:WaterMainsTemperature": {
@@ -5773,7 +4800,7 @@
       "cooling_supply_air_flow_rate": 0,
       "cooling_supply_air_flow_rate_method": "DesignDay",
       "cooling_supply_air_flow_rate_per_floor_area": 0.0099676501,
-      "cooling_supply_air_flow_rate_per_unit_cooling_capacity": 3.9475456e-05,
+      "cooling_supply_air_flow_rate_per_unit_cooling_capacity": 0.000039475456,
       "design_outdoor_air_flow_rate": "Autosize",
       "fraction_of_autosized_cooling_design_capacity": 1,
       "fraction_of_autosized_heating_design_capacity": 1,
@@ -5785,7 +4812,7 @@
       "heating_supply_air_flow_rate": 0,
       "heating_supply_air_flow_rate_method": "DesignDay",
       "heating_supply_air_flow_rate_per_floor_area": 0.0099676501,
-      "heating_supply_air_flow_rate_per_unit_heating_capacity": 3.1588213e-05,
+      "heating_supply_air_flow_rate_per_unit_heating_capacity": 0.000031588213,
       "precool_design_humidity_ratio": 0.008,
       "precool_design_temperature": 27.0000000000001,
       "preheat_design_humidity_ratio": 0.008,
@@ -5823,7 +4850,8 @@
       "zone_latent_cooling_design_supply_air_humidity_ratio_input_method": "HumidityRatioDifference",
       "zone_latent_heating_design_supply_air_humidity_ratio_input_method": "HumidityRatioDifference",
       "zone_load_sizing_method": "Sensible Load Only No Latent Load",
-      "zone_or_zonelist_name": "DataCenter ZN"
+      "zone_or_zonelist_name": "DataCenter ZN",
+      "design_specification_zone_air_distribution_object_name": "DataCenter ZN Air Distribution"
     }
   },
   "SizingPeriod:DesignDay": {
@@ -5832,18 +4860,18 @@
       "day_of_month": 21,
       "day_type": "WinterDesignDay",
       "maximum_dry_bulb_temperature": 6.7,
-      "daily_dry_bulb_temperature_range": 0.0,
+      "daily_dry_bulb_temperature_range": 0,
       "dry_bulb_temperature_range_modifier_type": "DefaultMultipliers",
       "humidity_condition_type": "WetBulb",
       "wetbulb_or_dewpoint_at_maximum_dry_bulb": 6.7,
-      "barometric_pressure": 101248.0,
+      "barometric_pressure": 101248,
       "wind_speed": 4.3,
-      "wind_direction": 330.0,
+      "wind_direction": 330,
       "rain_indicator": "No",
       "snow_indicator": "No",
       "daylight_saving_time_indicator": "No",
       "solar_model_indicator": "ASHRAEClearSky",
-      "sky_clearness": 0.0
+      "sky_clearness": 0
     },
     "sydney.intl.ap ann clg .4% condns db=>mwb": {
       "month": 1,
@@ -5855,9 +4883,9 @@
       "humidity_condition_type": "WetBulb",
       "wetbulb_or_dewpoint_at_maximum_dry_bulb": 19.5,
       "daily_wetbulb_temperature_range": 3.7,
-      "barometric_pressure": 101248.0,
+      "barometric_pressure": 101248,
       "wind_speed": 7.2,
-      "wind_direction": 330.0,
+      "wind_direction": 330,
       "rain_indicator": "No",
       "snow_indicator": "No",
       "daylight_saving_time_indicator": "No",
@@ -5955,37 +4983,57 @@
       ]
     }
   },
-  "ThermalStorage:ChilledWater:Stratified": {
+  "ThermalStorage:ChilledWater:Mixed": {
     "Chilled Water Tank": {
-      "tank_volume": 1400.0,
-      "tank_height": 15.89,
-      "tank_shape": "VerticalCylinder",
+      "tank_volume": 1400,
       "setpoint_temperature_schedule_name": "TES_Charge_Setpoint",
       "deadband_temperature_difference": 0.5,
-      "temperature_sensor_height": 7.9,
-      "minimum_temperature_limit": 1.0,
+      "minimum_temperature_limit": 1,
       "nominal_cooling_capacity": 9767442,
       "ambient_temperature_indicator": "Zone",
       "ambient_temperature_zone_name": "DataCenter ZN",
-      "uniform_skin_loss_coefficient_per_unit_area_to_ambient_temperature": 0.4,
+      "heat_gain_coefficient_from_ambient_temperature": 282,
       "use_side_inlet_node_name": "CW Tank Use Inlet Node",
       "use_side_outlet_node_name": "CW Tank Use Outlet Node",
-      "use_side_heat_transfer_effectiveness": 1.0,
+      "use_side_heat_transfer_effectiveness": 1,
       "use_side_availability_schedule_name": "TES_Use_Avail_Sch",
-      "use_side_inlet_height": 15.4,
-      "use_side_outlet_height": 0.5,
       "use_side_design_flow_rate": "Autosize",
       "source_side_inlet_node_name": "CW Tank Source Inlet Node",
       "source_side_outlet_node_name": "CW Tank Source Outlet Node",
-      "source_side_heat_transfer_effectiveness": 1.0,
+      "source_side_heat_transfer_effectiveness": 1,
       "source_side_availability_schedule_name": "TES_Source_Avail_Sch",
-      "source_side_inlet_height": 0.5,
-      "source_side_outlet_height": 15.4,
       "source_side_design_flow_rate": "Autosize",
-      "tank_recovery_time": 4.0,
-      "inlet_mode": "Seeking",
-      "number_of_nodes": 10,
-      "additional_destratification_conductivity": 0.0
+      "tank_recovery_time": 4
+    }
+  },
+  "Site:GroundTemperature:BuildingSurface": {
+    "Site:GroundTemperature:BuildingSurface 1": {
+      "january_ground_temperature": 18,
+      "february_ground_temperature": 18,
+      "march_ground_temperature": 18,
+      "april_ground_temperature": 18,
+      "may_ground_temperature": 18,
+      "june_ground_temperature": 18,
+      "july_ground_temperature": 18,
+      "august_ground_temperature": 18,
+      "september_ground_temperature": 18,
+      "october_ground_temperature": 18,
+      "november_ground_temperature": 18,
+      "december_ground_temperature": 18
+    }
+  },
+  "DesignSpecification:ZoneAirDistribution": {
+    "DataCenter ZN Air Distribution": {
+      "zone_air_distribution_effectiveness_in_cooling_mode": 1,
+      "zone_air_distribution_effectiveness_in_heating_mode": 1
+    }
+  },
+  "ConvergenceLimits": {
+    "ConvergenceLimits 1": {
+      "minimum_system_timestep": 1,
+      "maximum_hvac_iterations": 50,
+      "minimum_plant_iterations": 2,
+      "maximum_plant_iterations": 8
     }
   }
 }

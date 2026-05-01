@@ -27,12 +27,13 @@ import numpy as np
 import pandas as pd
 
 from sinergym.utils.common import get_ids
-from sinergym.envs.tes_wrapper import TESIncrementalWrapper
+from sinergym.envs.tes_wrapper import FixedActionInsertWrapper, TESTargetValveWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.utils.rewards import RL_Cost_Reward
+from tools.m2_action_guard import M2_FIXED_FAN_VALUE
 
 
 # Design §"量级验算" bounds
@@ -115,7 +116,12 @@ def main() -> int:
         weather_files=["CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"],
         config_params={"runperiod": (1, 1, 2025, 31, 12, 2025), "timesteps_per_hour": 4},
     )
-    env = TESIncrementalWrapper(env, valve_idx=4, delta_max=0.25)
+    env = TESTargetValveWrapper(env, valve_idx=4, rate_limit=0.25)
+    env = FixedActionInsertWrapper(
+        env,
+        fixed_actions={0: M2_FIXED_FAN_VALUE},
+        fixed_action_names={0: "CRAH_Fan_DRL"},
+    )
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(
         env,

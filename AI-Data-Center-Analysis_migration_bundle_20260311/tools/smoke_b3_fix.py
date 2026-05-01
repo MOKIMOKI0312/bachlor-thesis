@@ -25,12 +25,13 @@ import gymnasium as gym
 import numpy as np
 
 from sinergym.utils.wrappers import NormalizeObservation, LoggerWrapper
-from sinergym.envs.tes_wrapper import TESIncrementalWrapper
+from sinergym.envs.tes_wrapper import FixedActionInsertWrapper, TESTargetValveWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
+from tools.m2_action_guard import M2_FIXED_FAN_VALUE
 
 
 def main() -> int:
@@ -50,7 +51,12 @@ def main() -> int:
     )
     env.action_space.seed(0)
 
-    env = TESIncrementalWrapper(env, valve_idx=4, delta_max=0.25)
+    env = TESTargetValveWrapper(env, valve_idx=4, rate_limit=0.25)
+    env = FixedActionInsertWrapper(
+        env,
+        fixed_actions={0: M2_FIXED_FAN_VALUE},
+        fixed_action_names={0: "CRAH_Fan_DRL"},
+    )
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(env, epw_path=Path("Data/weather") / epw, lookahead_hours=6)
     env = PriceSignalWrapper(env, price_csv_path=price_csv, lookahead_hours=6)

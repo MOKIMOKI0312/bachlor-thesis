@@ -1,7 +1,7 @@
 """B4-v2 warmup smoke test — verify random-action warmup + var floor clamp.
 
 Pre-fix pathology (2026-04-23):
-  center_action=[0.5,0.5,0.5,0.5,0.0] -> action[4]=0 (TES valve Δ=0) ->
+  center_action=[0.5,0.5,0.5,0.0] -> exposed TES action index 3 = 0 ->
   valve stays at 0 throughout warmup → obs_rms.var for dim 15 collapses to
   epsilon (1.14e-8).
 
@@ -10,7 +10,7 @@ Pre-fix pathology (2026-04-23):
   (σ=642, ent=1.835 by ep3).
 
 Post-fix:
-  (1) action = env.action_space.sample() covers TES Δ ∈ [-1, 1].
+  (1) action = env.action_space.sample() covers exposed TES target ∈ [-1, 1].
   (2) obs_rms.var clamped to floor 1e-2 after freeze, capping normalization
       amplification at 10× for any dim.
 
@@ -36,12 +36,13 @@ import gymnasium as gym
 import numpy as np
 
 from sinergym.utils.wrappers import NormalizeObservation, LoggerWrapper
-from sinergym.envs.tes_wrapper import TESIncrementalWrapper
+from sinergym.envs.tes_wrapper import FixedActionInsertWrapper, TESTargetValveWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
+from tools.m2_action_guard import M2_FIXED_FAN_VALUE
 
 
 VAR_FLOOR = 1e-2
@@ -68,7 +69,12 @@ def main() -> int:
     env.action_space.seed(42)
 
     # Mirror full training wrapper chain (run_m2_training.build_env).
-    env = TESIncrementalWrapper(env, valve_idx=4, delta_max=0.25)
+    env = TESTargetValveWrapper(env, valve_idx=4, rate_limit=0.25)
+    env = FixedActionInsertWrapper(
+        env,
+        fixed_actions={0: M2_FIXED_FAN_VALUE},
+        fixed_action_names={0: "CRAH_Fan_DRL"},
+    )
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(env, epw_path=Path("Data/weather") / epw, lookahead_hours=6)
     env = PriceSignalWrapper(env, price_csv_path=price_csv, lookahead_hours=6)

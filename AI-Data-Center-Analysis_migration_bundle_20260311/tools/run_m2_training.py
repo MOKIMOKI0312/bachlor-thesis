@@ -1,8 +1,9 @@
-"""M2 training launcher — 32-dim obs / 5-dim action, Nanjing + Jiangsu TOU site.
+"""M2 training launcher — 32-dim obs / 4-dim action, Nanjing + Jiangsu TOU site.
 
 Wrapper chain (inside to outside):
   EplusEnv (19 raw dims, 5 absolute actions, 15-min timestep) — built from Eplus-DC-Cooling-TES
-  → TESTargetValveWrapper  (+1 dim → 20)      — action[4] = target TES valve, rate_limit=0.25
+  → TESTargetValveWrapper  (+1 dim → 20)      — full action[4] = target TES valve, rate_limit=0.25
+  → FixedActionInsertWrapper                   — fixed full action[0] CRAH_Fan_DRL = 1.0
   → TimeEncodingWrapper    (-5 +1 +4 = 20)     — drop raw time & CRAH raw, merge CRAH_diff, add sin/cos
   → TempTrendWrapper       (+6 dim → 26)       — outdoor temperature lookahead trend (§6.1-C)
   → PriceSignalWrapper     (+3 dim → 29)
@@ -12,8 +13,10 @@ Wrapper chain (inside to outside):
   → NormalizeObservation
   → LoggerWrapper
 
-Final obs_dim = 32. M2 does not include a workload action; ITE load stays on
-the fixed epJSON schedule unless changed outside this agent action stack.
+Final obs_dim = 32. The exposed agent action is
+[CT_Pump_DRL, CRAH_T_DRL, Chiller_T_DRL, TES_DRL].  M2 does not include a
+workload action; ITE load stays on the fixed epJSON schedule unless changed
+outside this agent action stack.
 
 Reward class selectable via --reward-cls {rl_cost, rl_green}. Defaults to
 rl_cost. RL_Cost and RL_Green accept the PriceSignalWrapper / PVSignalWrapper
@@ -52,12 +55,17 @@ from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from sinergym.utils.common import get_ids
 from sinergym.utils.training_monitor import StatusCallback, make_probe_logger_factory
 from sinergym.utils.wrappers import LoggerWrapper, NormalizeObservation
-from sinergym.envs.tes_wrapper import TESPriceShapingWrapper, TESTargetValveWrapper
+from sinergym.envs.tes_wrapper import (
+    FixedActionInsertWrapper,
+    TESPriceShapingWrapper,
+    TESTargetValveWrapper,
+)
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
+from tools.m2_action_guard import M2_FIXED_FAN_VALUE, assert_m2_4d_checkpoint
 
 # M2-E3b-v3 (2026-04-22): CAISO → Nanjing + Jiangsu TOU
 # 切换动机：CAISO 重尾 reward (kurtosis=120) 触发 DSAC-T critic σ 爆炸
@@ -111,6 +119,11 @@ def build_env(args) -> gym.Env:
         soc_low_guard=args.tes_guard_soc_low,
         soc_high_guard=args.tes_guard_soc_high,
     )
+    env = FixedActionInsertWrapper(
+        env,
+        fixed_actions={0: M2_FIXED_FAN_VALUE},
+        fixed_action_names={0: "CRAH_Fan_DRL"},
+    )
     env = TimeEncodingWrapper(env)
     # H2c: 6-dim outdoor temperature trend features (tech route §6.1-C)
     env = TempTrendWrapper(
@@ -137,6 +150,7 @@ def build_env(args) -> gym.Env:
             teacher_initial_weight=args.tes_teacher_weight,
             teacher_decay_episodes=args.tes_teacher_decay_episodes,
             valve_penalty_weight=args.tes_valve_penalty_weight,
+            invalid_action_penalty_weight=args.tes_invalid_action_penalty_weight,
             high_price_threshold=args.tes_high_price_threshold,
             low_price_threshold=args.tes_low_price_threshold,
             near_peak_threshold=args.tes_near_peak_threshold,
@@ -269,6 +283,7 @@ def main() -> None:
     parser.add_argument("--tes-teacher-weight", type=float, default=0.0, help="Initial short-term TES direction teacher weight; default 0 keeps M2-F1 PBRS-only")
     parser.add_argument("--tes-teacher-decay-episodes", type=float, default=15.0, help="Episode count over which TES teacher weight decays to zero")
     parser.add_argument("--tes-valve-penalty-weight", type=float, default=0.02, help="Quadratic TES valve regularization weight")
+    parser.add_argument("--tes-invalid-action-penalty-weight", type=float, default=0.0, help="Linear penalty weight for raw TES charge/discharge intents beyond SOC limits; pass 0.05 for M2-F1 invalid-action shaping experiments")
     parser.add_argument("--tes-high-price-threshold", type=float, default=0.75, help="price_current_norm threshold for high-price discharge target")
     parser.add_argument("--tes-low-price-threshold", type=float, default=-0.50, help="price_current_norm threshold for low-price charge target")
     parser.add_argument("--tes-near-peak-threshold", type=float, default=0.40, help="price_hours_to_next_peak_norm threshold for near-peak charge preparation")
@@ -285,8 +300,8 @@ def main() -> None:
     parser.add_argument("--tau-decay", type=float, default=4.0, help="DPBA exp-decay scale in hours (shorter = sharper near-peak signal)")
     parser.add_argument("--p-peak-ref", type=float, default=0.80, help="Reference peak price_norm (Jiangsu TOU: $160-200 / 250 ≈ 0.80)")
     # M2-PBRS-v2 (2026-04-23, Xu 2023 discrete SAC): target_entropy = -|A|/3.
-    # With the unused workload/ITE action removed, |A|=5.
-    parser.add_argument("--target-entropy", type=float, default=-(5.0 / 3.0), help="SAC/DSAC-T target entropy (Xu 2023: -dim(A)/3 = -1.6667 for 5-dim action)")
+    # With CRAH_Fan_DRL fixed outside the agent, |A|=4.
+    parser.add_argument("--target-entropy", type=float, default=-(4.0 / 3.0), help="SAC/DSAC-T target entropy (Xu 2023: -dim(A)/3 = -1.3333 for 4-dim action)")
     args = parser.parse_args()
 
     if "Eplus-DC-Cooling-TES" not in get_ids():
@@ -304,13 +319,22 @@ def main() -> None:
     assert env.observation_space.shape == (expected_obs_dim,), (
         f"Expected M2 obs_dim={expected_obs_dim}, got {env.observation_space.shape}"
     )
-    assert env.action_space.shape == (5,), (
-        f"Expected action_dim=5, got {env.action_space.shape}"
+    assert env.action_space.shape == (4,), (
+        f"Expected action_dim=4, got {env.action_space.shape}"
     )
-    print(f"Env wrapper stack OK: obs_dim={expected_obs_dim}, action_dim=5")
+    assert np.allclose(env.action_space.low, np.array([0.0, 0.0, 0.0, -1.0], dtype=np.float32))
+    assert np.allclose(env.action_space.high, np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32))
+    print(
+        f"Env wrapper stack OK: obs_dim={expected_obs_dim}, action_dim=4, "
+        f"fixed_CRAH_Fan_DRL={M2_FIXED_FAN_VALUE}"
+    )
 
     obs_vars = env.get_wrapper_attr("observation_variables")
     act_vars = env.get_wrapper_attr("action_variables")
+    expected_act_vars = ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"]
+    assert list(act_vars) == expected_act_vars, (
+        f"M2-F1 action_variables mismatch: expected {expected_act_vars}, got {list(act_vars)}"
+    )
 
     # [H2d] Check observation_variables names match tech route §6.1 layout.
     # 32 dims total; wrapper application order: TES → TimeEncoding → TempTrend
@@ -358,9 +382,10 @@ def main() -> None:
         monitor_header=["timestep"] + list(obs_vars) + list(act_vars)
         + [
             "time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "cost_term",
+            "fixed_CRAH_Fan_DRL",
             "tes_valve_target", "tes_valve_position", "tes_guard_clipped", "tes_action_mode",
             "tes_soc_target", "tes_pbrs_term", "tes_teacher_term", "tes_teacher_weight",
-            "tes_valve_penalty", "tes_shaping_total",
+            "tes_valve_penalty", "tes_invalid_action_penalty", "tes_shaping_total",
             "terminated", "truncated",
         ],
     )
@@ -427,11 +452,14 @@ def main() -> None:
 
     if args.resume:
         print(f"Resuming from: {args.resume}")
+        assert_m2_4d_checkpoint(args.resume)
         model = AlgoClass.load(args.resume, env=env, device=args.device)
         replay_path = args.resume.replace(".zip", "_replay_buffer.pkl")
         if os.path.exists(replay_path):
-            model.load_replay_buffer(replay_path)
-            print(f"Replay buffer loaded: {replay_path}")
+            print(
+                f"Replay buffer not auto-loaded under M2-F1 fixed-fan guard: {replay_path}. "
+                "Start a fresh 4D replay buffer unless it has been explicitly audited."
+            )
     else:
         extra = {}
         if args.algo == "dsac_t":
@@ -443,7 +471,7 @@ def main() -> None:
             learning_rate=5e-5,   # M2-E3b: 1e-4 → 5e-5（lr=1e-4 下 3/4 seed policy collapse, 回退 M1 验证值恢复 DSAC-T R3 阻尼裕度, 保留 [256,256] 网络）
             learning_starts=8760,
             gamma=0.99,
-            target_entropy=args.target_entropy,  # M2-PBRS-v2: -dim(A)/3 = -1.6667 for 5-dim action.
+            target_entropy=args.target_entropy,  # M2-PBRS-v2: -dim(A)/3 = -1.3333 for 4-dim action.
             policy_kwargs=policy_kwargs,
             verbose=1,
             seed=args.seed,

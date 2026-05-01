@@ -19,13 +19,14 @@ training and evaluation wrapper stacks aligned.
 
 ## Action Semantics
 
-M2-F1 keeps the 5-dimensional action space.  There is still no workload
-action.
+M2-F1 now exposes a 4-dimensional agent action.  There is still no workload
+action.  The underlying EnergyPlus environment keeps the 5-dimensional full
+action, with `CRAH_Fan_DRL` fixed at 1.0 by `FixedActionInsertWrapper`.
 
 The TES action changes from an incremental command to a target valve command:
 
 ```text
-v_target = action[4]
+v_target = exposed_action[3]  # expands to full_action[4] = TES_DRL
 v_next = v_prev + clip(v_target - v_prev, -0.25, 0.25)
 ```
 
@@ -88,6 +89,24 @@ Valve regularization:
 r_valve = -0.02 * valve^2
 ```
 
+SOC-aware invalid-action shaping (off by default):
+
+```text
+if TES_SOC >= tes_soc_charge_limit and v_target_raw < 0:
+    r_invalid = -w_invalid * abs(v_target_raw)
+elif TES_SOC <= tes_soc_discharge_limit and v_target_raw > 0:
+    r_invalid = -w_invalid * abs(v_target_raw)
+else:
+    r_invalid = 0
+```
+
+This is separate from `tes_valve_penalty`.  `tes_valve_penalty` remains only
+the quadratic regularizer on the actual rate-limited valve position.  The
+invalid-action term penalizes the raw policy intent before the SOC guard clips
+physically pointless charge/discharge commands.  The CLI default is
+`--tes-invalid-action-penalty-weight 0.0` for compatibility; M2-F1 invalid-
+action shaping experiments should pass `0.05`.
+
 The shaping wrapper emits:
 
 - `tes_soc_target`
@@ -95,6 +114,7 @@ The shaping wrapper emits:
 - `tes_teacher_term`
 - `tes_teacher_weight`
 - `tes_valve_penalty`
+- `tes_invalid_action_penalty`
 - `tes_shaping_total`
 
 The legacy DPBA potential inside `RL_Cost_Reward` is retained for ablations

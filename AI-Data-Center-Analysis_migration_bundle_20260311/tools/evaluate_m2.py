@@ -1,7 +1,7 @@
-"""M2 evaluation on Nanjing + Jiangsu TOU + full wrapper stack.
+"""M2 fixed-fan evaluation on Nanjing + Jiangsu TOU + full wrapper stack.
 
-Loads a single seed's checkpoint + training normalization stats (32-dim M2
-env), runs a deterministic year-long evaluation, outputs:
+Loads a single seed's 4D checkpoint + training normalization stats (32-dim M2
+env, fixed CRAH_Fan_DRL=1.0), runs a deterministic year-long evaluation, outputs:
     - PUE / comfort pct / facility MWh / ITE MWh (standard)
     - cost_usd_annual (LMP × P_facility integrated)
     - pv_self_consumption_pct (min(P_facility, pv_kw) / P_facility)
@@ -39,12 +39,13 @@ import pandas as pd
 from sinergym.utils.common import get_ids
 from sinergym.utils.wrappers import LoggerWrapper, NormalizeObservation
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
-from sinergym.envs.tes_wrapper import TESTargetValveWrapper
+from sinergym.envs.tes_wrapper import FixedActionInsertWrapper, TESTargetValveWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from tools.dsac_t import DSAC_T
+from tools.m2_action_guard import M2_FIXED_FAN_VALUE, assert_m2_4d_checkpoint
 
 # M2-E3b-v3 (2026-04-22): Nanjing + Jiangsu 2025 TOU 合成电价 (见 run_m2_training.py)
 DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
@@ -75,6 +76,11 @@ def build_env(args) -> gym.Env:
         rate_limit=args.tes_valve_rate_limit,
         soc_low_guard=args.tes_guard_soc_low,
         soc_high_guard=args.tes_guard_soc_high,
+    )
+    env = FixedActionInsertWrapper(
+        env,
+        fixed_actions={0: M2_FIXED_FAN_VALUE},
+        fixed_action_names={0: "CRAH_Fan_DRL"},
     )
     env = TimeEncodingWrapper(env)
     # H2c: 6-dim outdoor temperature trend features (tech route §6.1-C)
@@ -158,17 +164,26 @@ def evaluate(args) -> dict:
 
     env = build_env(args)
     env = attach_reward(env, args)
+    assert env.action_space.shape == (4,), (
+        f"Expected M2-F1 action_dim=4, got {env.action_space.shape}"
+    )
     env = NormalizeObservation(env, mean=mean, var=var, automatic_update=False)
     obs_vars = env.get_wrapper_attr("observation_variables")
     act_vars = env.get_wrapper_attr("action_variables")
+    expected_act_vars = ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"]
+    assert list(act_vars) == expected_act_vars, (
+        f"M2-F1 action_variables mismatch: expected {expected_act_vars}, got {list(act_vars)}"
+    )
     env = LoggerWrapper(
         env,
         monitor_header=["timestep"] + list(obs_vars) + list(act_vars)
         + ["time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "cost_term",
+           "fixed_CRAH_Fan_DRL",
            "tes_valve_target", "tes_valve_position", "tes_guard_clipped", "tes_action_mode",
            "terminated", "truncated"],
     )
 
+    assert_m2_4d_checkpoint(args.checkpoint)
     model = DSAC_T.load(str(args.checkpoint), device="cpu")
     workspace_post = Path(env.get_wrapper_attr("workspace_path"))
 
@@ -189,7 +204,11 @@ def evaluate(args) -> dict:
     total_reward = 0.0
     while not (term or trunc):
         action, _ = model.predict(obs, deterministic=True)
+        assert np.asarray(action).shape == (4,), (
+            f"Expected 4D M2-F1 policy action, got {np.asarray(action).shape}"
+        )
         obs, reward, term, trunc, info = env.step(action)
+        assert float(info.get("fixed_CRAH_Fan_DRL", np.nan)) == M2_FIXED_FAN_VALUE
         total_reward += float(reward)
         step += 1
         if step == 1 and required_info_keys:

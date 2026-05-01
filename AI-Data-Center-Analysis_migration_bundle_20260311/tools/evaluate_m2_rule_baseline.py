@@ -9,6 +9,10 @@ Sign convention follows TESTargetValveWrapper:
     valve > 0: discharge/use TES
     valve < 0: charge/source TES
 
+The rule policy returns the exposed 4D M2-F1 action:
+    [CT_Pump_DRL, CRAH_T_DRL, Chiller_T_DRL, TES_DRL]
+CRAH_Fan_DRL remains a fixed full-env action at index 0.
+
 Example:
     python tools/evaluate_m2_rule_baseline.py --tag m2f1_rule_tou
 """
@@ -36,10 +40,11 @@ from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
-from sinergym.envs.tes_wrapper import TESTargetValveWrapper
+from sinergym.envs.tes_wrapper import FixedActionInsertWrapper, TESTargetValveWrapper
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.utils.common import get_ids
 from sinergym.utils.wrappers import LoggerWrapper
+from tools.m2_action_guard import M2_FIXED_FAN_VALUE
 
 
 DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
@@ -69,6 +74,11 @@ def build_env(args: argparse.Namespace) -> gym.Env:
         rate_limit=args.tes_valve_rate_limit,
         soc_low_guard=args.tes_guard_soc_low,
         soc_high_guard=args.tes_guard_soc_high,
+    )
+    env = FixedActionInsertWrapper(
+        env,
+        fixed_actions={0: args.fan_action},
+        fixed_action_names={0: "CRAH_Fan_DRL"},
     )
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(
@@ -166,7 +176,6 @@ def policy_action(obs: np.ndarray, names: list[str], args: argparse.Namespace) -
 
     return np.array(
         [
-            args.fan_action,
             args.ct_pump_action,
             args.crah_temp_action,
             args.chiller_temp_action,
@@ -310,8 +319,8 @@ def summarize_monitor(
             "soc_discharge_limit": args.soc_discharge_limit,
             "charge_target": -args.charge_target,
             "discharge_target": args.discharge_target,
-            "fixed_non_tes_action": [
-                args.fan_action,
+            "fixed_fan_action": args.fan_action,
+            "fixed_non_tes_agent_action": [
                 args.ct_pump_action,
                 args.crah_temp_action,
                 args.chiller_temp_action,
@@ -348,6 +357,8 @@ def evaluate(args: argparse.Namespace) -> dict:
 
     env = build_env(args)
     env = attach_reward(env, args)
+    if env.action_space.shape != (4,):
+        raise RuntimeError(f"Expected M2-F1 4D action space, got {env.action_space.shape}")
     obs_vars = list(env.get_wrapper_attr("observation_variables"))
     act_vars = list(env.get_wrapper_attr("action_variables"))
     env = LoggerWrapper(
@@ -365,6 +376,7 @@ def evaluate(args: argparse.Namespace) -> dict:
             "lmp_usd_per_mwh",
             "current_price_usd_per_mwh",
             "current_pv_kw",
+            "fixed_CRAH_Fan_DRL",
             "tes_valve_target",
             "tes_valve_position",
             "tes_guard_clipped",
@@ -384,6 +396,8 @@ def evaluate(args: argparse.Namespace) -> dict:
     try:
         while not (terminated or truncated):
             action = policy_action(obs, obs_names, args)
+            if action.shape != (4,):
+                raise RuntimeError(f"Rule policy emitted {action.shape}, expected (4,)")
             obs, reward, terminated, truncated, _ = env.step(action)
             total_reward += float(reward)
             steps += 1
@@ -435,12 +449,18 @@ def main() -> None:
     ap.add_argument("--soc-discharge-limit", type=float, default=0.25)
     ap.add_argument("--charge-target", type=float, default=0.85)
     ap.add_argument("--discharge-target", type=float, default=0.85)
-    ap.add_argument("--fan-action", type=float, default=0.5)
+    ap.add_argument("--fan-action", type=float, default=M2_FIXED_FAN_VALUE, help="Fixed full-env CRAH_Fan_DRL value, not an exposed policy action.")
     ap.add_argument("--ct-pump-action", type=float, default=0.5)
     ap.add_argument("--crah-temp-action", type=float, default=0.5)
     ap.add_argument("--chiller-temp-action", type=float, default=0.5)
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
+    if abs(args.fan_action - M2_FIXED_FAN_VALUE) > 1e-9:
+        print(
+            f"[evaluate_m2_rule_baseline] --fan-action is legacy-only under M2-F1; "
+            f"forcing fixed CRAH_Fan_DRL={M2_FIXED_FAN_VALUE} instead of {args.fan_action}."
+        )
+        args.fan_action = M2_FIXED_FAN_VALUE
 
     result = evaluate(args)
     out = args.out or Path("runs/eval_m2") / f"{args.tag}_{args.policy}" / "result.json"

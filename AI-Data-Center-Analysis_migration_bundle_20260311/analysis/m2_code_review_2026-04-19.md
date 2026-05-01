@@ -1,6 +1,6 @@
 # M2 代码审查报告 — 2026-04-19
 
-> **2026-04-25 superseded note**: 本文审查的是曾计划加入 `WorkloadWrapper` 的 41 维观测 / 6 维动作 M2 草案。当前 M2 已删除 workload/ITE 空置动作维，实际 agent 空间为 32 维观测 / 5 维动作：4 个 HVAC 动作 + `TES_DRL`。因此本文中关于 workload action、`action[4]` ITE 调度、`obs_dim=41`、`action_dim=6` 的建议仅作为历史记录，不再代表当前训练环境。
+> **2026-04-29 superseded note**: 本文审查的是曾计划加入 `WorkloadWrapper` 的 41 维观测 / 6 维动作 M2 草案。当前 M2-F1 为 32 维观测 / 4 维 agent 动作 `[CT_Pump_DRL, CRAH_T_DRL, Chiller_T_DRL, TES_DRL]`；底层 EnergyPlus full action 仍保留 5 维，并由 wrapper 固定插入 `CRAH_Fan_DRL=1.0`。因此本文中关于 workload action、`action[4]` ITE 调度、`obs_dim=41`、`action_dim=6`、旧 5D agent action 的建议仅作为历史记录，不再代表当前训练环境。
 
 审查范围：M2-A（数据下载）→ M2-D1（冒烟 + evaluate_m2）共 10 个文件，对照
 `项目目标/code-review-request-M2-2026-04-19.md` §1 的文件清单 + §2 的 M1 坑 A–F。

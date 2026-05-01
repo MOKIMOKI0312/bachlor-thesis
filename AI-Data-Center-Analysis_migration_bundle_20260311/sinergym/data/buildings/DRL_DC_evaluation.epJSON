@@ -1339,7 +1339,16 @@
           "program_line": "SET T_tank_avg = T_tank"
         },
         {
-          "program_line": "SET SOC = (12.0 - T_tank_avg) / 6.0"
+          "program_line": "SET TES_SOC_HOT_TEMP = 12.0"
+        },
+        {
+          "program_line": "SET TES_SOC_COLD_TEMP = 6.67"
+        },
+        {
+          "program_line": "SET TES_SOC_TEMP_SPAN = TES_SOC_HOT_TEMP - TES_SOC_COLD_TEMP"
+        },
+        {
+          "program_line": "SET SOC = (TES_SOC_HOT_TEMP - T_tank_avg) / TES_SOC_TEMP_SPAN"
         },
         {
           "program_line": "IF SOC < 0.0"
@@ -1366,7 +1375,7 @@
           "program_line": "SET TES_Avg_Temp_Actuator = T_tank_avg"
         },
         {
-          "program_line": "SET TES_Use_Outlet_T_SP = 6.67"
+          "program_line": "SET TES_Use_Outlet_T_SP = TES_SOC_COLD_TEMP"
         }
       ]
     },
@@ -2005,6 +2014,16 @@
       "key_value": "TES_Avg_Temp_Obs",
       "reporting_frequency": "Timestep",
       "variable_name": "Schedule Value"
+    },
+    "TES_Use_Heat_Transfer_Energy": {
+      "key_value": "Chilled Water Tank",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Chilled Water Thermal Storage Use Side Heat Transfer Energy"
+    },
+    "TES_Source_Heat_Transfer_Energy": {
+      "key_value": "Chilled Water Tank",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Chilled Water Thermal Storage Source Side Heat Transfer Energy"
     }
   },
   "Output:VariableDictionary": {

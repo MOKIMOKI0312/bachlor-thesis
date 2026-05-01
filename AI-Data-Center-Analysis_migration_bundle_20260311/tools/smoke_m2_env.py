@@ -1,11 +1,12 @@
 """Integration smoke for the full M2 wrapper stack on a real EplusEnv.
 
-Builds:  EplusEnv → TESTargetValve → TimeEncoding → TempTrend → PriceSignal →
-         PVSignal → EnergyScale → optional TESPriceShaping → (+ RL_Cost_Reward patched)
+Builds:  EplusEnv → TESTargetValve → FixedActionInsert → TimeEncoding →
+         TempTrend → PriceSignal → PVSignal → EnergyScale → optional TESPriceShaping
+         → (+ RL_Cost_Reward patched)
 
 Verifies:
   - obs_dim == 32 (20 + 6 + 3 + 3)
-  - action_dim == 5
+  - action_dim == 4, with full action[0] CRAH_Fan_DRL fixed at 1.0
   - 3 env.step calls run clean
   - reward_terms dict contains cost_term / lmp_usd_per_mwh (RL-Cost)
     or effective_price_usd_per_mwh (RL-Green)
@@ -31,11 +32,16 @@ import numpy as np
 
 from sinergym.utils.common import get_ids
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
-from sinergym.envs.tes_wrapper import TESPriceShapingWrapper, TESTargetValveWrapper
+from sinergym.envs.tes_wrapper import (
+    FixedActionInsertWrapper,
+    TESPriceShapingWrapper,
+    TESTargetValveWrapper,
+)
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
+from tools.m2_action_guard import M2_FIXED_FAN_VALUE
 
 
 def _index(obs_names: list[str], candidates: tuple[str, ...]) -> int:
@@ -106,6 +112,7 @@ def main():
     ap.add_argument("--steps", type=int, default=3)
     ap.add_argument("--disable-tes-tou-shaping", action="store_true")
     ap.add_argument("--tes-teacher-weight", type=float, default=0.0)
+    ap.add_argument("--tes-invalid-action-penalty-weight", type=float, default=0.0)
     ap.add_argument("--kappa-shape", type=float, default=0.0)
     args = ap.parse_args()
 
@@ -120,6 +127,11 @@ def main():
         config_params={"runperiod": (1, 1, 2025, 31, 12, 2025), "timesteps_per_hour": 4},
     )
     env = TESTargetValveWrapper(env, valve_idx=4, rate_limit=0.25)
+    env = FixedActionInsertWrapper(
+        env,
+        fixed_actions={0: M2_FIXED_FAN_VALUE},
+        fixed_action_names={0: "CRAH_Fan_DRL"},
+    )
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(
         env,
@@ -133,6 +145,7 @@ def main():
         env = TESPriceShapingWrapper(
             env,
             teacher_initial_weight=args.tes_teacher_weight,
+            invalid_action_penalty_weight=args.tes_invalid_action_penalty_weight,
         )
 
     # Patch reward if requested
@@ -185,16 +198,23 @@ def main():
     assert env.observation_space.shape == (expected_dim,), (
         f"Expected obs_dim={expected_dim}, got {env.observation_space.shape}"
     )
-    assert env.action_space.shape == (5,), (
-        f"Expected action_dim=5, got {env.action_space.shape}"
+    assert env.action_space.shape == (4,), (
+        f"Expected action_dim=4, got {env.action_space.shape}"
     )
+    assert np.allclose(env.action_space.low, np.array([0.0, 0.0, 0.0, -1.0], dtype=np.float32))
+    assert np.allclose(env.action_space.high, np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32))
     print(
-        f"Env stack OK: obs_dim={expected_dim}, action_dim=5, reward={args.reward_cls}, "
+        f"Env stack OK: obs_dim={expected_dim}, action_dim=4, reward={args.reward_cls}, "
+        f"fixed_CRAH_Fan_DRL={M2_FIXED_FAN_VALUE}, "
         f"tes_tou_shaping={not args.disable_tes_tou_shaping}"
     )
     obs_names = list(env.get_wrapper_attr("observation_variables"))
     assert len(obs_names) == expected_dim, (
         f"observation_variables length mismatch: {len(obs_names)} != {expected_dim}"
+    )
+    act_names = list(env.get_wrapper_attr("action_variables"))
+    assert act_names == ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"], (
+        f"Unexpected M2-F1 action_variables: {act_names}"
     )
 
     obs, info = env.reset()
@@ -206,14 +226,21 @@ def main():
     pbrs_terms: list[float] = []
     for i in range(args.steps):
         if i == 0:
-            a = np.array([0.5, 0.5, 0.5, 0.5, -1.0], dtype=np.float32)
+            a = np.array([0.5, 0.5, 0.5, -1.0], dtype=np.float32)
         elif i == 1:
-            a = np.array([0.5, 0.5, 0.5, 0.5, +1.0], dtype=np.float32)
+            a = np.array([0.5, 0.5, 0.5, +1.0], dtype=np.float32)
         elif i == 2:
-            a = np.array([0.5, 0.5, 0.5, 0.5, +1.0], dtype=np.float32)
+            a = np.array([0.5, 0.5, 0.5, +1.0], dtype=np.float32)
         else:
-            a = rng.uniform(-1, 1, size=(5,)).astype(np.float32)
+            a = rng.uniform(-1, 1, size=(4,)).astype(np.float32)
+            a[:3] = np.clip(a[:3], 0.0, 1.0)
         obs, r, term, trunc, info = env.step(a)
+        full_action = np.asarray(info.get("full_action"), dtype=np.float32)
+        assert full_action.shape == (5,), f"full_action missing or wrong shape: {full_action}"
+        assert abs(float(full_action[0]) - M2_FIXED_FAN_VALUE) < 1e-7, (
+            f"CRAH fan full action drifted: {full_action}"
+        )
+        assert np.asarray(info.get("action")).shape == (4,), "Logger-facing action must stay 4D"
         assert obs.shape == (expected_dim,)
         assert np.isfinite(r)
         idx = _check_obs_semantics(obs, obs_names, f"step {i+1}")
@@ -234,11 +261,13 @@ def main():
 
         summary = {
             "step": i + 1, "reward": round(float(r), 3),
-            "tes_target_action": round(float(a[4]), 3),
+            "fixed_fan_full_action": round(float(full_action[0]), 3),
+            "tes_target_action": round(float(a[3]), 3),
             "tes_valve_obs": round(float(obs[idx["tes_valve"]]), 3),
             "tes_valve_info": round(float(info.get("tes_valve_position", 0.0)), 3),
             "tes_soc_target": round(float(info.get("tes_soc_target", 0.0)), 3),
             "tes_shape": round(float(info.get("tes_shaping_total", 0.0)), 4),
+            "tes_invalid_action_penalty": round(float(info.get("tes_invalid_action_penalty", 0.0)), 4),
             "tes_guard": bool(info.get("tes_guard_clipped", False)),
             "pv_kw": round(float(info.get("current_pv_kw", 0)), 1),
             "lmp": round(float(info.get("current_price_usd_per_mwh", 0)), 2),
@@ -257,7 +286,8 @@ def main():
         )
         shaping_keys = (
             "tes_soc_target", "tes_pbrs_term", "tes_teacher_term",
-            "tes_teacher_weight", "tes_valve_penalty", "tes_shaping_total",
+            "tes_teacher_weight", "tes_valve_penalty",
+            "tes_invalid_action_penalty", "tes_shaping_total",
         )
         for k in target_wrapper_keys:
             assert k in info, f"TES shaping/target wrapper did not emit {k!r}"

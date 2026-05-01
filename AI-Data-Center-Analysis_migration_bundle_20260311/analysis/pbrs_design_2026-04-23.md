@@ -32,7 +32,7 @@
 
 - **当前 reward class**: `PUE_TES_Reward` in `sinergym/utils/rewards.py:1660` — 扩展 `PUE_Reward` + soc_penalty (warning quadratic [0.30,0.70] + sharp linear [0.15,0.85])
 - **Config**: `sinergym/__init__.py:209-225` 注册 `DC-DRL-TES` with `PUE_TES_Reward`. 当前 M2 训练入口使用 `runperiod=(1,1,2025,31,12,2025)`, `timesteps_per_hour=4` → **约 35040 steps/episode**，continuing episodic
-- **Action**: 当前 M2 删除 workload/ITE 空置动作后，`action[4] ∈ [-1, 1]` = TES Δv，wrapper 累加 valve_position。"idle" policy (Δv=0) 是 null action；PBRS 必须让 idling 严格差于正确的充放电
+- **Action**: 当前 M2-F1 删除 workload/ITE 空置动作并固定风机后，agent 暴露 4D `[CT_Pump_DRL, CRAH_T_DRL, Chiller_T_DRL, TES_DRL]`；`TES_DRL` 是 exposed `action[3] ∈ [-1, 1]`，wrapper 扩展为底层 full `action[4]` 并做目标阀门速率限制。`CRAH_Fan_DRL` 不是 agent 动作，固定 full action = 1.0；PBRS 必须让 TES idle 严格差于正确的充放电。
 - **DSAC-T**: distributional critic, γ=0.99。PBRS 加 constant per transition；critic 吸收；不干扰 DSAC-T 的 quantile targets
 - **Price signals**: `price_current_norm` ∈ [0,1] 在 obs dim 26（post bc10db0）
 - **已有 cost_term**: `α=2e-3` 已挂 RL_Cost_Reward
@@ -155,7 +155,7 @@ init_soc = np.random.uniform(0.20, 0.80)  # truncated uniform
 # Requires a physical way to set tank thermal state, not just wrapper obs.
 ```
 
-2026-04-25 后 active M2 模型使用 `ThermalStorage:ChilledWater:Mixed`。Mixed 水罐的初始热状态由 EnergyPlus 在环境初始化时按 `TES_Charge_Setpoint=6.0°C` 建立；`TESIncrementalWrapper.reset()` 随机化 valve_position 只能改变初始控制命令，不能改变水罐热状态。因此当前入口仍不启用初始 SOC 随机化。若后续要做，应通过 episode-specific 初始化 setpoint schedule 或预处理仿真生成不同真实罐温，而不是只改观测值。
+2026-04-25 后 active M2 模型使用 `ThermalStorage:ChilledWater:Mixed`。Mixed 水罐的初始热状态由 EnergyPlus 在环境初始化时按 `TES_Charge_Setpoint=6.0°C` 建立；只随机化 wrapper valve_position 只能改变初始控制命令，不能改变水罐热状态。因此初始 SOC 随机化应通过 episode-specific 初始化 setpoint schedule 或预处理仿真生成不同真实罐温，而不是只改观测值。
 
 ### 超参数
 

@@ -331,7 +331,7 @@ class ModelJSON(object):
         else:
             soc = float(random.uniform(low, high))
 
-        cold_temp = float(config.get('tes_soc_cold_temp', 6.0))
+        cold_temp = float(config.get('tes_soc_cold_temp', 6.67))
         hot_temp = float(config.get('tes_soc_hot_temp', 12.0))
         nominal_setpoint = float(config.get('tes_charge_setpoint', cold_temp))
         schedule_name = config.get('tes_initial_schedule_name', 'TES_Charge_Setpoint')

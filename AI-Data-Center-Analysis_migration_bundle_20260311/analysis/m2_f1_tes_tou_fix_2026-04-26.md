@@ -169,9 +169,9 @@ avg_comfort_violation_pct < 5%
 Compile and smoke:
 
 ```powershell
-C:\Users\18430\.conda\envs\aidc-py310\python.exe -m py_compile sinergym\envs\tes_wrapper.py sinergym\utils\logger.py tools\run_m2_training.py tools\evaluate_m2.py tools\smoke_m2_env.py
-C:\Users\18430\.conda\envs\aidc-py310\python.exe tools\smoke_m2_env.py --reward-cls rl_cost --steps 3
-C:\Users\18430\.conda\envs\aidc-py310\python.exe tools\smoke_m2_env.py --reward-cls rl_cost --steps 3 --disable-tes-tou-shaping
+python -m py_compile sinergym\envs\tes_wrapper.py sinergym\utils\logger.py tools\run_m2_training.py tools\evaluate_m2.py tools\smoke_m2_env.py
+python tools\smoke_m2_env.py --reward-cls rl_cost --steps 3
+python tools\smoke_m2_env.py --reward-cls rl_cost --steps 3 --disable-tes-tou-shaping
 ```
 
 Training uses CPU, `lr=5e-5`, 4 parallel seeds, and 20 second stagger between

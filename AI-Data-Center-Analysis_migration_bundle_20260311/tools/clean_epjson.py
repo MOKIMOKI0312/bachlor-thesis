@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-BASE = Path(r"C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\Data\buildings")
+BASE = Path(r"<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\Data\buildings")
 
 FILES = [
     BASE / "DRL_DC_training.epJSON",

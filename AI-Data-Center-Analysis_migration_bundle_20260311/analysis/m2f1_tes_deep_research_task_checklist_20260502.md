@@ -2,7 +2,7 @@
 
 Date: 2026-05-02
 
-Source report: `C:\Users\18430\Desktop\毕业设计代码\deep-research-report (1).md`
+Source report: `<repo>\deep-research-report (1).md`
 
 Scope: convert the deep-research report into an executable checklist for M2-F1 TES time-of-use arbitrage recovery. This file is a planning and handoff artifact only. Docs Worker does not modify code.
 

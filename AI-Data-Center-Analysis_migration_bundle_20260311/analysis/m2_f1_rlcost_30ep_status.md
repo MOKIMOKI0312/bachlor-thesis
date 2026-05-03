@@ -5,10 +5,10 @@
 
 | Job | PID | Alive | Finished | Timesteps | Approx Episode | Elapsed h | Workspace |
 |---|---:|---|---|---:|---:|---:|---|
-| m2-f1-rlcost-30ep-seed1 | 33600 | False | True | 1051170 | 30 | 7.76 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-051` |
-| m2-f1-rlcost-30ep-seed2 | 39452 | False | True | 1051170 | 30 | 7.76 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-052` |
-| m2-f1-rlcost-30ep-seed3 | 23188 | False | True | 1051170 | 30 | 7.74 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-053` |
-| m2-f1-rlcost-30ep-seed4 | 16004 | False | True | 1051170 | 30 | 7.75 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-054` |
+| m2-f1-rlcost-30ep-seed1 | 33600 | False | True | 1051170 | 30 | 7.76 | `<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-051` |
+| m2-f1-rlcost-30ep-seed2 | 39452 | False | True | 1051170 | 30 | 7.76 | `<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-052` |
+| m2-f1-rlcost-30ep-seed3 | 23188 | False | True | 1051170 | 30 | 7.74 | `<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-053` |
+| m2-f1-rlcost-30ep-seed4 | 16004 | False | True | 1051170 | 30 | 7.75 | `<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-054` |
 
 ## Latest Steps
 

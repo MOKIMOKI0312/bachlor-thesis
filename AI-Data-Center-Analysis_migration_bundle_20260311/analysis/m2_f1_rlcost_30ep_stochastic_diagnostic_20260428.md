@@ -4,7 +4,7 @@
 - No tracked source/model files were modified; training was not started.
 - Temporary script: `tmp/m2_stochastic_eval_diag_20260428.py`.
 - It imports `tools.evaluate_m2.evaluate()` and monkeypatches `DSAC_T.load` in-process so the existing evaluation loop calls a proxy whose `predict()` forces `deterministic=False`.
-- Python: `C:\Users\18430\.conda\envs\aidc-py310\python.exe`. Env vars were set only in the launched PowerShell process: `EPLUS_PATH`, `PYTHONPATH`, `PATH`, `KMP_DUPLICATE_LIB_OK`.
+- Python: `python` (conda env aidc-py310; absolute interpreter path scrubbed for privacy). Env vars were set only in the launched PowerShell process: `EPLUS_PATH`, `PYTHONPATH`, `PATH`, `KMP_DUPLICATE_LIB_OK`.
 
 ## Metric Comparison
 | seed | policy | price_response | soc_daily_amp | valve_sat | comfort_pct | valve_low_mean | valve_high_mean |
@@ -17,15 +17,15 @@
 | seed4 | stoch | -0.400147 | 0.725046 | 0.444422 | 100.000000 | 0.115119 | -0.285028 |
 
 ## Action / HVAC Abnormal Summary
-- seed1: monitor `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\eval\run-017\episode-001\monitor.csv`
+- seed1: monitor `<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\runs\eval\run-017\episode-001\monitor.csv`
   - HVAC near-bound fractions: CRAH_Fan_DRL=0.999971, CT_Pump_DRL=0.000000, CRAH_T_DRL=0.000000, Chiller_T_DRL=0.328929
   - TES abs>=0.95=0.875746, TES mean=-0.941002, guard_clipped=0.027882
   - action_nan=True (monitor first-row artifact), temp>25 frac=0.000742, temp>35 count=2
-- seed3: monitor `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\eval\run-018\episode-001\monitor.csv`
+- seed3: monitor `<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\runs\eval\run-018\episode-001\monitor.csv`
   - HVAC near-bound fractions: CRAH_Fan_DRL=0.629805, CT_Pump_DRL=0.000000, CRAH_T_DRL=0.000000, Chiller_T_DRL=0.690562
   - TES abs>=0.95=0.998944, TES mean=-0.999597, guard_clipped=0.000029
   - action_nan=True (monitor first-row artifact), temp>25 frac=0.000200, temp>35 count=2
-- seed4: monitor `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\eval\run-019\episode-001\monitor.csv`
+- seed4: monitor `<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\runs\eval\run-019\episode-001\monitor.csv`
   - HVAC near-bound fractions: CRAH_Fan_DRL=0.000000, CT_Pump_DRL=0.954168, CRAH_T_DRL=0.010274, Chiller_T_DRL=0.000029
   - TES abs>=0.95=0.444422, TES mean=-0.127963, guard_clipped=0.178163
   - action_nan=True (monitor first-row artifact), temp>25 frac=1.000000, temp>35 count=35041

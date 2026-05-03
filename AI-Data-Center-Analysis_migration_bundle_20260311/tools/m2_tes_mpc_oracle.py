@@ -402,7 +402,55 @@ def _expanded_price_series(args: argparse.Namespace, horizon_steps: int, step_id
     if hourly.size == 0:
         raise RuntimeError(f"Empty price CSV: {args.price_csv}")
     step_indices = (np.arange(step_idx, step_idx + horizon_steps) // M2_TIMESTEPS_PER_HOUR) % hourly.size
-    return hourly[step_indices]
+    return _apply_forecast_noise(
+        hourly[step_indices],
+        args=args,
+        step_idx=step_idx,
+        stream_name="price_series",
+    )
+
+
+def _forecast_noise_stream_seed(base_seed: int, step_idx: int, stream_name: str) -> int:
+    stream_offset = sum((idx + 1) * ord(char) for idx, char in enumerate(stream_name))
+    return int(base_seed + step_idx * 1009 + stream_offset)
+
+
+def _apply_forecast_noise(
+    values: np.ndarray,
+    args: argparse.Namespace,
+    step_idx: int,
+    stream_name: str,
+    *,
+    preserve_current_step: bool = True,
+) -> np.ndarray:
+    forecast_mode = getattr(args, "forecast_noise_mode", "perfect")
+    series = np.asarray(values, dtype=np.float64)
+    if series.size == 0 or forecast_mode == "perfect":
+        return series.copy()
+
+    output = series.copy()
+    start_idx = 1 if preserve_current_step else 0
+    if start_idx >= output.size:
+        return output
+
+    if forecast_mode == "gaussian":
+        sigma = max(0.0, float(getattr(args, "forecast_noise_sigma", 0.0)))
+        if sigma == 0.0:
+            return output
+        rng = np.random.RandomState(
+            _forecast_noise_stream_seed(int(getattr(args, "forecast_noise_seed", 0)), step_idx, stream_name)
+        )
+        noise = rng.normal(loc=0.0, scale=sigma, size=output.size - start_idx)
+        output[start_idx:] = output[start_idx:] * (1.0 + noise)
+        return output
+
+    if forecast_mode == "persistence_h":
+        lag_steps = max(1, int(getattr(args, "forecast_noise_persist_h", 1)) * M2_TIMESTEPS_PER_HOUR)
+        for idx in range(start_idx, output.size):
+            output[idx] = series[max(0, idx - lag_steps)]
+        return output
+
+    raise RuntimeError(f"Unsupported forecast noise mode: {forecast_mode}")
 
 
 def _price_feature_cache(args: argparse.Namespace) -> dict[str, np.ndarray]:
@@ -429,6 +477,8 @@ def _price_feature_cache(args: argparse.Namespace) -> dict[str, np.ndarray]:
         "price": hourly,
         "norm": norm.astype(np.float64),
         "hours_to_peak_norm": (hours_to_peak / max_gap).astype(np.float64),
+        "_price_mean": np.asarray([float(np.mean(hourly))], dtype=np.float64),
+        "_price_std": np.asarray([std], dtype=np.float64),
     }
 
 
@@ -442,8 +492,43 @@ def _expanded_price_features(
     if cache is None:
         cache = _price_feature_cache(args)
         planner_state["price_feature_cache"] = cache
+
+    forecast_mode = getattr(args, "forecast_noise_mode", "perfect")
     hour_indices = (np.arange(step_idx, step_idx + horizon_steps) // M2_TIMESTEPS_PER_HOUR) % 8760
-    return {key: np.asarray(value[hour_indices], dtype=np.float64) for key, value in cache.items()}
+    perfect_price = np.asarray(cache["price"][hour_indices], dtype=np.float64)
+    perfect_hours_to_peak = np.asarray(cache["hours_to_peak_norm"][hour_indices], dtype=np.float64)
+    perfect_norm = np.asarray(cache["norm"][hour_indices], dtype=np.float64)
+    if forecast_mode == "perfect":
+        return {
+            "price": perfect_price,
+            "norm": perfect_norm,
+            "hours_to_peak_norm": perfect_hours_to_peak,
+        }
+
+    noisy_price = _apply_forecast_noise(
+        perfect_price,
+        args=args,
+        step_idx=step_idx,
+        stream_name="price_features",
+    )
+    price_mean = float(np.asarray(cache["_price_mean"], dtype=np.float64)[0])
+    price_std = max(float(np.asarray(cache["_price_std"], dtype=np.float64)[0]), 1.0e-6)
+    noisy_norm = np.clip((noisy_price - price_mean) / price_std, -1.0, 2.0)
+    noisy_hours_to_peak = (
+        _apply_forecast_noise(
+            perfect_hours_to_peak,
+            args=args,
+            step_idx=step_idx,
+            stream_name="price_hours_to_peak",
+        )
+        if forecast_mode == "persistence_h"
+        else perfect_hours_to_peak
+    )
+    return {
+        "price": noisy_price,
+        "norm": noisy_norm.astype(np.float64),
+        "hours_to_peak_norm": np.asarray(noisy_hours_to_peak, dtype=np.float64),
+    }
 
 
 def plan_tes_action_scipy_highs(
@@ -864,6 +949,10 @@ def make_monitor_row(
             "CRAH_T_DRL": float(action[1]),
             "Chiller_T_DRL": float(action[2]),
             "TES_DRL": float(action[3]),
+            "forecast_noise_mode": getattr(args, "forecast_noise_mode", "perfect"),
+            "forecast_noise_sigma": float(getattr(args, "forecast_noise_sigma", 0.0)),
+            "forecast_noise_seed": int(getattr(args, "forecast_noise_seed", 0)),
+            "forecast_noise_persist_h": int(getattr(args, "forecast_noise_persist_h", 1)),
             "tes_mpc_mode_label": decision.mode,
             "tes_mpc_amp_label": decision.amplitude,
             "tes_mpc_signed_target_label": decision.target,
@@ -1218,6 +1307,10 @@ def summarize_monitor(
         "solver_requested": getattr(args, "solver", "heuristic"),
         "solver_used": getattr(args, "solver_used", "heuristic"),
         "solver_status": getattr(args, "solver_status", "heuristic"),
+        "forecast_noise_mode": getattr(args, "forecast_noise_mode", "perfect"),
+        "forecast_noise_sigma": float(getattr(args, "forecast_noise_sigma", 0.0)),
+        "forecast_noise_seed": int(getattr(args, "forecast_noise_seed", 0)),
+        "forecast_noise_persist_h": int(getattr(args, "forecast_noise_persist_h", 1)),
         "eval_design": args.eval_design,
         "eval_design_description": EVAL_DESIGNS[args.eval_design]["description"],
         "building_file": EVAL_DESIGNS[args.eval_design]["building_file"],
@@ -1509,6 +1602,30 @@ def add_common_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--eval-design", default="trainlike", choices=sorted(EVAL_DESIGNS))
     ap.add_argument("--max-steps", type=int, default=0, help="Optional early stop for validation runs.")
     ap.add_argument("--out-dir", type=Path, default=Path("runs/m2_tes_mpc_oracle"))
+    ap.add_argument(
+        "--forecast-noise-mode",
+        choices=["perfect", "gaussian", "persistence_h"],
+        default="perfect",
+        help="Forecast perturbation mode for planner-side predicted signals.",
+    )
+    ap.add_argument(
+        "--forecast-noise-sigma",
+        type=float,
+        default=0.10,
+        help="Relative Gaussian sigma for future-step forecast perturbations.",
+    )
+    ap.add_argument(
+        "--forecast-noise-seed",
+        type=int,
+        default=0,
+        help="Base RNG seed for reproducible forecast perturbations.",
+    )
+    ap.add_argument(
+        "--forecast-noise-persist-h",
+        type=int,
+        default=1,
+        help="Backward lag in hours for persistence_h forecast substitution.",
+    )
     ap.add_argument(
         "--solver",
         choices=["heuristic", "lp_highs", "milp"],

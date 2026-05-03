@@ -873,6 +873,412 @@ def plan_tes_action_scipy_highs(
     )
 
 
+def plan_tes_action_milp(
+    obs_values: dict[str, float],
+    args: argparse.Namespace,
+    planner_state: dict[str, Any],
+    step_idx: int,
+) -> PlannerDecision:
+    """Solve the TES planning step as a MILP with binary charge/discharge mode indicators.
+
+    The continuous magnitudes ``u_discharge[k]`` and ``u_charge[k]`` keep the existing LP
+    energy accounting, but binaries ``b_discharge[k]`` and ``b_charge[k]`` enforce that each
+    horizon step chooses at most one mode from {charge, hold, discharge}. This removes the
+    LP relaxation artifact where the planner may carry simultaneous positive charge and
+    discharge amplitudes in the same step.
+    """
+    if getattr(args, "comfort_risk_weight", 0.0) != 0.0:
+        raise RuntimeError(
+            "comfort_risk_penalty is recorded as a zero-weight placeholder in this milestone; "
+            "nonzero --comfort-risk-weight is not implemented."
+        )
+    try:
+        from scipy.optimize import Bounds, LinearConstraint, milp
+    except Exception as exc:
+        raise RuntimeError("solver=milp requested, but scipy.optimize.milp is unavailable.") from exc
+
+    soc0 = obs_values.get("TES_SOC")
+    if soc0 is None or not np.isfinite(soc0):
+        return PlannerDecision(0.0, "hold", False, "missing_tes_soc", "milp:no_soc")
+
+    dynamics = planner_state["soc_dynamics"]
+    horizon_steps = max(1, int(round(float(args.horizon_hours) * M2_TIMESTEPS_PER_HOUR)))
+    price_features = _expanded_price_features(args, planner_state, horizon_steps, step_idx)
+    price_norm = price_features["norm"]
+    hours_to_peak = price_features["hours_to_peak_norm"]
+    low_window = price_norm <= float(args.low_price_threshold)
+    high_window = price_norm >= float(args.high_price_threshold)
+    low_prepeak_window = low_window & (hours_to_peak <= float(args.near_peak_threshold))
+    strict_soc_min = float(args.tes_guard_soc_low)
+    strict_soc_max = float(args.tes_guard_soc_high)
+    planning_soc_min = float(getattr(args, "soc_planning_min", getattr(args, "optimizer_soc_min", strict_soc_min)))
+    planning_soc_max = float(getattr(args, "soc_planning_max", getattr(args, "optimizer_soc_max", strict_soc_max)))
+    safety_margin = max(0.0, float(args.soc_safety_margin))
+    actual_low_protect = float(soc0) <= planning_soc_min + safety_margin
+    actual_high_protect = float(soc0) >= planning_soc_max - safety_margin
+    strict_low_recovery = float(soc0) < strict_soc_min
+    strict_high_recovery = float(soc0) > strict_soc_max
+    safety_override = ""
+    safety_recovery = False
+    if actual_low_protect:
+        safety_override = "low_soc_protect"
+    if actual_high_protect:
+        safety_override = "high_soc_protect" if not safety_override else f"{safety_override};high_soc_protect"
+    if strict_low_recovery or strict_high_recovery:
+        safety_recovery = True
+
+    n = horizon_steps
+    idx_pos = 0
+    idx_neg = idx_pos + n
+    idx_bin_pos = idx_neg + n
+    idx_bin_neg = idx_bin_pos + n
+    idx_switch = idx_bin_neg + n
+    idx_terminal = idx_switch + n
+    idx_soc_hi_slack = idx_terminal + 1
+    idx_soc_lo_slack = idx_soc_hi_slack + n
+    idx_soc_schedule_slack = idx_soc_lo_slack + n
+    var_count = idx_soc_schedule_slack + n
+
+    c = np.zeros(var_count, dtype=np.float64)
+    pos_cost = -float(args.electricity_cost_weight) * price_norm + float(args.neutral_action_penalty)
+    neg_cost = float(args.electricity_cost_weight) * price_norm + float(args.neutral_action_penalty)
+    pos_cost[high_window] -= float(args.high_price_discharge_reward)
+    neg_cost[low_prepeak_window] -= float(args.low_prepeak_charge_reward)
+    pos_cost[low_window] += float(args.low_price_discharge_penalty)
+    neg_cost[high_window] += float(args.high_price_charge_penalty)
+    c[idx_pos:idx_pos + n] = pos_cost
+    c[idx_neg:idx_neg + n] = neg_cost
+    c[idx_switch:idx_switch + n] = float(args.switch_penalty)
+    c[idx_terminal] = float(args.terminal_soc_weight)
+    c[idx_soc_hi_slack:idx_soc_hi_slack + n] = float(args.soc_bound_penalty)
+    c[idx_soc_lo_slack:idx_soc_lo_slack + n] = float(args.soc_bound_penalty)
+    c[idx_soc_schedule_slack:idx_soc_schedule_slack + n] = float(args.soc_schedule_weight)
+
+    discharge_limit = max(0.0, float(args.discharge_target))
+    charge_limit = max(0.0, float(args.charge_target))
+    prev_target = float(planner_state.get("last_target", 0.0))
+    rate = max(0.0, float(args.tes_valve_rate_limit))
+    pos_bounds: list[tuple[float, float | None]] = [(0.0, discharge_limit) for _ in range(n)]
+    neg_bounds: list[tuple[float, float | None]] = [(0.0, charge_limit) for _ in range(n)]
+    for k in range(n):
+        if low_window[k] and not (k == 0 and strict_high_recovery):
+            pos_bounds[k] = (0.0, 0.0)
+        if high_window[k] and not (k == 0 and strict_low_recovery):
+            neg_bounds[k] = (0.0, 0.0)
+    if actual_low_protect:
+        pos_bounds[0] = (0.0, 0.0)
+    if actual_high_protect:
+        neg_bounds[0] = (0.0, 0.0)
+
+    def ensure_upper_bound(
+        bounds_list: list[tuple[float, float | None]],
+        index: int,
+        minimum_upper: float,
+    ) -> None:
+        old_lower, old_upper = bounds_list[index]
+        if old_upper is None or old_upper >= minimum_upper:
+            return
+        bounds_list[index] = (old_lower, float(minimum_upper))
+
+    def set_lower_bound(
+        bounds_list: list[tuple[float, float | None]],
+        index: int,
+        lower: float,
+    ) -> None:
+        old_lower, old_upper = bounds_list[index]
+        if old_upper is not None and lower > old_upper + 1.0e-12:
+            return
+        bounds_list[index] = (max(float(old_lower), float(lower)), old_upper)
+
+    max_discharge_by_rate = max(0.0, prev_target + rate)
+    max_charge_by_rate = max(0.0, rate - prev_target)
+    unavoidable_discharge_by_rate = max(0.0, prev_target - rate)
+    unavoidable_charge_by_rate = max(0.0, -prev_target - rate)
+    if unavoidable_discharge_by_rate > 1.0e-9:
+        ensure_upper_bound(pos_bounds, 0, min(unavoidable_discharge_by_rate, discharge_limit))
+        if low_window[0] or actual_low_protect:
+            safety_recovery = True
+            label = "rate_limit_unwind_discharge"
+            safety_override = label if not safety_override else f"{safety_override};{label}"
+    if unavoidable_charge_by_rate > 1.0e-9:
+        ensure_upper_bound(neg_bounds, 0, min(unavoidable_charge_by_rate, charge_limit))
+        if high_window[0] or actual_high_protect:
+            safety_recovery = True
+            label = "rate_limit_unwind_charge"
+            safety_override = label if not safety_override else f"{safety_override};{label}"
+    max_discharge_by_soc = max(0.0, (float(soc0) - planning_soc_min) / dynamics.discharge_gain_per_step)
+    max_charge_by_soc = max(0.0, (planning_soc_max - float(soc0)) / dynamics.charge_gain_per_step)
+    if strict_high_recovery:
+        min_discharge = min(float(args.high_price_min_discharge), discharge_limit, max_discharge_by_rate)
+        if min_discharge > 1.0e-9:
+            set_lower_bound(pos_bounds, 0, min_discharge)
+    elif high_window[0] and float(soc0) > float(args.soc_discharge_limit) and not actual_low_protect:
+        min_discharge = min(
+            float(args.high_price_min_discharge),
+            discharge_limit,
+            max_discharge_by_rate,
+            max_discharge_by_soc,
+        )
+        if min_discharge > 1.0e-9:
+            set_lower_bound(pos_bounds, 0, min_discharge)
+    if strict_low_recovery:
+        min_charge = min(float(args.low_prepeak_min_charge), charge_limit, max_charge_by_rate)
+        if min_charge > 1.0e-9:
+            set_lower_bound(neg_bounds, 0, min_charge)
+    elif low_prepeak_window[0] and float(soc0) < float(args.soc_charge_limit) and not actual_high_protect:
+        min_charge = min(
+            float(args.low_prepeak_min_charge),
+            charge_limit,
+            max_charge_by_rate,
+            max_charge_by_soc,
+        )
+        if min_charge > 1.0e-9:
+            set_lower_bound(neg_bounds, 0, min_charge)
+
+    pos_bin_bounds: list[tuple[float, float]] = [(0.0, 1.0) for _ in range(n)]
+    neg_bin_bounds: list[tuple[float, float]] = [(0.0, 1.0) for _ in range(n)]
+    for k in range(n):
+        if (pos_bounds[k][1] or 0.0) <= 1.0e-12:
+            pos_bin_bounds[k] = (0.0, 0.0)
+        elif pos_bounds[k][0] > 1.0e-12:
+            pos_bin_bounds[k] = (1.0, 1.0)
+        if (neg_bounds[k][1] or 0.0) <= 1.0e-12:
+            neg_bin_bounds[k] = (0.0, 0.0)
+        elif neg_bounds[k][0] > 1.0e-12:
+            neg_bin_bounds[k] = (1.0, 1.0)
+
+    lower_bounds = np.zeros(var_count, dtype=np.float64)
+    upper_bounds = np.full(var_count, np.inf, dtype=np.float64)
+    for k, (lower, upper) in enumerate(pos_bounds):
+        lower_bounds[idx_pos + k] = float(lower)
+        upper_bounds[idx_pos + k] = float(discharge_limit if upper is None else upper)
+    for k, (lower, upper) in enumerate(neg_bounds):
+        lower_bounds[idx_neg + k] = float(lower)
+        upper_bounds[idx_neg + k] = float(charge_limit if upper is None else upper)
+    for k, (lower, upper) in enumerate(pos_bin_bounds):
+        lower_bounds[idx_bin_pos + k] = float(lower)
+        upper_bounds[idx_bin_pos + k] = float(upper)
+    for k, (lower, upper) in enumerate(neg_bin_bounds):
+        lower_bounds[idx_bin_neg + k] = float(lower)
+        upper_bounds[idx_bin_neg + k] = float(upper)
+
+    rows: list[np.ndarray] = []
+    lb_list: list[float] = []
+    ub_list: list[float] = []
+
+    def append_constraint(row: np.ndarray, lower: float, upper: float) -> None:
+        rows.append(row)
+        lb_list.append(float(lower))
+        ub_list.append(float(upper))
+
+    def soc_row(k: int) -> np.ndarray:
+        row = np.zeros(var_count, dtype=np.float64)
+        row[idx_neg:idx_neg + k] = dynamics.charge_gain_per_step
+        row[idx_pos:idx_pos + k] = -dynamics.discharge_gain_per_step
+        return row
+
+    soc_min_config = planning_soc_min
+    soc_max_config = planning_soc_max
+    desired_soc = np.full(n, float(args.terminal_soc_target), dtype=np.float64)
+    desired_soc[high_window] = float(args.high_price_soc_target)
+    has_future_prepeak = np.maximum.accumulate(low_prepeak_window[::-1])[::-1].astype(bool)
+    desired_soc[has_future_prepeak & ~low_window & ~high_window] = float(args.reserve_headroom_soc_target)
+    desired_soc[low_prepeak_window] = float(args.low_prepeak_soc_target)
+    desired_soc = np.clip(desired_soc, soc_min_config, soc_max_config)
+
+    for k in range(1, n + 1):
+        row = soc_row(k)
+        row[idx_soc_hi_slack + k - 1] = -1.0
+        append_constraint(row, -np.inf, soc_max_config - float(soc0))
+
+        low_row = -soc_row(k)
+        low_row[idx_soc_lo_slack + k - 1] = -1.0
+        append_constraint(low_row, -np.inf, float(soc0) - soc_min_config)
+
+        schedule_row = soc_row(k)
+        schedule_row[idx_soc_schedule_slack + k - 1] = -1.0
+        append_constraint(schedule_row, -np.inf, float(desired_soc[k - 1]) - float(soc0))
+
+        schedule_low_row = -soc_row(k)
+        schedule_low_row[idx_soc_schedule_slack + k - 1] = -1.0
+        append_constraint(schedule_low_row, -np.inf, float(soc0) - float(desired_soc[k - 1]))
+
+    for k in range(n):
+        target_row = np.zeros(var_count, dtype=np.float64)
+        target_row[idx_pos + k] = 1.0
+        target_row[idx_neg + k] = -1.0
+
+        rate_row = target_row.copy()
+        if k == 0:
+            append_constraint(rate_row, -np.inf, prev_target + rate)
+            append_constraint(rate_row, prev_target - rate, np.inf)
+        else:
+            rate_row[idx_pos + k - 1] -= 1.0
+            rate_row[idx_neg + k - 1] += 1.0
+            append_constraint(rate_row, -np.inf, rate)
+            append_constraint(rate_row, -rate, np.inf)
+
+        diff_row = target_row.copy()
+        if k > 0:
+            diff_row[idx_pos + k - 1] -= 1.0
+            diff_row[idx_neg + k - 1] += 1.0
+            baseline = 0.0
+        else:
+            baseline = prev_target
+        switch_row_pos = diff_row.copy()
+        switch_row_pos[idx_switch + k] = -1.0
+        append_constraint(switch_row_pos, -np.inf, baseline)
+        switch_row_neg = -diff_row
+        switch_row_neg[idx_switch + k] = -1.0
+        append_constraint(switch_row_neg, -np.inf, -baseline)
+
+        mutual_row = np.zeros(var_count, dtype=np.float64)
+        mutual_row[idx_bin_pos + k] = 1.0
+        mutual_row[idx_bin_neg + k] = 1.0
+        append_constraint(mutual_row, -np.inf, 1.0)
+
+        pos_link_row = np.zeros(var_count, dtype=np.float64)
+        pos_link_row[idx_pos + k] = 1.0
+        pos_link_row[idx_bin_pos + k] = -discharge_limit
+        append_constraint(pos_link_row, -np.inf, 0.0)
+
+        neg_link_row = np.zeros(var_count, dtype=np.float64)
+        neg_link_row[idx_neg + k] = 1.0
+        neg_link_row[idx_bin_neg + k] = -charge_limit
+        append_constraint(neg_link_row, -np.inf, 0.0)
+
+    terminal = soc_row(n)
+    terminal_target = float(args.terminal_soc_target)
+    terminal_tol = max(0.0, float(args.terminal_soc_tolerance))
+    terminal[idx_terminal] = -1.0
+    append_constraint(terminal, -np.inf, terminal_target + terminal_tol - float(soc0))
+    terminal_neg = -soc_row(n)
+    terminal_neg[idx_terminal] = -1.0
+    append_constraint(terminal_neg, -np.inf, float(soc0) - terminal_target + terminal_tol)
+
+    constraints = LinearConstraint(
+        np.vstack(rows),
+        np.asarray(lb_list, dtype=np.float64),
+        np.asarray(ub_list, dtype=np.float64),
+    )
+    integrality = np.zeros(var_count, dtype=np.int8)
+    integrality[idx_bin_pos:idx_bin_pos + n] = 1
+    integrality[idx_bin_neg:idx_bin_neg + n] = 1
+
+    started = time.perf_counter()
+    res = milp(
+        c=c,
+        integrality=integrality,
+        bounds=Bounds(lower_bounds, upper_bounds),
+        constraints=constraints,
+        options={"disp": False},
+    )
+    solve_seconds = float(time.perf_counter() - started)
+    if solve_seconds > 5.0:
+        print(f"WARNING: MILP solve at step {step_idx} took {solve_seconds:.2f}s")
+
+    if res.status != 0 or res.x is None:
+        fallback = plan_tes_action_heuristic(obs_values, args)
+        reason = f"milp_status={res.status}: {res.message}"
+        return PlannerDecision(
+            target=fallback.target,
+            mode=fallback.mode,
+            feasible=fallback.feasible,
+            infeasible_reason=reason,
+            solver_status="milp_to_heuristic_fallback",
+            objective_terms=fallback.objective_terms,
+            optimizer_diagnostics={
+                "fallback_reason": reason,
+                "solve_seconds": solve_seconds,
+                "requested_solver": "milp",
+            },
+        )
+
+    u_pos = float(res.x[idx_pos])
+    u_neg = float(res.x[idx_neg])
+    target = float(np.clip(u_pos - u_neg, -charge_limit, discharge_limit))
+    if target < -0.05:
+        mode = "charge"
+    elif target > 0.05:
+        mode = "discharge"
+    else:
+        mode = "hold"
+    feasible = True
+    reason = ""
+    if target < 0.0 and actual_high_protect:
+        feasible = False
+        reason = safety_override or "high_soc_protect"
+        target = 0.0
+        mode = "hold"
+    elif target > 0.0 and actual_low_protect:
+        feasible = False
+        reason = safety_override or "low_soc_protect"
+        target = 0.0
+        mode = "hold"
+
+    objective_terms = {
+        "electricity_cost_proxy": float(
+            np.dot(price_norm, res.x[idx_neg:idx_neg + n] - res.x[idx_pos:idx_pos + n])
+        ),
+        "switch_penalty": float(args.switch_penalty) * float(np.sum(res.x[idx_switch:idx_switch + n])),
+        "terminal_soc_penalty": float(args.terminal_soc_weight) * float(res.x[idx_terminal]),
+        "soc_bound_penalty": float(args.soc_bound_penalty)
+        * float(
+            np.sum(res.x[idx_soc_hi_slack:idx_soc_hi_slack + n])
+            + np.sum(res.x[idx_soc_lo_slack:idx_soc_lo_slack + n])
+        ),
+        "soc_schedule_penalty": float(args.soc_schedule_weight)
+        * float(np.sum(res.x[idx_soc_schedule_slack:idx_soc_schedule_slack + n])),
+        "comfort_risk_penalty": 0.0,
+    }
+    predicted_soc = (
+        float(soc0)
+        + np.cumsum(res.x[idx_neg:idx_neg + n]) * dynamics.charge_gain_per_step
+        - np.cumsum(res.x[idx_pos:idx_pos + n]) * dynamics.discharge_gain_per_step
+    )
+    soc_hi_slack = res.x[idx_soc_hi_slack:idx_soc_hi_slack + n]
+    soc_lo_slack = res.x[idx_soc_lo_slack:idx_soc_lo_slack + n]
+    terminal_abs_slack = abs(float(predicted_soc[-1]) - float(args.terminal_soc_target))
+    diagnostics = {
+        "soc_hi_slack_sum": float(np.sum(soc_hi_slack)),
+        "soc_hi_slack_max": float(np.max(soc_hi_slack)) if len(soc_hi_slack) else 0.0,
+        "soc_hi_slack_first_step": int(np.argmax(soc_hi_slack > 1.0e-9)) if np.any(soc_hi_slack > 1.0e-9) else None,
+        "soc_lo_slack_sum": float(np.sum(soc_lo_slack)),
+        "soc_lo_slack_max": float(np.max(soc_lo_slack)) if len(soc_lo_slack) else 0.0,
+        "soc_lo_slack_first_step": int(np.argmax(soc_lo_slack > 1.0e-9)) if np.any(soc_lo_slack > 1.0e-9) else None,
+        "terminal_abs_slack": terminal_abs_slack,
+        "predicted_soc_1": float(predicted_soc[0]),
+        "predicted_soc_n": float(predicted_soc[-1]),
+        "predicted_soc_min": float(np.min(predicted_soc)),
+        "predicted_soc_max": float(np.max(predicted_soc)),
+        "current_low_price_window": bool(low_window[0]),
+        "current_low_prepeak_window": bool(low_prepeak_window[0]),
+        "current_high_price_window": bool(high_window[0]),
+        "desired_soc_1": float(desired_soc[0]),
+        "desired_soc_n": float(desired_soc[-1]),
+        "safety_override": safety_override,
+        "safety_recovery": bool(safety_recovery),
+        "initial_out_of_bounds": bool(step_idx == 0 and (strict_low_recovery or strict_high_recovery)),
+        "planning_soc_min": planning_soc_min,
+        "planning_soc_max": planning_soc_max,
+        "solve_seconds": solve_seconds,
+        "b_discharge_active": int(round(float(res.x[idx_bin_pos]))),
+        "b_charge_active": int(round(float(res.x[idx_bin_neg]))),
+    }
+    if low_prepeak_window[0] and float(soc0) >= float(args.soc_charge_limit) and target >= -0.05:
+        feasible = False
+        reason = "soc_charge_limit_full"
+    return PlannerDecision(
+        target=target,
+        mode=mode,
+        feasible=feasible,
+        infeasible_reason=reason,
+        solver_status="optimal",
+        objective_terms=objective_terms,
+        optimizer_diagnostics=diagnostics,
+    )
+
+
 def prepare_planner(args: argparse.Namespace) -> dict[str, Any]:
     state: dict[str, Any] = {"last_target": 0.0}
     requested_solver = getattr(args, "solver", "milp")
@@ -881,11 +1287,9 @@ def prepare_planner(args: argparse.Namespace) -> dict[str, Any]:
         state["solver_used"] = "lp_highs"
         state["solver_status"] = "lp_highs"
     elif requested_solver == "milp":
-        # W1-0 keeps the default CLI stable until the MILP path lands in W1-2.
-        state["planner_fn"] = plan_tes_action_scipy_highs
-        state["solver_used"] = "lp_highs"
-        state["solver_status"] = "milp_not_implemented_fallback_lp_highs"
-        print("WARNING: --solver milp requested before W1-2; temporarily falling back to lp_highs.")
+        state["planner_fn"] = plan_tes_action_milp
+        state["solver_used"] = "milp"
+        state["solver_status"] = "milp"
     else:
         state["planner_fn"] = plan_tes_action_heuristic
         state["solver_used"] = "heuristic"
@@ -893,7 +1297,7 @@ def prepare_planner(args: argparse.Namespace) -> dict[str, Any]:
 
     args.solver_used = str(state["solver_used"])
     args.solver_status = str(state["solver_status"])
-    if str(state["solver_used"]) == "lp_highs":
+    if str(state["solver_used"]) in {"lp_highs", "milp"}:
         state["soc_dynamics"] = resolve_soc_dynamics(args)
     return state
 
@@ -905,8 +1309,8 @@ def plan_controller_action(
     step_idx: int,
 ) -> PlannerDecision:
     planner_fn = planner_state["planner_fn"]
-    if planner_fn is plan_tes_action_scipy_highs:
-        return plan_tes_action_scipy_highs(obs_values, args, planner_state, step_idx)
+    if planner_fn in {plan_tes_action_scipy_highs, plan_tes_action_milp}:
+        return planner_fn(obs_values, args, planner_state, step_idx)
     return planner_fn(obs_values, args)
 
 
@@ -996,6 +1400,7 @@ def make_monitor_row(
             "tes_mpc_predicted_soc_n": diagnostics.get("predicted_soc_n"),
             "tes_mpc_predicted_soc_min": diagnostics.get("predicted_soc_min"),
             "tes_mpc_predicted_soc_max": diagnostics.get("predicted_soc_max"),
+            "tes_mpc_solve_seconds": diagnostics.get("solve_seconds"),
             "tes_mpc_current_low_price_window": diagnostics.get("current_low_price_window"),
             "tes_mpc_current_low_prepeak_window": diagnostics.get("current_low_prepeak_window"),
             "tes_mpc_current_high_price_window": diagnostics.get("current_high_price_window"),
@@ -1276,6 +1681,13 @@ def summarize_monitor(
         if "tes_mpc_solver_status" in df
         else {}
     )
+    solver_used = getattr(args, "solver_used", "heuristic")
+    solver_status = getattr(args, "solver_status", "heuristic")
+    if solver_used == "milp":
+        if solver_status_counts and set(solver_status_counts) == {"optimal"}:
+            solver_status = "optimal"
+        elif "milp_to_heuristic_fallback" in solver_status_counts:
+            solver_status = "milp_to_heuristic_fallback"
 
     mechanism_gate = {
         "comfort_lt_3pct": comfort_pct is not None and comfort_pct < 3.0,
@@ -1298,6 +1710,21 @@ def summarize_monitor(
     mechanism_gate_pass = bool(all(mechanism_gate.values()))
     physical_bound_gate_pass = bool(all(physical_bound_gate.values()))
     gate = {**mechanism_gate, **physical_bound_gate}
+    optimizer_constraints = [
+        "SOC bounds with high-penalty slack for rolling feasibility",
+        "TES target rate limit",
+        "low-price windows forbid discharge",
+        "high-price windows forbid charge",
+        "current low-price pre-peak window applies minimum charge when SOC/rate constraints make it feasible",
+        "current high-price window applies minimum discharge when SOC/rate constraints make it feasible",
+        "actual low/high SOC protection can override economic action bounds",
+        "strict out-of-bound SOC recovery is labeled as safety_recovery",
+        "charge/discharge convex relaxation via u_charge + u_discharge bound",
+        "terminal SOC soft-near target with tolerance and slack penalty",
+        "rolling SOC inventory schedule for headroom before pre-peak charging and reserve after discharge",
+    ]
+    if solver_used == "milp":
+        optimizer_constraints[8] = "charge/discharge amplitudes are gated by binary mode indicators"
 
     result: dict[str, Any] = {
         "tag": args.tag,
@@ -1305,8 +1732,8 @@ def summarize_monitor(
         "controller_family": getattr(args, "controller_family", args.controller_type),
         "controller_type_detail": getattr(args, "controller_type_detail", args.controller_type),
         "solver_requested": getattr(args, "solver", "heuristic"),
-        "solver_used": getattr(args, "solver_used", "heuristic"),
-        "solver_status": getattr(args, "solver_status", "heuristic"),
+        "solver_used": solver_used,
+        "solver_status": solver_status,
         "forecast_noise_mode": getattr(args, "forecast_noise_mode", "perfect"),
         "forecast_noise_sigma": float(getattr(args, "forecast_noise_sigma", 0.0)),
         "forecast_noise_seed": int(getattr(args, "forecast_noise_seed", 0)),
@@ -1412,19 +1839,7 @@ def summarize_monitor(
                 "high_price_discharge_reward": getattr(args, "high_price_discharge_reward", None),
                 "comfort_risk_penalty": "zero-weight placeholder; not modeled in M2-F1 optimizer",
             },
-            "constraints": [
-                "SOC bounds with high-penalty slack for rolling feasibility",
-                "TES target rate limit",
-                "low-price windows forbid discharge",
-                "high-price windows forbid charge",
-                "current low-price pre-peak window applies minimum charge when SOC/rate constraints make it feasible",
-                "current high-price window applies minimum discharge when SOC/rate constraints make it feasible",
-                "actual low/high SOC protection can override economic action bounds",
-                "strict out-of-bound SOC recovery is labeled as safety_recovery",
-                "charge/discharge convex relaxation via u_charge + u_discharge bound",
-                "terminal SOC soft-near target with tolerance and slack penalty",
-                "rolling SOC inventory schedule for headroom before pre-peak charging and reserve after discharge",
-            ],
+            "constraints": optimizer_constraints,
             "terminal_soc_tolerance": getattr(args, "terminal_soc_tolerance", None),
             "soc_planning_min": getattr(args, "soc_planning_min", None),
             "soc_planning_max": getattr(args, "soc_planning_max", None),

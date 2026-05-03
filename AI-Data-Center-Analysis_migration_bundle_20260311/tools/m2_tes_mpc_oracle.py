@@ -247,7 +247,7 @@ def obs_map(obs: np.ndarray, names: list[str]) -> dict[str, float]:
     return {name: float(obs[i]) for i, name in enumerate(names)}
 
 
-def plan_tes_action(obs_values: dict[str, float], args: argparse.Namespace) -> PlannerDecision:
+def plan_tes_action_heuristic(obs_values: dict[str, float], args: argparse.Namespace) -> PlannerDecision:
     soc = obs_values.get("TES_SOC")
     price = obs_values.get("price_current_norm")
     hours_to_peak = obs_values.get("price_hours_to_next_peak_norm")
@@ -287,6 +287,10 @@ def plan_tes_action(obs_values: dict[str, float], args: argparse.Namespace) -> P
         feasible = False
         reason = "soc_low_guard"
     return PlannerDecision(float(target), mode, feasible, reason)
+
+
+def plan_tes_action(obs_values: dict[str, float], args: argparse.Namespace) -> PlannerDecision:
+    return plan_tes_action_heuristic(obs_values, args)
 
 
 def _candidate_calibration_monitors(args: argparse.Namespace) -> list[Path]:
@@ -786,7 +790,25 @@ def plan_tes_action_scipy_highs(
 
 def prepare_planner(args: argparse.Namespace) -> dict[str, Any]:
     state: dict[str, Any] = {"last_target": 0.0}
-    if getattr(args, "solver", "heuristic") == "scipy-highs":
+    requested_solver = getattr(args, "solver", "milp")
+    if requested_solver == "lp_highs":
+        state["planner_fn"] = plan_tes_action_scipy_highs
+        state["solver_used"] = "lp_highs"
+        state["solver_status"] = "lp_highs"
+    elif requested_solver == "milp":
+        # W1-0 keeps the default CLI stable until the MILP path lands in W1-2.
+        state["planner_fn"] = plan_tes_action_scipy_highs
+        state["solver_used"] = "lp_highs"
+        state["solver_status"] = "milp_not_implemented_fallback_lp_highs"
+        print("WARNING: --solver milp requested before W1-2; temporarily falling back to lp_highs.")
+    else:
+        state["planner_fn"] = plan_tes_action_heuristic
+        state["solver_used"] = "heuristic"
+        state["solver_status"] = "heuristic"
+
+    args.solver_used = str(state["solver_used"])
+    args.solver_status = str(state["solver_status"])
+    if str(state["solver_used"]) == "lp_highs":
         state["soc_dynamics"] = resolve_soc_dynamics(args)
     return state
 
@@ -797,9 +819,10 @@ def plan_controller_action(
     planner_state: dict[str, Any],
     step_idx: int,
 ) -> PlannerDecision:
-    if getattr(args, "solver", "heuristic") == "scipy-highs":
+    planner_fn = planner_state["planner_fn"]
+    if planner_fn is plan_tes_action_scipy_highs:
         return plan_tes_action_scipy_highs(obs_values, args, planner_state, step_idx)
-    return plan_tes_action(obs_values, args)
+    return planner_fn(obs_values, args)
 
 
 def action_from_decision(decision: PlannerDecision, args: argparse.Namespace) -> np.ndarray:
@@ -1486,6 +1509,16 @@ def add_common_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--eval-design", default="trainlike", choices=sorted(EVAL_DESIGNS))
     ap.add_argument("--max-steps", type=int, default=0, help="Optional early stop for validation runs.")
     ap.add_argument("--out-dir", type=Path, default=Path("runs/m2_tes_mpc_oracle"))
+    ap.add_argument(
+        "--solver",
+        choices=["heuristic", "lp_highs", "milp"],
+        default="milp",
+        help=(
+            "Optimizer family. heuristic = original rolling rule. "
+            "lp_highs = scipy-highs LP relaxation. "
+            "milp = reserved for HiGHS MILP in W1-2 and temporarily falls back to lp_highs."
+        ),
+    )
     ap.add_argument("--horizon-hours", type=float, default=24.0)
     ap.add_argument("--terminal-soc-target", type=float, default=0.50)
     ap.add_argument("--terminal-soc-tolerance", type=float, default=0.08)
@@ -1526,6 +1559,18 @@ def add_common_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--soc-safety-margin", type=float, default=0.02)
     ap.add_argument("--soc-bound-penalty", type=float, default=1000.0)
     ap.add_argument("--soc-schedule-weight", type=float, default=6.0)
+    ap.add_argument(
+        "--switch-penalty",
+        type=float,
+        default=0.0,
+        help="LP path mode-switch L1 penalty coefficient; 0.0 matches the historical summary default.",
+    )
+    ap.add_argument(
+        "--terminal-soc-weight",
+        type=float,
+        default=1.0,
+        help="LP path terminal SOC deviation linear weight; 1.0 matches the historical summary default.",
+    )
     ap.add_argument("--electricity-cost-weight", type=float, default=1.0)
     ap.add_argument("--neutral-action-penalty", type=float, default=0.03)
     ap.add_argument("--low-price-discharge-penalty", type=float, default=200.0)
@@ -1547,9 +1592,8 @@ def parse_args() -> argparse.Namespace:
     args.controller_type = "mpc_oracle"
     args.controller_family = "mpc_oracle"
     args.controller_type_detail = "mpc_oracle_physical_reachable_baseline"
-    args.solver = "heuristic"
-    args.solver_used = "heuristic"
-    args.solver_status = "heuristic"
+    args.solver_used = args.solver
+    args.solver_status = args.solver
     return args
 
 

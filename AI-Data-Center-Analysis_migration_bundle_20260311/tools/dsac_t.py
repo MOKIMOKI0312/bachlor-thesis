@@ -38,6 +38,7 @@ from stable_baselines3.sac.policies import Actor, MlpPolicy, SACPolicy
 from stable_baselines3.sac.sac import SAC
 
 from tools.distributional_critic import DistributionalCritic
+from tools.m2_tes_bc import TESBCConfig, compute_tes_bc_loss, tes_bc_current_weight
 
 SelfDSACT = TypeVar("SelfDSACT", bound="DSAC_T")
 
@@ -73,8 +74,41 @@ class DSAC_T(SAC):
         # Align with Jingliang-Duan/DSAC-v2: single EMA `mean_std` per critic
         # (replaces paper's separate `_b` and `_omega` EMAs).
         self._mean_std: Optional[List[Optional[float]]] = None  # EMA of batch sigma mean per critic
+        self.tes_bc_config: Optional[TESBCConfig] = None
+        self.last_tes_bc_loss: float = 0.0
+        self.last_tes_bc_current_weight: float = 0.0
+        self.last_tes_bc_active_fraction: float = 0.0
 
         super().__init__(policy, env, **kwargs)
+
+    def configure_tes_bc(self, config: Optional[TESBCConfig]) -> None:
+        """Attach training-only TES-head BC config.
+
+        The BC term is only used inside ``train()`` and only touches TES action
+        dimensions.  Evaluation rollouts never call this label path.
+        """
+        self.tes_bc_config = config
+        self.last_tes_bc_loss = 0.0
+        self.last_tes_bc_current_weight = 0.0
+        self.last_tes_bc_active_fraction = 0.0
+
+    def get_tes_bc_status(self) -> Dict[str, Any]:
+        config = self.tes_bc_config
+        enabled = bool(config is not None and config.enabled and config.weight > 0.0)
+        current_weight = tes_bc_current_weight(config, self.num_timesteps) if config is not None else 0.0
+        return {
+            "tes_bc_enabled": enabled,
+            "tes_bc_weight": float(config.weight) if config is not None else 0.0,
+            "tes_bc_current_weight": float(current_weight),
+            "tes_bc_decay_episodes": float(config.decay_episodes) if config is not None else None,
+            "tes_bc_label_source": config.label_source if config is not None else None,
+            "tes_bc_window_only": bool(config.window_only) if config is not None else None,
+            "tes_bc_amp_label": float(config.amp_label) if config is not None else None,
+            "tes_bc_loss": float(self.last_tes_bc_loss),
+            "tes_bc_active_fraction": float(self.last_tes_bc_active_fraction),
+            "tes_bc_final_weight_zero": bool(current_weight == 0.0),
+            "tes_bc_runtime_planner_enabled": False,
+        }
 
     def _setup_model(self) -> None:
         """Setup model with DistributionalCritic instead of ContinuousCritic."""
@@ -128,7 +162,8 @@ class DSAC_T(SAC):
         self._update_learning_rate(optimizers)
 
         ent_coef_losses, ent_coefs = [], []
-        actor_losses, critic_losses = [], []
+        actor_losses, actor_rl_losses, critic_losses = [], [], []
+        tes_bc_losses, tes_bc_weights, tes_bc_active_fractions = [], [], []
         sigma_means = []
 
         for gradient_step in range(gradient_steps):
@@ -255,8 +290,33 @@ class DSAC_T(SAC):
             current_outputs_pi = self.critic(replay_data.observations, actions_pi2)
             q_means_pi = th.cat([out[0] for out in current_outputs_pi], dim=1)
             min_q_pi, _ = th.min(q_means_pi, dim=1, keepdim=True)
-            actor_loss = (ent_coef * log_prob2 - min_q_pi).mean()
+            actor_rl_loss = (ent_coef * log_prob2 - min_q_pi).mean()
+            actor_loss = actor_rl_loss
+            actor_rl_losses.append(actor_rl_loss.item())
+
+            bc_current_weight = (
+                tes_bc_current_weight(self.tes_bc_config, self.num_timesteps)
+                if self.tes_bc_config is not None
+                else 0.0
+            )
+            bc_loss_value = 0.0
+            bc_active_fraction = 0.0
+            if bc_current_weight > 0.0 and self.tes_bc_config is not None:
+                bc_loss, bc_stats = compute_tes_bc_loss(
+                    actions_pi=actions_pi2,
+                    observations=replay_data.observations,
+                    config=self.tes_bc_config,
+                )
+                actor_loss = actor_loss + float(bc_current_weight) * bc_loss
+                bc_loss_value = float(bc_stats.get("tes_bc_loss", 0.0))
+                bc_active_fraction = float(bc_stats.get("tes_bc_active_fraction", 0.0))
             actor_losses.append(actor_loss.item())
+            tes_bc_losses.append(bc_loss_value)
+            tes_bc_weights.append(float(bc_current_weight))
+            tes_bc_active_fractions.append(bc_active_fraction)
+            self.last_tes_bc_loss = bc_loss_value
+            self.last_tes_bc_current_weight = float(bc_current_weight)
+            self.last_tes_bc_active_fraction = bc_active_fraction
 
             # Optimize actor
             self.actor.optimizer.zero_grad()
@@ -274,8 +334,12 @@ class DSAC_T(SAC):
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         self.logger.record("train/ent_coef", np.mean(ent_coefs))
         self.logger.record("train/actor_loss", np.mean(actor_losses))
+        self.logger.record("train/actor_rl_loss", np.mean(actor_rl_losses))
         self.logger.record("train/critic_loss", np.mean(critic_losses))
         self.logger.record("train/sigma_mean", np.mean(sigma_means))
+        self.logger.record("train/tes_bc_loss", np.mean(tes_bc_losses))
+        self.logger.record("train/tes_bc_weight", np.mean(tes_bc_weights))
+        self.logger.record("train/tes_bc_active_fraction", np.mean(tes_bc_active_fractions))
         # Backward-compat logging: clip_b = xi * mean_std, omega = mean_std^2
         _ms = [x if x is not None else 1.0 for x in self._mean_std]
         self.logger.record("train/clip_b", float(np.mean([self.xi * s for s in _ms])))

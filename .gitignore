@@ -9,8 +9,20 @@ Eplus-env-*/
 vendor/EnergyPlus-*/
 *.7z
 *.rar
+*.zip
 training_jobs/
 .claude/
 .playwright-mcp/
 AI-Data-Center-Analysis_migration_bundle_20260311/vendor/SustainDC/
 _worktree_artifacts_backup_*/
+
+# 参考文献 PDF（124 MB，不入库；引用清单见 analysis/literature_mpc_tes_202605/paper_matrix.md）
+其它参考文献/
+
+# 大型审计原始数据（保留摘要 .md，剔除 _complete_ 的 16-38 MB JSON/CSV）
+AI-Data-Center-Analysis_migration_bundle_20260311/analysis/m2f1_reward_window_audit_*_complete_*.csv
+AI-Data-Center-Analysis_migration_bundle_20260311/analysis/m2f1_reward_window_audit_*_complete_*.json
+
+# PR 临时辅助文件（_tmp 前缀的 commit body / comment 草稿）
+.pr_body_tmp.md
+.pr_comment_tmp.md

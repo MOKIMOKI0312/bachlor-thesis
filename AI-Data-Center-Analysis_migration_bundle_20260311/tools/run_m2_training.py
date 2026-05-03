@@ -57,7 +57,9 @@ from sinergym.utils.training_monitor import StatusCallback, make_probe_logger_fa
 from sinergym.utils.wrappers import LoggerWrapper, NormalizeObservation
 from sinergym.envs.tes_wrapper import (
     FixedActionInsertWrapper,
+    TESDirectionAmplitudeActionWrapper,
     TESPriceShapingWrapper,
+    TESStateAugmentationWrapper,
     TESTargetValveWrapper,
 )
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
@@ -65,7 +67,8 @@ from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
-from tools.m2_action_guard import M2_FIXED_FAN_VALUE, assert_m2_4d_checkpoint
+from tools.m2_action_guard import M2_FIXED_FAN_VALUE, checkpoint_action_dim
+from tools.m2_tes_bc import TESBCConfig, TESBCTrainingInfoWrapper, tes_bc_status_from_model
 
 # M2-E3b-v3 (2026-04-22): CAISO → Nanjing + Jiangsu TOU
 # 切换动机：CAISO 重尾 reward (kurtosis=120) 触发 DSAC-T critic σ 爆炸
@@ -73,6 +76,96 @@ from tools.m2_action_guard import M2_FIXED_FAN_VALUE, assert_m2_4d_checkpoint
 DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
 DEFAULT_PRICE_CSV = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
 DEFAULT_PV_CSV = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
+
+
+class M2StatusCallback(StatusCallback):
+    """StatusCallback with immutable M2 experiment metadata."""
+
+    def __init__(self, *args, extra_status: dict | None = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.extra_status = dict(extra_status or {})
+
+    def _payload(self, finished: bool = False) -> dict:
+        payload = super()._payload(finished=finished)
+        payload.update(self.extra_status)
+        model = getattr(self, "model", None)
+        if model is not None:
+            payload.update(tes_bc_status_from_model(model))
+        return payload
+
+
+def m2_action_dim(action_semantics: str) -> int:
+    if action_semantics == "signed_scalar":
+        return 4
+    if action_semantics in {"direction_amp", "direction_amp_hold"}:
+        return 5
+    raise ValueError(f"Unknown TES action semantics: {action_semantics}")
+
+
+def m2_action_bounds(action_semantics: str) -> tuple[np.ndarray, np.ndarray]:
+    if action_semantics == "signed_scalar":
+        return (
+            np.array([0.0, 0.0, 0.0, -1.0], dtype=np.float32),
+            np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+        )
+    if action_semantics in {"direction_amp", "direction_amp_hold"}:
+        return (
+            np.array([0.0, 0.0, 0.0, -1.0, -1.0], dtype=np.float32),
+            np.array([1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+        )
+    raise ValueError(f"Unknown TES action semantics: {action_semantics}")
+
+
+def m2_action_variables(action_semantics: str) -> list[str]:
+    if action_semantics == "signed_scalar":
+        return ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"]
+    if action_semantics in {"direction_amp", "direction_amp_hold"}:
+        return [
+            "CT_Pump_DRL",
+            "CRAH_T_DRL",
+            "Chiller_T_DRL",
+            "TES_direction_DRL",
+            "TES_amplitude_DRL",
+        ]
+    raise ValueError(f"Unknown TES action semantics: {action_semantics}")
+
+
+def assert_checkpoint_action_dim(checkpoint: str | Path, expected_dim: int) -> None:
+    action_dim = checkpoint_action_dim(checkpoint)
+    if action_dim != expected_dim:
+        raise RuntimeError(
+            f"Refusing checkpoint with action_dim={action_dim}; "
+            f"tes_action_semantics requires action_dim={expected_dim}. "
+            "Use matching --tes-action-semantics and state augmentation flags."
+        )
+
+
+def build_tes_bc_config(
+    args,
+    obs_vars: list[str],
+    timesteps_per_episode: int,
+    obs_mean: np.ndarray | None = None,
+    obs_var: np.ndarray | None = None,
+) -> TESBCConfig:
+    obs_indices = {name: idx for idx, name in enumerate(obs_vars)}
+    return TESBCConfig(
+        enabled=bool(args.tes_bc_weight > 0.0),
+        weight=float(args.tes_bc_weight),
+        decay_episodes=float(args.tes_bc_decay_episodes),
+        label_source=args.tes_bc_label_source,
+        window_only=bool(args.tes_bc_window_only),
+        amp_label=float(args.tes_bc_amp_label),
+        action_semantics=args.tes_action_semantics,
+        timesteps_per_episode=int(timesteps_per_episode),
+        obs_indices=obs_indices,
+        obs_mean=None if obs_mean is None else np.asarray(obs_mean, dtype=np.float32).tolist(),
+        obs_var=None if obs_var is None else np.asarray(obs_var, dtype=np.float32).tolist(),
+        low_price_threshold=float(args.tes_low_price_threshold),
+        high_price_threshold=float(args.tes_high_price_threshold),
+        near_peak_threshold=float(args.tes_near_peak_threshold),
+        soc_charge_limit=float(args.tes_soc_charge_limit),
+        soc_discharge_limit=float(args.tes_soc_discharge_limit),
+    )
 
 
 def set_global_seed(seed: int) -> None:
@@ -124,6 +217,13 @@ def build_env(args) -> gym.Env:
         fixed_actions={0: M2_FIXED_FAN_VALUE},
         fixed_action_names={0: "CRAH_Fan_DRL"},
     )
+    if args.tes_action_semantics in {"direction_amp", "direction_amp_hold"}:
+        env = TESDirectionAmplitudeActionWrapper(
+            env,
+            direction_deadband=args.tes_direction_deadband,
+            action_semantics=args.tes_action_semantics,
+            hold_steps=args.tes_option_hold_steps,
+        )
     env = TimeEncodingWrapper(env)
     # H2c: 6-dim outdoor temperature trend features (tech route §6.1-C)
     env = TempTrendWrapper(
@@ -142,6 +242,13 @@ def build_env(args) -> gym.Env:
     # Rescale J/h -> MWh/h (÷3.6e9) so NormalizeObservation's RunningMeanStd doesn't
     # lose float32 precision absorbing 10^10-magnitude samples.
     env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
+    if args.enable_tes_state_augmentation:
+        env = TESStateAugmentationWrapper(
+            env,
+            high_price_threshold=args.tes_high_price_threshold,
+            low_price_threshold=args.tes_low_price_threshold,
+            near_peak_threshold=args.tes_near_peak_threshold,
+        )
     if not args.disable_tes_tou_shaping:
         env = TESPriceShapingWrapper(
             env,
@@ -151,14 +258,27 @@ def build_env(args) -> gym.Env:
             teacher_decay_episodes=args.tes_teacher_decay_episodes,
             valve_penalty_weight=args.tes_valve_penalty_weight,
             invalid_action_penalty_weight=args.tes_invalid_action_penalty_weight,
+            tou_alignment_weight=args.tes_tou_alignment_weight,
             high_price_threshold=args.tes_high_price_threshold,
             low_price_threshold=args.tes_low_price_threshold,
             near_peak_threshold=args.tes_near_peak_threshold,
             target_soc_high=args.tes_target_soc_high,
             target_soc_low=args.tes_target_soc_low,
             target_soc_neutral=args.tes_target_soc_neutral,
+            neutral_pbrs_mode=args.tes_neutral_pbrs_mode,
             soc_charge_limit=args.tes_soc_charge_limit,
             soc_discharge_limit=args.tes_soc_discharge_limit,
+        )
+    if args.tes_bc_weight > 0.0:
+        obs_vars = list(env.get_wrapper_attr("observation_variables"))
+        timesteps_per_episode = env.get_wrapper_attr("timestep_per_episode") - 1
+        env = TESBCTrainingInfoWrapper(
+            env,
+            build_tes_bc_config(
+                args=args,
+                obs_vars=obs_vars,
+                timesteps_per_episode=timesteps_per_episode,
+            ),
         )
     return env
 
@@ -251,6 +371,19 @@ def main() -> None:
     parser.add_argument("--eps-sigma", type=float, default=0.1)
     parser.add_argument("--eps-omega", type=float, default=0.1)
     parser.add_argument("--resume", type=str, default=None)
+    # C7 fix: opt-in replay-buffer reload. Default OFF preserves the M2-F1
+    # action-dim guard against stale 5D buffers; users who explicitly know the
+    # buffer matches the current 4D env stack can pass --load-replay-buffer to
+    # restore sample efficiency on resume.
+    parser.add_argument(
+        "--load-replay-buffer",
+        action="store_true",
+        help=(
+            "Reload <resume>_replay_buffer.pkl when resuming. Off by default "
+            "(M2-F1 action-dim guard). Only enable after auditing the buffer's "
+            "action dimension matches the current env stack."
+        ),
+    )
     parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--wandb-project", default="dc-cooling-optimization")
     parser.add_argument("--wandb-group", default=None)
@@ -284,14 +417,26 @@ def main() -> None:
     parser.add_argument("--tes-teacher-decay-episodes", type=float, default=15.0, help="Episode count over which TES teacher weight decays to zero")
     parser.add_argument("--tes-valve-penalty-weight", type=float, default=0.02, help="Quadratic TES valve regularization weight")
     parser.add_argument("--tes-invalid-action-penalty-weight", type=float, default=0.0, help="Linear penalty weight for raw TES charge/discharge intents beyond SOC limits; pass 0.05 for M2-F1 invalid-action shaping experiments")
+    parser.add_argument("--tes-tou-alignment-weight", type=float, default=0.0, help="Non-PBRS TES TOU action-alignment auxiliary reward; pass 0.05 for M2-F1 literature-guided TOU curriculum experiments")
     parser.add_argument("--tes-high-price-threshold", type=float, default=0.75, help="price_current_norm threshold for high-price discharge target")
     parser.add_argument("--tes-low-price-threshold", type=float, default=-0.50, help="price_current_norm threshold for low-price charge target")
     parser.add_argument("--tes-near-peak-threshold", type=float, default=0.40, help="price_hours_to_next_peak_norm threshold for near-peak charge preparation")
     parser.add_argument("--tes-target-soc-high", type=float, default=0.85, help="Target SOC before upcoming peaks")
     parser.add_argument("--tes-target-soc-low", type=float, default=0.30, help="Target SOC during high-price periods")
     parser.add_argument("--tes-target-soc-neutral", type=float, default=0.50, help="Target SOC during neutral price periods")
+    parser.add_argument("--tes-neutral-pbrs-mode", choices=["target", "zero"], default="target", help="Neutral-period target-SOC PBRS mode: target preserves old SOC=0.50 attraction; zero sets neutral potential phi=0")
     parser.add_argument("--tes-soc-charge-limit", type=float, default=0.85, help="SOC above which low-price teacher stops encouraging charge")
     parser.add_argument("--tes-soc-discharge-limit", type=float, default=0.20, help="SOC below which high-price teacher stops encouraging discharge")
+    parser.add_argument("--enable-tes-state-augmentation", action="store_true", help="Append C2b TES state features: delta_soc_1step and time_in_tou_window_norm")
+    parser.add_argument("--tes-action-semantics", choices=["signed_scalar", "direction_amp", "direction_amp_hold"], default="signed_scalar", help="Agent-facing TES action semantics. signed_scalar preserves the legacy 4D action; direction_amp exposes separate TES direction/amplitude as a 5D action; direction_amp_hold holds TES mode/amplitude for --tes-option-hold-steps.")
+    parser.add_argument("--tes-direction-deadband", type=float, default=0.15, help="Deadband for direction_amp/direction_amp_hold direction_raw before mapping to charge/idle/discharge")
+    parser.add_argument("--tes-option-hold-steps", type=int, default=4, help="Hold length for --tes-action-semantics direction_amp_hold. The accepted step counts as step 1; default 4 equals one hour at 15-minute steps.")
+    parser.add_argument("--tes-bc-weight", type=float, default=0.0, help="Training-only TES-head BC warm-start weight. Default 0 disables it. Implemented for DSAC-T actor loss only.")
+    parser.add_argument("--tes-bc-decay-episodes", type=float, default=2.0, help="Linearly decay TES-head BC weight to zero over this many episodes")
+    parser.add_argument("--tes-bc-label-source", choices=["rule_tou"], default="rule_tou", help="Training-only source for TES BC labels. rule_tou is not called during eval/runtime rollouts.")
+    parser.add_argument("--tes-bc-window-only", dest="tes_bc_window_only", action="store_true", default=True, help="Apply TES BC only inside charge/discharge TOU label windows (default)")
+    parser.add_argument("--tes-bc-no-window-only", dest="tes_bc_window_only", action="store_false", help="Also supervise neutral idle labels outside TOU windows")
+    parser.add_argument("--tes-bc-amp-label", type=float, default=1.0, help="TES BC active-window amplitude label in [0,1]. Default 1.0 gives a clear sign prior; existing rate limits/guards handle feasibility.")
     # Legacy DPBA PBRS (analysis/pbrs_upgrade_DPBA_2026-04-23.md). M2-F1
     # defaults this off so the active shaping signal is the target-SOC PBRS
     # in TESPriceShapingWrapper. Pass --kappa-shape 0.8 for a DPBA ablation.
@@ -300,9 +445,24 @@ def main() -> None:
     parser.add_argument("--tau-decay", type=float, default=4.0, help="DPBA exp-decay scale in hours (shorter = sharper near-peak signal)")
     parser.add_argument("--p-peak-ref", type=float, default=0.80, help="Reference peak price_norm (Jiangsu TOU: $160-200 / 250 ≈ 0.80)")
     # M2-PBRS-v2 (2026-04-23, Xu 2023 discrete SAC): target_entropy = -|A|/3.
-    # With CRAH_Fan_DRL fixed outside the agent, |A|=4.
-    parser.add_argument("--target-entropy", type=float, default=-(4.0 / 3.0), help="SAC/DSAC-T target entropy (Xu 2023: -dim(A)/3 = -1.3333 for 4-dim action)")
+    # Keep legacy signed_scalar at -4/3; 5D TES semantics auto-select -5/3
+    # unless the user passes an explicit override.
+    parser.add_argument("--target-entropy", type=float, default=None, help="SAC/DSAC-T target entropy. Default auto: -4/3 for signed_scalar, -5/3 for direction_amp/direction_amp_hold.")
     args = parser.parse_args()
+    expected_action_dim = m2_action_dim(args.tes_action_semantics)
+    args.target_entropy_auto = args.target_entropy is None
+    if args.target_entropy is None:
+        args.target_entropy = -float(expected_action_dim) / 3.0
+    if args.tes_bc_weight < 0.0:
+        raise ValueError("--tes-bc-weight must be >= 0")
+    if args.tes_bc_amp_label < 0.0 or args.tes_bc_amp_label > 1.0:
+        raise ValueError("--tes-bc-amp-label must be in [0, 1]")
+    if args.tes_bc_weight > 0.0 and args.algo != "dsac_t":
+        raise RuntimeError(
+            "Training-only TES-head BC warm-start is implemented only in tools.dsac_t.DSAC_T. "
+            "Refusing --algo sac with --tes-bc-weight > 0 because SB3 SAC has no local "
+            "safe actor-loss hook here. This prevents an action-dependent reward-shaping pseudo-implementation."
+        )
 
     if "Eplus-DC-Cooling-TES" not in get_ids():
         raise RuntimeError("Eplus-DC-Cooling-TES is not registered")
@@ -315,23 +475,27 @@ def main() -> None:
     # Verify shapes before moving on.
     # Post H2a/H2b/H2c/H2d: 20 (TimeEncoding output) + 6 (TempTrend) + 3 (Price)
     #                       + 3 (PV) = 32.
-    expected_obs_dim = 20 + 6 + 3 + 3  # 32
+    expected_obs_dim = 20 + 6 + 3 + 3 + (2 if args.enable_tes_state_augmentation else 0)
     assert env.observation_space.shape == (expected_obs_dim,), (
         f"Expected M2 obs_dim={expected_obs_dim}, got {env.observation_space.shape}"
     )
-    assert env.action_space.shape == (4,), (
-        f"Expected action_dim=4, got {env.action_space.shape}"
+    assert env.action_space.shape == (expected_action_dim,), (
+        f"Expected action_dim={expected_action_dim}, got {env.action_space.shape}"
     )
-    assert np.allclose(env.action_space.low, np.array([0.0, 0.0, 0.0, -1.0], dtype=np.float32))
-    assert np.allclose(env.action_space.high, np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32))
+    expected_low, expected_high = m2_action_bounds(args.tes_action_semantics)
+    assert np.allclose(env.action_space.low, expected_low)
+    assert np.allclose(env.action_space.high, expected_high)
     print(
-        f"Env wrapper stack OK: obs_dim={expected_obs_dim}, action_dim=4, "
-        f"fixed_CRAH_Fan_DRL={M2_FIXED_FAN_VALUE}"
+        f"Env wrapper stack OK: obs_dim={expected_obs_dim}, action_dim={expected_action_dim}, "
+        f"fixed_CRAH_Fan_DRL={M2_FIXED_FAN_VALUE}, "
+        f"enable_tes_state_augmentation={args.enable_tes_state_augmentation}, "
+        f"tes_action_semantics={args.tes_action_semantics}, "
+        f"tes_option_hold_steps={args.tes_option_hold_steps}"
     )
 
     obs_vars = env.get_wrapper_attr("observation_variables")
     act_vars = env.get_wrapper_attr("action_variables")
-    expected_act_vars = ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"]
+    expected_act_vars = m2_action_variables(args.tes_action_semantics)
     assert list(act_vars) == expected_act_vars, (
         f"M2-F1 action_variables mismatch: expected {expected_act_vars}, got {list(act_vars)}"
     )
@@ -363,6 +527,8 @@ def main() -> None:
         # H: PV 3
         'pv_current_ratio', 'pv_future_slope', 'time_to_pv_peak',
     ]
+    if args.enable_tes_state_augmentation:
+        expected_names += ['delta_soc_1step', 'time_in_tou_window_norm']
     actual_names = list(obs_vars)
     assert actual_names == expected_names, (
         f"observation_variables mismatch (tech route §6.1).\n"
@@ -383,9 +549,23 @@ def main() -> None:
         + [
             "time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "cost_term",
             "fixed_CRAH_Fan_DRL",
+            "action_dim", "tes_action_semantics", "tes_direction_deadband",
+            "tes_direction_raw", "tes_amplitude_raw", "tes_amplitude_mapped",
+            "tes_direction_mode", "tes_signed_target_from_semantics",
+            "tes_option_hold_steps", "tes_option_hold_counter_remaining",
+            "tes_option_accepted_new_mode", "tes_held_direction_mode",
+            "tes_held_amplitude_mapped",
             "tes_valve_target", "tes_valve_position", "tes_guard_clipped", "tes_action_mode",
             "tes_soc_target", "tes_pbrs_term", "tes_teacher_term", "tes_teacher_weight",
-            "tes_valve_penalty", "tes_invalid_action_penalty", "tes_shaping_total",
+            "tes_pbrs_phase", "tes_pbrs_active", "tes_phi_value", "tes_neutral_pbrs_mode",
+            "tes_valve_penalty", "tes_invalid_action_penalty", "tes_tou_alignment_term",
+            "tes_tou_desired_sign", "tes_tou_alignment_weight", "tes_shaping_total",
+            "tes_tou_phase_for_state", "enable_tes_state_augmentation",
+            "tes_bc_enabled", "tes_bc_weight", "tes_bc_current_weight",
+            "tes_bc_decay_episodes", "tes_bc_label_source", "tes_bc_window_only",
+            "tes_bc_amp_label", "tes_bc_loss", "tes_bc_label_active",
+            "tes_bc_mode_label", "tes_bc_signed_target_label",
+            "tes_bc_direction_target_label", "tes_bc_amplitude_raw_label",
             "terminated", "truncated",
         ],
     )
@@ -452,14 +632,31 @@ def main() -> None:
 
     if args.resume:
         print(f"Resuming from: {args.resume}")
-        assert_m2_4d_checkpoint(args.resume)
+        assert_checkpoint_action_dim(args.resume, expected_action_dim)
         model = AlgoClass.load(args.resume, env=env, device=args.device)
         replay_path = args.resume.replace(".zip", "_replay_buffer.pkl")
         if os.path.exists(replay_path):
-            print(
-                f"Replay buffer not auto-loaded under M2-F1 fixed-fan guard: {replay_path}. "
-                "Start a fresh 4D replay buffer unless it has been explicitly audited."
-            )
+            if args.load_replay_buffer:
+                # C7 fix: explicit opt-in. The checkpoint already passed the
+                # action-dim guard above, and the buffer is paired with that
+                # checkpoint, so it is structurally compatible. We rely on the
+                # SB3 loader to surface any remaining shape mismatch.
+                print(
+                    f"Loading replay buffer (--load-replay-buffer): {replay_path}"
+                )
+                try:
+                    model.load_replay_buffer(replay_path)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Replay buffer load failed for {replay_path}: {exc}. "
+                        "Re-run without --load-replay-buffer to start fresh."
+                    ) from exc
+            else:
+                print(
+                    f"Replay buffer not auto-loaded under M2-F1 action-dim guard: {replay_path}. "
+                    "Start a fresh replay buffer unless it has been explicitly audited; "
+                    "pass --load-replay-buffer to opt in after audit."
+                )
     else:
         extra = {}
         if args.algo == "dsac_t":
@@ -471,7 +668,7 @@ def main() -> None:
             learning_rate=5e-5,   # M2-E3b: 1e-4 → 5e-5（lr=1e-4 下 3/4 seed policy collapse, 回退 M1 验证值恢复 DSAC-T R3 阻尼裕度, 保留 [256,256] 网络）
             learning_starts=8760,
             gamma=0.99,
-            target_entropy=args.target_entropy,  # M2-PBRS-v2: -dim(A)/3 = -1.3333 for 4-dim action.
+            target_entropy=args.target_entropy,  # M2-PBRS-v2: auto -dim(A)/3 unless explicitly overridden.
             policy_kwargs=policy_kwargs,
             verbose=1,
             seed=args.seed,
@@ -486,9 +683,50 @@ def main() -> None:
     else:
         timesteps = episodes * timesteps_per_episode
 
+    try:
+        obs_rms = env.get_wrapper_attr("obs_rms")
+    except (AttributeError, KeyError):
+        obs_rms = None
+    tes_bc_config = build_tes_bc_config(
+        args=args,
+        obs_vars=actual_names,
+        timesteps_per_episode=timesteps_per_episode,
+        obs_mean=None if obs_rms is None else obs_rms.mean,
+        obs_var=None if obs_rms is None else obs_rms.var,
+    )
+    if args.algo == "dsac_t":
+        model.configure_tes_bc(tes_bc_config)
+    tes_bc_metadata = tes_bc_config.to_json_dict()
+    tes_bc_metadata.update(tes_bc_status_from_model(model))
+
     workspace_path = Path(env.get_wrapper_attr("workspace_path"))
     checkpoints_path = workspace_path / "checkpoints"
     checkpoints_path.mkdir(parents=True, exist_ok=True)
+    metadata_path = workspace_path / "m2_training_metadata.json"
+    training_metadata = {
+        "metadata_version": "m2_training_metadata_v1",
+        "model_name": args.model_name,
+        "obs_dim": expected_obs_dim,
+        "action_dim": expected_action_dim,
+        "tes_action_semantics": args.tes_action_semantics,
+        "tes_direction_deadband": args.tes_direction_deadband,
+        "tes_option_hold_steps": args.tes_option_hold_steps,
+        "enable_tes_state_augmentation": bool(args.enable_tes_state_augmentation),
+        "target_entropy": float(args.target_entropy),
+        "target_entropy_auto": bool(args.target_entropy_auto),
+        "tes_bc_config": tes_bc_config.to_json_dict(),
+        "tes_bc_enabled": bool(tes_bc_metadata["tes_bc_enabled"]),
+        "tes_bc_weight": float(tes_bc_metadata["tes_bc_weight"]),
+        "tes_bc_current_weight": float(tes_bc_metadata["tes_bc_current_weight"]),
+        "tes_bc_decay_episodes": float(args.tes_bc_decay_episodes),
+        "tes_bc_label_source": args.tes_bc_label_source,
+        "tes_bc_window_only": bool(args.tes_bc_window_only),
+        "tes_bc_amp_label": float(args.tes_bc_amp_label),
+        "tes_bc_runtime_planner_enabled": False,
+        "workspace_path": str(workspace_path),
+        "status_file": str(args.status_file) if args.status_file else None,
+    }
+    metadata_path.write_text(json.dumps(training_metadata, indent=2), encoding="utf-8")
 
     started = time.perf_counter()
     callbacks = [
@@ -502,12 +740,29 @@ def main() -> None:
     ]
     if args.status_file:
         callbacks.append(
-            StatusCallback(
+            M2StatusCallback(
                 status_file=Path(args.status_file),
                 workspace_path=workspace_path,
                 timesteps_per_episode=timesteps_per_episode,
                 started=started,
                 update_every_steps=args.status_every_steps,
+                extra_status={
+                    "obs_dim": expected_obs_dim,
+                    "action_dim": expected_action_dim,
+                    "tes_action_semantics": args.tes_action_semantics,
+                    "tes_direction_deadband": args.tes_direction_deadband,
+                    "tes_option_hold_steps": args.tes_option_hold_steps,
+                    "enable_tes_state_augmentation": bool(args.enable_tes_state_augmentation),
+                    "target_entropy": float(args.target_entropy),
+                    "target_entropy_auto": bool(args.target_entropy_auto),
+                    "tes_bc_enabled": bool(tes_bc_metadata["tes_bc_enabled"]),
+                    "tes_bc_weight": float(args.tes_bc_weight),
+                    "tes_bc_decay_episodes": float(args.tes_bc_decay_episodes),
+                    "tes_bc_label_source": args.tes_bc_label_source,
+                    "tes_bc_window_only": bool(args.tes_bc_window_only),
+                    "tes_bc_amp_label": float(args.tes_bc_amp_label),
+                    "tes_bc_runtime_planner_enabled": False,
+                },
             )
         )
     if args.wandb:
@@ -543,6 +798,17 @@ def main() -> None:
     model_path = workspace_path / args.model_name
     model.save(str(model_path))
     model.save_replay_buffer(str(workspace_path / f"{args.model_name}_replay_buffer.pkl"))
+    final_tes_bc_status = tes_bc_status_from_model(model)
+    training_metadata.update(
+        {
+            "model_path": str(model_path) + ".zip",
+            "checkpoints_path": str(checkpoints_path),
+            "elapsed_seconds": elapsed,
+            "finished": True,
+            **final_tes_bc_status,
+        }
+    )
+    metadata_path.write_text(json.dumps(training_metadata, indent=2), encoding="utf-8")
     env.close()
 
     print(
@@ -557,6 +823,24 @@ def main() -> None:
                 "beta": args.beta,
                 "kappa_shape": args.kappa_shape,
                 "gamma_pbrs": args.gamma_pbrs,
+                "tes_neutral_pbrs_mode": args.tes_neutral_pbrs_mode,
+                "tes_action_semantics": args.tes_action_semantics,
+                "tes_direction_deadband": args.tes_direction_deadband,
+                "tes_option_hold_steps": args.tes_option_hold_steps,
+                "enable_tes_state_augmentation": bool(args.enable_tes_state_augmentation),
+                "obs_dim": expected_obs_dim,
+                "action_dim": expected_action_dim,
+                "target_entropy": args.target_entropy,
+                "target_entropy_auto": bool(args.target_entropy_auto),
+                "tes_bc_enabled": bool(final_tes_bc_status["tes_bc_enabled"]),
+                "tes_bc_weight": float(final_tes_bc_status["tes_bc_weight"]),
+                "tes_bc_current_weight": float(final_tes_bc_status["tes_bc_current_weight"]),
+                "tes_bc_final_weight_zero": bool(final_tes_bc_status["tes_bc_final_weight_zero"]),
+                "tes_bc_decay_episodes": args.tes_bc_decay_episodes,
+                "tes_bc_label_source": args.tes_bc_label_source,
+                "tes_bc_window_only": bool(args.tes_bc_window_only),
+                "tes_bc_amp_label": args.tes_bc_amp_label,
+                "tes_bc_runtime_planner_enabled": False,
                 "elapsed_seconds": elapsed,
                 "workspace_path": str(workspace_path),
                 "model_path": str(model_path) + ".zip",

@@ -2,7 +2,7 @@
 
 Date: 2026-05-03
 
-Source folder: `C:\Users\18430\Desktop\毕业设计代码\其它参考文献`
+Source folder: `其它参考文献/` (repo root; the 19 PDFs themselves are excluded by `.gitignore` — only this matrix records their hashes / titles for citation)
 
 Extraction method: `pdfplumber` full-document text extraction plus targeted keyword checks. All 19 local PDFs opened successfully. Duplicate rows are retained so every local PDF is auditable; method conclusions are drawn from the kept representative paper in each duplicate group.
 

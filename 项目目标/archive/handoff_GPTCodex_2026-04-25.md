@@ -13,7 +13,7 @@
 | **40 min** | + `毕业设计项目进度/代码开发进度管理.md` §7（M2 任务表 + 已修 9 bug 清单）+ `项目目标/决策-切回-Nanjing-Jiangsu-TOU-2026-04-22.md` |
 | **充分** | + 上一份 handoff `项目目标/handoff_2026-04-19.md`（Singapore→CAISO 的弃用决策上下文）|
 
-**仓库根目录**：`C:\Users\18430\Desktop\毕业设计代码\`
+**仓库根目录**：`<repo>\`
 **核心代码 / 数据 / 工具**全部在子目录 `AI-Data-Center-Analysis_migration_bundle_20260311/`，下文用 `<repo>/` 简写。
 
 ---

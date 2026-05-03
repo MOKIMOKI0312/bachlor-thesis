@@ -5,10 +5,10 @@
 
 | Job | PID | Alive | Finished | Timesteps | Approx Episode | Elapsed h | Workspace |
 |---|---:|---|---|---:|---:|---:|---|
-| m2f1_toualign_w000_3ep_seed1_20260501 | None | None | True | 105117 | 3 | 0.76 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-086` |
-| m2f1_toualign_w005_3ep_seed1_20260501 | None | None | True | 105117 | 3 | 0.76 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-087` |
-| m2f1_toualign_w000_3ep_seed4_20260501 | None | None | True | 105117 | 3 | 0.75 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-088` |
-| m2f1_toualign_w005_3ep_seed4_20260501 | None | None | True | 105117 | 3 | 0.75 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-089` |
+| m2f1_toualign_w000_3ep_seed1_20260501 | None | None | True | 105117 | 3 | 0.76 | `runs/run/run-086` |
+| m2f1_toualign_w005_3ep_seed1_20260501 | None | None | True | 105117 | 3 | 0.76 | `runs/run/run-087` |
+| m2f1_toualign_w000_3ep_seed4_20260501 | None | None | True | 105117 | 3 | 0.75 | `runs/run/run-088` |
+| m2f1_toualign_w005_3ep_seed4_20260501 | None | None | True | 105117 | 3 | 0.75 | `runs/run/run-089` |
 
 ## Latest Steps
 

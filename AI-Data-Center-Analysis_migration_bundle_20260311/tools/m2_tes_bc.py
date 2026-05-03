@@ -263,7 +263,14 @@ class TESBCTrainingInfoWrapper(gym.Wrapper):
     def _add_info(self, info: Dict[str, Any], obs: np.ndarray) -> None:
         current_weight = tes_bc_current_weight(self.config, self._global_steps)
         label = rule_tou_label_np(np.asarray(obs, dtype=np.float32), self.config)
+        # tes_bc_enabled reflects static configuration (was BC ever turned on
+        # for this run?). tes_bc_active reflects whether BC is *applied at
+        # this step* — false once the linear decay drives current_weight to 0
+        # even though enabled / static weight are still nonzero. Downstream
+        # monitor parsing should use tes_bc_active when asking "is BC
+        # influencing the actor at step k?".
         info["tes_bc_enabled"] = bool(self.config.enabled and self.config.weight > 0.0)
+        info["tes_bc_active"] = bool(current_weight > 0.0)
         info["tes_bc_weight"] = float(self.config.weight)
         info["tes_bc_current_weight"] = float(current_weight)
         info["tes_bc_decay_episodes"] = float(self.config.decay_episodes)

@@ -5,8 +5,8 @@
 
 | Job | PID | Alive | Finished | Timesteps | Approx Episode | Elapsed h | Workspace |
 |---|---:|---|---|---:|---:|---:|---|
-| m2-physfix-teacher-beta2-10ep-20260428-215532-seed1 | None | None | True | 350390 | 10 | 3.52 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-061` |
-| m2-physfix-teacher-beta2-10ep-20260428-215532-seed4 | None | None | True | 350390 | 10 | 3.52 | `C:\Users\18430\Desktop\毕业设计代码\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-060` |
+| m2-physfix-teacher-beta2-10ep-20260428-215532-seed1 | None | None | True | 350390 | 10 | 3.52 | `<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-061` |
+| m2-physfix-teacher-beta2-10ep-20260428-215532-seed4 | None | None | True | 350390 | 10 | 3.52 | `<repo>\AI-Data-Center-Analysis_migration_bundle_20260311\runs\run\run-060` |
 
 ## Latest Steps
 

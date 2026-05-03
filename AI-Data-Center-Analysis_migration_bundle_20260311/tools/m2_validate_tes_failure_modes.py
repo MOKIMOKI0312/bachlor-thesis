@@ -1,8 +1,9 @@
 """M2 TES failure-mode validation entrypoint.
 
 This script is intentionally evaluation-only.  It builds the same M2-F1
-fixed-fan wrapper stack as tools/evaluate_m2.py, rejects non-4D checkpoints,
-and keeps all counterfactual action surgery local to this file.
+fixed-fan wrapper stack as tools/evaluate_m2.py, rejects checkpoints whose
+action dimension does not match the requested TES action semantics, and keeps
+all counterfactual action surgery local to this file.
 
 Subcommands:
     paired-eval          Run/checkpoint-manifest the four requested designs.
@@ -36,14 +37,51 @@ from tools.m2_action_guard import M2_FIXED_FAN_VALUE, checkpoint_action_dim
 
 
 DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
-DEFAULT_PRICE_CSV = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
-DEFAULT_PV_CSV = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
+# C1 fix: keep CSV defaults as ROOT-relative absolute strings so the script also
+# works when invoked from outside the repo root. _normalize_data_paths() further
+# protects against user-supplied relative paths.
+DEFAULT_PRICE_CSV = str(ROOT / "Data/prices/Jiangsu_TOU_2025_hourly.csv")
+DEFAULT_PV_CSV = str(ROOT / "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv")
 M2_TIMESTEPS_PER_HOUR = 4
 TES_TANK_M3 = 1400.0
 TES_MAX_FLOW_KG_S = 389.0
+TOU_SWITCH_RADIUS_STEPS = 1
+TES_MECHANISM_FIELDS = [
+    "charge_window_sign_rate",
+    "low_price_discharge_fraction",
+    "discharge_window_sign_rate",
+    "delta_soc_prepeak",
+    "delta_soc_peak",
+    "raw_actual_divergence_switch_mean",
+    "raw_actual_divergence_switch_p95",
+    "raw_actual_divergence_switch_count",
+    "sign_flip_delay_steps",
+    "sign_flip_delay_steps_mean",
+    "sign_flip_no_flip_fraction",
+    "charge_window_step_count",
+    "discharge_window_step_count",
+    "prepeak_window_count",
+    "peak_window_count",
+    "low_price_valve_mean",
+    "high_price_valve_mean",
+    "charge_window_valve_mean",
+    "discharge_window_valve_mean",
+]
+COUNTERFACTUAL_FIELDS = [
+    "tes_marginal_saving_usd",
+    "tes_marginal_saving_basis",
+    "tes_marginal_saving_pair_key",
+]
 CORE_FIELDS = [
     "status",
     "action_dim",
+    "obs_dim",
+    "tes_action_semantics",
+    "tes_direction_deadband",
+    "tes_option_hold_steps",
+    "enable_tes_state_augmentation",
+    "provenance_metadata_missing",
+    "provenance_metadata_sources",
     "tag",
     "design",
     "mode",
@@ -85,6 +123,8 @@ CORE_FIELDS = [
     "raw_actual_divergence",
     "raw_actual_divergence_p95",
     "tes_intent_to_effect_ratio",
+    *TES_MECHANISM_FIELDS,
+    *COUNTERFACTUAL_FIELDS,
     "elapsed_seconds",
 ]
 SUMMARY_REQUIRED_MONITOR_COLUMNS = [
@@ -96,7 +136,7 @@ SUMMARY_REQUIRED_MONITOR_COLUMNS = [
     "price_current_norm",
     "pv_current_ratio",
 ]
-GUARD_RAW_TARGET_COLUMNS = ["tes_valve_target", "TES_DRL"]
+GUARD_RAW_TARGET_COLUMNS = ["tes_valve_target", "tes_signed_target_from_semantics", "TES_DRL"]
 GUARD_ACTUAL_VALVE_COLUMNS = ["TES_valve_wrapper_position", "tes_valve_position"]
 
 
@@ -137,9 +177,18 @@ def require_any_column(df: pd.DataFrame, monitor_path: Path, columns: list[str],
     )
 
 
+def optional_any_column(df: pd.DataFrame, columns: list[str]) -> str | None:
+    for col in columns:
+        if col in df.columns:
+            return col
+    return None
+
+
 def read_monitor_csv(monitor_path: Path, *, required_columns: list[str] | None = None) -> pd.DataFrame:
     validate_raw_csv_header(monitor_path)
-    df = pd.read_csv(monitor_path, index_col=False)
+    # C2 fix: keep encoding consistent with validate_raw_csv_header above so a
+    # BOM does not leak into the first column name (e.g. '﻿timestep').
+    df = pd.read_csv(monitor_path, index_col=False, encoding="utf-8-sig")
     if not df.columns.is_unique:
         duplicated = df.columns[df.columns.duplicated()].tolist()
         raise RuntimeError(f"Duplicate monitor columns in {monitor_path}: {duplicated}")
@@ -191,24 +240,159 @@ def safe_checkpoint_action_dim(checkpoint: Path) -> tuple[int | None, str | None
         return None, str(exc)
 
 
-def check_checkpoint_or_skip(checkpoint: Path) -> dict[str, Any] | None:
+def m2_action_dim(action_semantics: str) -> int:
+    if action_semantics in {"direction_amp", "direction_amp_hold"}:
+        return 5
+    return 4
+
+
+def m2_action_variables(action_semantics: str) -> list[str]:
+    if action_semantics in {"direction_amp", "direction_amp_hold"}:
+        return [
+            "CT_Pump_DRL",
+            "CRAH_T_DRL",
+            "Chiller_T_DRL",
+            "TES_direction_DRL",
+            "TES_amplitude_DRL",
+        ]
+    return ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"]
+
+
+def requested_action_semantics(args: argparse.Namespace) -> str:
+    return str(getattr(args, "tes_action_semantics", "signed_scalar"))
+
+
+def requested_action_dim(args: argparse.Namespace) -> int:
+    return m2_action_dim(requested_action_semantics(args))
+
+
+def _resolve_repo_path(value: str | Path) -> Path:
+    path = Path(value)
+    if not path.is_absolute():
+        path = ROOT / path
+    return path.resolve()
+
+
+def _normalize_data_paths(args: argparse.Namespace) -> None:
+    """C1 fix: normalize relative data-file args to ROOT-relative absolute paths.
+
+    Safe to call multiple times; idempotent on already-absolute paths. Only
+    touches attributes that exist on ``args`` so it works for every subcommand.
+    """
+    for attr in ("price_csv", "pv_csv"):
+        value = getattr(args, attr, None)
+        if value is None:
+            continue
+        setattr(args, attr, str(_resolve_repo_path(value)))
+
+
+def _load_json_file(path: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _workspace_provenance_sources(workspace: Path) -> list[tuple[Path, dict[str, Any]]]:
+    workspace_resolved = _resolve_repo_path(workspace)
+    sources: list[tuple[Path, dict[str, Any]]] = []
+    metadata_path = workspace_resolved / "m2_training_metadata.json"
+    if metadata_path.exists():
+        data = _load_json_file(metadata_path)
+        if data is not None:
+            sources.append((metadata_path, data))
+    jobs_root = ROOT / "training_jobs"
+    if jobs_root.exists():
+        for status_path in jobs_root.glob("*/status.json"):
+            data = _load_json_file(status_path)
+            if data is None:
+                continue
+            status_workspace = data.get("workspace_path")
+            if not status_workspace:
+                continue
+            try:
+                if _resolve_repo_path(status_workspace) == workspace_resolved:
+                    sources.append((status_path, data))
+            except OSError:
+                continue
+    return sources
+
+
+def validate_workspace_provenance(
+    args: argparse.Namespace,
+    expected_action_dim: int,
+    expected_obs_dim: int,
+) -> dict[str, Any]:
+    sources = _workspace_provenance_sources(args.workspace)
+    provenance = {
+        "provenance_metadata_missing": not bool(sources),
+        "provenance_metadata_sources": ";".join(str(path) for path, _ in sources),
+    }
+    for path, data in sources:
+        source = str(path)
+        semantics = data.get("tes_action_semantics")
+        if semantics is not None and semantics != requested_action_semantics(args):
+            raise RuntimeError(
+                f"Checkpoint provenance mismatch: {source} records "
+                f"tes_action_semantics={semantics!r}, but CLI requested "
+                f"{requested_action_semantics(args)!r}."
+            )
+        hold_steps = data.get("tes_option_hold_steps")
+        if hold_steps is not None and (
+            semantics == "direction_amp_hold" or requested_action_semantics(args) == "direction_amp_hold"
+        ):
+            requested_hold_steps = int(getattr(args, "tes_option_hold_steps", 4))
+            if int(hold_steps) != requested_hold_steps:
+                raise RuntimeError(
+                    f"Checkpoint provenance mismatch: {source} records "
+                    f"tes_option_hold_steps={hold_steps}, but CLI requested "
+                    f"{requested_hold_steps}."
+                )
+        action_dim = data.get("action_dim")
+        if action_dim is not None and int(action_dim) != int(expected_action_dim):
+            raise RuntimeError(
+                f"Checkpoint provenance mismatch: {source} records action_dim={action_dim}, "
+                f"but CLI/env expects {expected_action_dim}."
+            )
+        obs_dim = data.get("obs_dim")
+        if obs_dim is not None and int(obs_dim) != int(expected_obs_dim):
+            raise RuntimeError(
+                f"Checkpoint provenance mismatch: {source} records obs_dim={obs_dim}, "
+                f"but CLI/env expects {expected_obs_dim}."
+            )
+        state_aug = data.get("enable_tes_state_augmentation")
+        if state_aug is not None and bool(state_aug) != bool(getattr(args, "enable_tes_state_augmentation", False)):
+            raise RuntimeError(
+                f"Checkpoint provenance mismatch: {source} records "
+                f"enable_tes_state_augmentation={bool(state_aug)}, but CLI requested "
+                f"{bool(getattr(args, 'enable_tes_state_augmentation', False))}."
+            )
+    return provenance
+
+
+def check_checkpoint_or_skip(checkpoint: Path, expected_action_dim: int = 4) -> dict[str, Any] | None:
     action_dim, error = safe_checkpoint_action_dim(checkpoint)
-    if action_dim != 4:
+    if action_dim != expected_action_dim:
         return {
-            "status": "skipped_non_4d_checkpoint" if action_dim is not None else "skipped_unreadable_checkpoint",
+            "status": "skipped_action_dim_mismatch" if action_dim is not None else "skipped_unreadable_checkpoint",
             "action_dim": action_dim,
             "checkpoint": str(checkpoint),
-            "reason": error or f"M2-F1 validation requires action_dim=4, got {action_dim}.",
+            "reason": error or (
+                f"M2-F1 validation requires action_dim={expected_action_dim}, got {action_dim}. "
+                "Check --tes-action-semantics and checkpoint provenance."
+            ),
         }
     return None
 
 
-def normalization_stats(workspace: Path) -> tuple[np.ndarray, np.ndarray]:
+def normalization_stats(workspace: Path, expected_obs_dim: int) -> tuple[np.ndarray, np.ndarray]:
     mean = np.loadtxt(workspace / "mean.txt", dtype="float")
     var = np.loadtxt(workspace / "var.txt", dtype="float")
-    if mean.shape[0] != 32 or var.shape[0] != 32:
+    if mean.shape[0] != expected_obs_dim or var.shape[0] != expected_obs_dim:
         raise RuntimeError(
-            f"Expected 32-dim M2 normalization stats, got mean={mean.shape}, var={var.shape}."
+            f"Expected {expected_obs_dim}-dim M2 normalization stats, "
+            f"got mean={mean.shape}, var={var.shape}."
         )
     return mean, var
 
@@ -252,7 +436,12 @@ def build_env(args: argparse.Namespace, design: str, tag: str):
     from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
     from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
     from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
-    from sinergym.envs.tes_wrapper import FixedActionInsertWrapper, TESTargetValveWrapper
+    from sinergym.envs.tes_wrapper import (
+        FixedActionInsertWrapper,
+        TESDirectionAmplitudeActionWrapper,
+        TESStateAugmentationWrapper,
+        TESTargetValveWrapper,
+    )
     from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 
     cfg = design_config(design)
@@ -264,18 +453,28 @@ def build_env(args: argparse.Namespace, design: str, tag: str):
         config_params.update(
             {
                 "tes_initial_soc_range": cfg["tes_initial_soc_range"],
-                "tes_soc_cold_temp": 6.0,
+                # C3 fix: align SOC cold-end with the same PR's epJSON +
+                # sinergym/config/modeling.py default of 6.67 °C. Using 6.0 here
+                # would skew initial-SOC randomization vs. the SOC observation
+                # scaling and break counterfactual metrics.
+                "tes_soc_cold_temp": 6.67,
                 "tes_soc_hot_temp": 12.0,
+                # tes_charge_setpoint is the chiller leaving-water target during
+                # forced charge, not the SOC scale lower bound. Keep at 6.0.
                 "tes_charge_setpoint": 6.0,
                 "tes_initial_schedule_until": "00:15",
             }
         )
 
+    # C4 fix: sinergym expects ``weather_files`` as a list. Passing a bare str
+    # makes the env iterate it as a sequence of characters and break weather
+    # resolution. Normalize once here so callers can supply either form.
+    weather_files = [args.epw] if isinstance(args.epw, str) else list(args.epw)
     env = gym.make(
         "Eplus-DC-Cooling-TES",
         env_name=f"m2-validate-{tag}-{design}",
         building_file=cfg["building_file"],
-        weather_files=args.epw,
+        weather_files=weather_files,
         config_params=config_params,
         evaluation_flag=cfg["evaluation_flag"],
     )
@@ -294,6 +493,13 @@ def build_env(args: argparse.Namespace, design: str, tag: str):
         fixed_actions={0: M2_FIXED_FAN_VALUE},
         fixed_action_names={0: "CRAH_Fan_DRL"},
     )
+    if requested_action_semantics(args) in {"direction_amp", "direction_amp_hold"}:
+        env = TESDirectionAmplitudeActionWrapper(
+            env,
+            direction_deadband=float(getattr(args, "tes_direction_deadband", 0.15)),
+            action_semantics=requested_action_semantics(args),
+            hold_steps=int(getattr(args, "tes_option_hold_steps", 4)),
+        )
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(
         env,
@@ -303,6 +509,13 @@ def build_env(args: argparse.Namespace, design: str, tag: str):
     env = PriceSignalWrapper(env, price_csv_path=args.price_csv)
     env = PVSignalWrapper(env, pv_csv_path=args.pv_csv, dc_peak_load_kw=args.dc_peak_load_kw)
     env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
+    if getattr(args, "enable_tes_state_augmentation", False):
+        env = TESStateAugmentationWrapper(
+            env,
+            high_price_threshold=args.high_price_threshold,
+            low_price_threshold=args.low_price_threshold,
+            near_peak_threshold=args.near_peak_threshold,
+        )
     return env
 
 
@@ -317,9 +530,12 @@ def attach_logger(env):
 
     obs_vars = list(env.get_wrapper_attr("observation_variables"))
     act_vars = list(env.get_wrapper_attr("action_variables"))
-    expected_act_vars = ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"]
-    if act_vars != expected_act_vars:
-        raise RuntimeError(f"M2-F1 action_variables mismatch: expected {expected_act_vars}, got {act_vars}")
+    allowed_act_vars = {
+        tuple(m2_action_variables("signed_scalar")),
+        tuple(m2_action_variables("direction_amp")),
+    }
+    if tuple(act_vars) not in allowed_act_vars:
+        raise RuntimeError(f"M2-F1 action_variables mismatch: got {act_vars}")
     return LoggerWrapper(
         env,
         monitor_header=["timestep"] + obs_vars + act_vars
@@ -336,10 +552,25 @@ def attach_logger(env):
             "current_price_usd_per_mwh",
             "current_pv_kw",
             "fixed_CRAH_Fan_DRL",
+            "action_dim",
+            "tes_action_semantics",
+            "tes_direction_deadband",
+            "tes_direction_raw",
+            "tes_amplitude_raw",
+            "tes_amplitude_mapped",
+            "tes_direction_mode",
+            "tes_signed_target_from_semantics",
+            "tes_option_hold_steps",
+            "tes_option_hold_counter_remaining",
+            "tes_option_accepted_new_mode",
+            "tes_held_direction_mode",
+            "tes_held_amplitude_mapped",
             "tes_valve_target",
             "tes_valve_position",
             "tes_guard_clipped",
             "tes_action_mode",
+            "tes_tou_phase_for_state",
+            "enable_tes_state_augmentation",
             "terminated",
             "truncated",
         ],
@@ -378,27 +609,43 @@ def guard_metrics_from_df(
     warn_soc_low: float = 0.15,
 ) -> dict[str, Any]:
     require_columns(df, monitor_path, ["TES_SOC"])
-    raw_col = require_any_column(df, monitor_path, GUARD_RAW_TARGET_COLUMNS, "raw TES valve target")
-    actual_col = require_any_column(df, monitor_path, GUARD_ACTUAL_VALVE_COLUMNS, "actual TES valve position")
+    raw_col = optional_any_column(df, GUARD_RAW_TARGET_COLUMNS)
+    actual_col = optional_any_column(df, GUARD_ACTUAL_VALVE_COLUMNS)
+    metrics: dict[str, Any] = {
+        "guard_clipped_fraction": float(bool_series(df, "tes_guard_clipped").mean()) if len(df) else None,
+        "soc_pre_source": "shifted_TES_SOC",
+        "raw_invalid_charge_frac_guard_high": None,
+        "raw_invalid_discharge_frac_guard_low": None,
+        "raw_warn_limit_charge_frac_085": None,
+        "raw_warn_limit_discharge_frac_015": None,
+        "guard_soc_high": float(guard_soc_high),
+        "guard_soc_low": float(guard_soc_low),
+        "warn_soc_high": float(warn_soc_high),
+        "warn_soc_low": float(warn_soc_low),
+        "raw_actual_divergence": None,
+        "raw_actual_divergence_p95": None,
+        "tes_intent_to_effect_ratio": None,
+        "raw_abs_mean": None,
+        "actual_abs_mean": None,
+        "raw_target_column": raw_col,
+        "actual_valve_column": actual_col,
+    }
 
-    raw = numeric(df, raw_col)
-    actual = numeric(df, actual_col)
+    raw = numeric(df, raw_col) if raw_col else pd.Series(np.nan, index=df.index, dtype=float)
+    actual = numeric(df, actual_col) if actual_col else pd.Series(np.nan, index=df.index, dtype=float)
+    if raw_col:
+        raw_abs = raw.clip(-1, 1).abs()
+        metrics["raw_abs_mean"] = float(raw_abs.mean()) if raw_abs.notna().any() else None
+    if actual_col:
+        actual_abs = actual.clip(-1, 1).abs()
+        metrics["actual_abs_mean"] = float(actual_abs.mean()) if actual_abs.notna().any() else None
+    if raw_col is None or actual_col is None:
+        return metrics
+
     soc_pre = numeric(df, "TES_SOC").shift(1)
     valid = pd.DataFrame({"raw": raw, "actual": actual, "soc_pre": soc_pre}).dropna()
     if valid.empty:
-        return {
-            "guard_clipped_fraction": None,
-            "soc_pre_source": "shifted_TES_SOC",
-            "raw_invalid_charge_frac_guard_high": None,
-            "raw_invalid_discharge_frac_guard_low": None,
-            "raw_warn_limit_charge_frac_085": None,
-            "raw_warn_limit_discharge_frac_015": None,
-            "raw_actual_divergence": None,
-            "raw_actual_divergence_p95": None,
-            "tes_intent_to_effect_ratio": None,
-            "raw_abs_mean": None,
-            "actual_abs_mean": None,
-        }
+        return metrics
 
     raw = valid["raw"].clip(-1, 1)
     actual = valid["actual"].clip(-1, 1)
@@ -406,25 +653,177 @@ def guard_metrics_from_df(
     divergence = (raw - actual).abs()
     intent = raw.abs().sum()
     effect = actual.abs().sum()
-    return {
-        "guard_clipped_fraction": float(bool_series(df, "tes_guard_clipped").mean()),
-        "soc_pre_source": "shifted_TES_SOC",
-        "raw_invalid_charge_frac_guard_high": float(((soc_pre >= guard_soc_high) & (raw < -0.05)).mean()),
-        "raw_invalid_discharge_frac_guard_low": float(((soc_pre <= guard_soc_low) & (raw > 0.05)).mean()),
-        "raw_warn_limit_charge_frac_085": float(((soc_pre >= warn_soc_high) & (raw < -0.05)).mean()),
-        "raw_warn_limit_discharge_frac_015": float(((soc_pre <= warn_soc_low) & (raw > 0.05)).mean()),
-        "guard_soc_high": float(guard_soc_high),
-        "guard_soc_low": float(guard_soc_low),
-        "warn_soc_high": float(warn_soc_high),
-        "warn_soc_low": float(warn_soc_low),
-        "raw_actual_divergence": float(divergence.mean()),
-        "raw_actual_divergence_p95": float(divergence.quantile(0.95)),
-        "tes_intent_to_effect_ratio": float(effect / intent) if intent > 1.0e-12 else None,
-        "raw_abs_mean": float(raw.abs().mean()),
-        "actual_abs_mean": float(actual.abs().mean()),
-        "raw_target_column": raw_col,
-        "actual_valve_column": actual_col,
-    }
+    metrics.update(
+        {
+            "raw_invalid_charge_frac_guard_high": float(((soc_pre >= guard_soc_high) & (raw < -0.05)).mean()),
+            "raw_invalid_discharge_frac_guard_low": float(((soc_pre <= guard_soc_low) & (raw > 0.05)).mean()),
+            "raw_warn_limit_charge_frac_085": float(((soc_pre >= warn_soc_high) & (raw < -0.05)).mean()),
+            "raw_warn_limit_discharge_frac_015": float(((soc_pre <= warn_soc_low) & (raw > 0.05)).mean()),
+            "raw_actual_divergence": float(divergence.mean()),
+            "raw_actual_divergence_p95": float(divergence.quantile(0.95)),
+            "tes_intent_to_effect_ratio": float(effect / intent) if intent > 1.0e-12 else None,
+            "raw_abs_mean": float(raw.abs().mean()),
+            "actual_abs_mean": float(actual.abs().mean()),
+        }
+    )
+    return metrics
+
+
+def arg_float(args: argparse.Namespace, name: str, default: float) -> float:
+    return float(getattr(args, name, default))
+
+
+def mean_or_none(values: pd.Series) -> float | None:
+    valid = values.dropna()
+    return float(valid.mean()) if len(valid) else None
+
+
+def contiguous_true_runs(mask: pd.Series) -> list[tuple[int, int]]:
+    arr = mask.fillna(False).to_numpy(dtype=bool)
+    runs: list[tuple[int, int]] = []
+    start: int | None = None
+    for idx, flag in enumerate(arr):
+        if flag and start is None:
+            start = idx
+        elif not flag and start is not None:
+            runs.append((start, idx))
+            start = None
+    if start is not None:
+        runs.append((start, len(arr)))
+    return runs
+
+
+def soc_window_delta_mean(mask: pd.Series, soc: pd.Series, soc_pre: pd.Series) -> tuple[float | None, int]:
+    deltas: list[float] = []
+    for start, end in contiguous_true_runs(mask):
+        if end <= start:
+            continue
+        start_soc = soc_pre.iloc[start]
+        if pd.isna(start_soc):
+            start_soc = soc.iloc[start]
+        end_soc = soc.iloc[end - 1]
+        if pd.notna(start_soc) and pd.notna(end_soc):
+            deltas.append(float(end_soc - start_soc))
+    return (float(np.mean(deltas)) if deltas else None, len(deltas))
+
+
+def charge_sign_flip_delays(mask: pd.Series, actual: pd.Series) -> tuple[int | None, float | None, float | None]:
+    if not actual.notna().any():
+        return None, None, None
+    runs = contiguous_true_runs(mask)
+    if not runs:
+        return None, None, None
+    first_delay: int | None = None
+    delays: list[int] = []
+    no_flip = 0
+    for run_idx, (start, end) in enumerate(runs):
+        hits = np.flatnonzero((actual.iloc[start:end] < -0.05).fillna(False).to_numpy(dtype=bool))
+        if len(hits):
+            delay = int(hits[0])
+            delays.append(delay)
+            if run_idx == 0:
+                first_delay = delay
+        else:
+            no_flip += 1
+    return (
+        first_delay,
+        float(np.mean(delays)) if delays else None,
+        float(no_flip / len(runs)),
+    )
+
+
+def tes_mechanism_metrics_from_df(
+    df: pd.DataFrame,
+    args: argparse.Namespace,
+    monitor_path: Path,
+) -> dict[str, Any]:
+    metrics: dict[str, Any] = {field: None for field in TES_MECHANISM_FIELDS}
+    low_price_threshold = arg_float(args, "low_price_threshold", -0.50)
+    high_price_threshold = arg_float(args, "high_price_threshold", 0.75)
+    near_peak_threshold = arg_float(args, "near_peak_threshold", 0.40)
+    soc_charge_limit = arg_float(args, "soc_charge_limit", 0.85)
+    soc_discharge_limit = arg_float(args, "soc_discharge_limit", 0.25)
+    metrics.update(
+        {
+            "tes_mechanism_low_price_threshold": low_price_threshold,
+            "tes_mechanism_high_price_threshold": high_price_threshold,
+            "tes_mechanism_near_peak_threshold": near_peak_threshold,
+            "tes_mechanism_soc_charge_limit": soc_charge_limit,
+            "tes_mechanism_soc_discharge_limit": soc_discharge_limit,
+            "tes_valve_sign_convention": "negative=charge, positive=discharge",
+            "raw_actual_divergence_switch_radius_steps": TOU_SWITCH_RADIUS_STEPS,
+        }
+    )
+
+    price_col = "price_current_norm" if "price_current_norm" in df.columns else None
+    hours_col = "price_hours_to_next_peak_norm" if "price_hours_to_next_peak_norm" in df.columns else None
+    soc_col = "TES_SOC" if "TES_SOC" in df.columns else None
+    actual_col = optional_any_column(df, GUARD_ACTUAL_VALVE_COLUMNS)
+    raw_col = optional_any_column(df, GUARD_RAW_TARGET_COLUMNS)
+    if price_col is None or soc_col is None:
+        return metrics
+
+    price = numeric(df, price_col)
+    soc = numeric(df, soc_col)
+    soc_pre = soc.shift(1)
+    actual = numeric(df, actual_col) if actual_col else pd.Series(np.nan, index=df.index, dtype=float)
+    low_price = price.notna() & (price <= low_price_threshold)
+    high_price = price.notna() & (price >= high_price_threshold)
+
+    if actual_col:
+        metrics["low_price_valve_mean"] = mean_or_none(actual[low_price])
+        metrics["high_price_valve_mean"] = mean_or_none(actual[high_price])
+
+    low_prepeak = pd.Series(False, index=df.index, dtype=bool)
+    if hours_col is not None:
+        hours_to_peak = numeric(df, hours_col)
+        low_prepeak = low_price & hours_to_peak.notna() & (hours_to_peak <= near_peak_threshold)
+        charge_window = low_prepeak & soc_pre.notna() & (soc_pre < soc_charge_limit)
+        metrics["charge_window_step_count"] = int(charge_window.sum())
+        charge_valid = charge_window & actual.notna()
+        if actual_col and bool(charge_valid.any()):
+            metrics["charge_window_sign_rate"] = float((actual[charge_valid] < -0.05).mean())
+            metrics["low_price_discharge_fraction"] = float((actual[charge_valid] > 0.05).mean())
+            metrics["charge_window_valve_mean"] = float(actual[charge_valid].mean())
+        delta_prepeak, prepeak_count = soc_window_delta_mean(charge_window, soc, soc_pre)
+        metrics["delta_soc_prepeak"] = delta_prepeak
+        metrics["prepeak_window_count"] = int(prepeak_count)
+        if actual_col:
+            first_delay, mean_delay, no_flip_fraction = charge_sign_flip_delays(charge_window, actual)
+            metrics["sign_flip_delay_steps"] = first_delay
+            metrics["sign_flip_delay_steps_mean"] = mean_delay
+            metrics["sign_flip_no_flip_fraction"] = no_flip_fraction
+
+    discharge_window = high_price & soc_pre.notna() & (soc_pre > soc_discharge_limit)
+    metrics["discharge_window_step_count"] = int(discharge_window.sum())
+    discharge_valid = discharge_window & actual.notna()
+    if actual_col and bool(discharge_valid.any()):
+        metrics["discharge_window_sign_rate"] = float((actual[discharge_valid] > 0.05).mean())
+        metrics["discharge_window_valve_mean"] = float(actual[discharge_valid].mean())
+    delta_peak, peak_count = soc_window_delta_mean(discharge_window, soc, soc_pre)
+    metrics["delta_soc_peak"] = delta_peak
+    metrics["peak_window_count"] = int(peak_count)
+
+    if raw_col and actual_col:
+        phase = pd.Series(0, index=df.index, dtype=int)
+        phase.loc[high_price] = 2
+        phase.loc[low_prepeak] = -1
+        phase_np = phase.to_numpy(dtype=int)
+        switch_indices = np.flatnonzero(phase_np[1:] != phase_np[:-1]) + 1 if len(phase_np) > 1 else np.array([], dtype=int)
+        near_switch: set[int] = set()
+        for idx in switch_indices:
+            lo = max(0, int(idx) - TOU_SWITCH_RADIUS_STEPS)
+            hi = min(len(df), int(idx) + TOU_SWITCH_RADIUS_STEPS + 1)
+            near_switch.update(range(lo, hi))
+        raw = numeric(df, raw_col).clip(-1, 1)
+        divergence = (raw - actual.clip(-1, 1)).abs()
+        near_divergence = divergence.iloc[sorted(near_switch)].dropna() if near_switch else pd.Series(dtype=float)
+        metrics["raw_actual_divergence_switch_count"] = int(len(near_divergence))
+        if len(near_divergence):
+            metrics["raw_actual_divergence_switch_mean"] = float(near_divergence.mean())
+            metrics["raw_actual_divergence_switch_p95"] = float(near_divergence.quantile(0.95))
+
+    return metrics
 
 
 def summarize_monitor(
@@ -448,8 +847,9 @@ def summarize_monitor(
     pue = total_facility_MWh / total_ite_MWh if total_ite_MWh > 0 else float("nan")
     comfort_pct = float((temps > 25.0).sum() / max(len(temps), 1) * 100.0)
 
-    price = pd.read_csv(args.price_csv)["price_usd_per_mwh"].to_numpy(dtype=np.float64)
-    pv = pd.read_csv(args.pv_csv)["power_kw"].to_numpy(dtype=np.float64)
+    # C2 fix: BOM-safe reads aligned with validate_raw_csv_header.
+    price = pd.read_csv(args.price_csv, encoding="utf-8-sig")["price_usd_per_mwh"].to_numpy(dtype=np.float64)
+    pv = pd.read_csv(args.pv_csv, encoding="utf-8-sig")["power_kw"].to_numpy(dtype=np.float64)
     hour_idx = (np.arange(len(facility_MWh_step)) // M2_TIMESTEPS_PER_HOUR) % len(price)
     lmp_step = price[hour_idx]
     pv_step = pv[hour_idx]
@@ -549,6 +949,7 @@ def summarize_monitor(
             guard_soc_low=getattr(args, "tes_guard_soc_low", 0.10),
         )
     )
+    result.update(tes_mechanism_metrics_from_df(df, args, monitor_path))
     return result
 
 
@@ -585,6 +986,7 @@ def rule_policy_action(obs: np.ndarray, names: list[str], args: argparse.Namespa
 
 
 def make_policy(args: argparse.Namespace, mode: str, model: Any, obs_names: list[str]) -> Callable[[np.ndarray], np.ndarray]:
+    expected_dim = requested_action_dim(args)
     frozen = np.array(
         [args.frozen_ct_pump_action, args.frozen_crah_temp_action, args.frozen_chiller_temp_action],
         dtype=np.float32,
@@ -593,8 +995,8 @@ def make_policy(args: argparse.Namespace, mode: str, model: Any, obs_names: list
     def learned(obs: np.ndarray) -> np.ndarray:
         action, _ = model.predict(obs, deterministic=not args.stochastic)
         action = np.asarray(action, dtype=np.float32)
-        if action.shape != (4,):
-            raise RuntimeError(f"Expected 4D M2-F1 policy action, got {action.shape}")
+        if action.shape != (expected_dim,):
+            raise RuntimeError(f"Expected {expected_dim}D M2-F1 policy action, got {action.shape}")
         return action
 
     if mode == "full_learned":
@@ -603,7 +1005,9 @@ def make_policy(args: argparse.Namespace, mode: str, model: Any, obs_names: list
     if mode == "learned_tes_frozen_hvac":
         def policy(obs: np.ndarray) -> np.ndarray:
             action = learned(obs)
-            return np.array([frozen[0], frozen[1], frozen[2], action[3]], dtype=np.float32)
+            out = action.copy()
+            out[:3] = frozen
+            return out.astype(np.float32)
         return policy
 
     if mode == "rule_tes_frozen_hvac":
@@ -617,6 +1021,8 @@ def make_policy(args: argparse.Namespace, mode: str, model: Any, obs_names: list
     if mode == "learned_hvac_tes_zero":
         def policy(obs: np.ndarray) -> np.ndarray:
             action = learned(obs)
+            if requested_action_semantics(args) in {"direction_amp", "direction_amp_hold"}:
+                return np.array([action[0], action[1], action[2], 0.0, -1.0], dtype=np.float32)
             return np.array([action[0], action[1], action[2], 0.0], dtype=np.float32)
         return policy
 
@@ -631,16 +1037,24 @@ def run_policy_eval(args: argparse.Namespace, design: str, tag: str, mode: str) 
     if "Eplus-DC-Cooling-TES" not in get_ids():
         raise RuntimeError("Eplus-DC-Cooling-TES environment is not registered.")
 
-    skipped = check_checkpoint_or_skip(args.checkpoint)
+    expected_action_dim = requested_action_dim(args)
+    skipped = check_checkpoint_or_skip(args.checkpoint, expected_action_dim)
     if skipped is not None:
         skipped.update({"tag": tag, "design": design, "mode": mode, "workspace": str(args.workspace)})
         return skipped
 
-    mean, var = normalization_stats(args.workspace)
+    expected_obs_dim = 34 if getattr(args, "enable_tes_state_augmentation", False) else 32
+    provenance = validate_workspace_provenance(args, expected_action_dim, expected_obs_dim)
+    mean, var = normalization_stats(args.workspace, expected_obs_dim)
     env = build_env(args, design, tag)
     env = attach_eval_reward(env, args)
-    if env.action_space.shape != (4,):
-        raise RuntimeError(f"Expected M2-F1 4D action space, got {env.action_space.shape}")
+    if env.action_space.shape != (expected_action_dim,):
+        raise RuntimeError(f"Expected M2-F1 {expected_action_dim}D action space, got {env.action_space.shape}")
+    if env.observation_space.shape != (expected_obs_dim,):
+        raise RuntimeError(
+            f"Expected M2-F1 obs_dim={expected_obs_dim}, got {env.observation_space.shape}. "
+            f"Check --enable-tes-state-augmentation and workspace normalization stats."
+        )
     env = NormalizeObservation(env, mean=mean, var=var, automatic_update=False)
     obs_names = list(env.get_wrapper_attr("observation_variables"))
     env = attach_logger(env)
@@ -680,7 +1094,13 @@ def run_policy_eval(args: argparse.Namespace, design: str, tag: str, mode: str) 
     )
     result.update(
         {
-            "action_dim": 4,
+            "action_dim": expected_action_dim,
+            "tes_action_semantics": requested_action_semantics(args),
+            "tes_direction_deadband": getattr(args, "tes_direction_deadband", None),
+            "tes_option_hold_steps": getattr(args, "tes_option_hold_steps", None),
+            "obs_dim": expected_obs_dim,
+            "enable_tes_state_augmentation": bool(getattr(args, "enable_tes_state_augmentation", False)),
+            **provenance,
             "tag": tag,
             "design": design,
             "mode": mode,
@@ -707,7 +1127,15 @@ def should_execute_eval(args: argparse.Namespace) -> bool:
 
 
 def counterfactual_semantics(args: argparse.Namespace) -> dict[str, Any]:
+    tes_zero_action = (
+        {"TES_direction_DRL": 0.0, "TES_amplitude_DRL": -1.0}
+        if requested_action_semantics(args) in {"direction_amp", "direction_amp_hold"}
+        else {"TES_DRL": 0.0}
+    )
     return {
+        "tes_action_semantics": requested_action_semantics(args),
+        "tes_direction_deadband": getattr(args, "tes_direction_deadband", None),
+        "tes_option_hold_steps": getattr(args, "tes_option_hold_steps", None),
         "frozen_hvac_action": {
             "CT_Pump_DRL": float(args.frozen_ct_pump_action),
             "CRAH_T_DRL": float(args.frozen_crah_temp_action),
@@ -715,8 +1143,8 @@ def counterfactual_semantics(args: argparse.Namespace) -> dict[str, Any]:
             "meaning": "These fixed normalized action values replace learned HVAC dimensions in frozen-HVAC modes.",
         },
         "learned_hvac_tes_zero": {
-            "TES_DRL": 0.0,
-            "meaning": "The learned HVAC dimensions are preserved and the TES target action is forced to neutral zero.",
+            **tes_zero_action,
+            "meaning": "The learned HVAC dimensions are preserved and the TES command is forced to neutral zero under the selected action semantics.",
         },
         "rule_tes_frozen_hvac": {
             "status": "unsupported_for_actual_eval",
@@ -738,12 +1166,19 @@ def counterfactual_semantics(args: argparse.Namespace) -> dict[str, Any]:
 
 def write_manifest(out_dir: Path, args: argparse.Namespace, runs: list[dict[str, Any]]) -> Path:
     execute = bool(getattr(args, "_execute_eval", False))
+    expected_obs_dim = 34 if getattr(args, "enable_tes_state_augmentation", False) else 32
+    provenance = validate_workspace_provenance(args, requested_action_dim(args), expected_obs_dim)
     manifest = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "subcommand": args.command,
         "checkpoint": str(args.checkpoint),
         "workspace": str(args.workspace),
         "action_dim": safe_checkpoint_action_dim(args.checkpoint)[0],
+        "expected_action_dim": requested_action_dim(args),
+        "tes_action_semantics": requested_action_semantics(args),
+        "tes_direction_deadband": getattr(args, "tes_direction_deadband", None),
+        "tes_option_hold_steps": getattr(args, "tes_option_hold_steps", None),
+        **provenance,
         "reward_cls": args.reward_cls,
         "dry_run": not execute,
         "run_requested": bool(getattr(args, "run", False) or getattr(args, "confirm_run", False)),
@@ -767,7 +1202,10 @@ def write_summary_files(
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / "summary.json"
     csv_path = out_dir / "summary.csv"
+    counterfactual_pairs = compute_counterfactual_marginal_savings(rows)
     payload = {"title": title, "rows": rows}
+    if counterfactual_pairs:
+        payload["counterfactual_marginal_savings"] = counterfactual_pairs
     if metadata:
         payload.update(metadata)
     write_json(json_path, payload)
@@ -800,12 +1238,15 @@ def cmd_paired_eval(args: argparse.Namespace) -> int:
 
     rows: list[dict[str, Any]] = []
     if not args._execute_eval:
-        skipped = check_checkpoint_or_skip(args.checkpoint)
+        skipped = check_checkpoint_or_skip(args.checkpoint, requested_action_dim(args))
         rows = []
         for spec in run_specs:
             row = {
                 "status": "planned",
                 "action_dim": safe_checkpoint_action_dim(args.checkpoint)[0],
+                "tes_action_semantics": requested_action_semantics(args),
+                "tes_direction_deadband": getattr(args, "tes_direction_deadband", None),
+                "tes_option_hold_steps": getattr(args, "tes_option_hold_steps", None),
                 "tag": spec["tag"],
                 "design": spec["design"],
                 "mode": spec["mode"],
@@ -855,12 +1296,15 @@ def cmd_counterfactual_eval(args: argparse.Namespace) -> int:
     manifest_path = write_manifest(out_dir, args, run_specs)
 
     if not args._execute_eval:
-        skipped = check_checkpoint_or_skip(args.checkpoint)
+        skipped = check_checkpoint_or_skip(args.checkpoint, requested_action_dim(args))
         rows = []
         for spec in run_specs:
             row = {
                 "status": "planned",
                 "action_dim": safe_checkpoint_action_dim(args.checkpoint)[0],
+                "tes_action_semantics": requested_action_semantics(args),
+                "tes_direction_deadband": getattr(args, "tes_direction_deadband", None),
+                "tes_option_hold_steps": getattr(args, "tes_option_hold_steps", None),
                 "tag": spec["tag"],
                 "design": spec["design"],
                 "mode": spec["mode"],
@@ -978,18 +1422,22 @@ def cmd_guard_probe(args: argparse.Namespace) -> int:
                 guard_soc_high=args.tes_guard_soc_high,
                 guard_soc_low=args.tes_guard_soc_low,
             )
+            metrics.update(tes_mechanism_metrics_from_df(df, args, monitor_path))
+            actual_col = optional_any_column(df, GUARD_ACTUAL_VALVE_COLUMNS)
+            actual_valve = numeric(df, actual_col) if actual_col else pd.Series(np.nan, index=df.index, dtype=float)
+            soc = numeric(df, "TES_SOC")
             metrics.update(
                 {
                     "status": "ok",
                     "monitor_csv": str(monitor_path),
                     "rows": int(len(df)),
-                    "valve_mean_abs": float(numeric(df, "TES_valve_wrapper_position").abs().mean()),
-                    "valve_active_fraction": float((numeric(df, "TES_valve_wrapper_position").abs() > 0.05).mean()),
-                    "charge_fraction": float((numeric(df, "TES_valve_wrapper_position") < -0.05).mean()),
-                    "discharge_fraction": float((numeric(df, "TES_valve_wrapper_position") > 0.05).mean()),
-                    "soc_min": float(numeric(df, "TES_SOC").min()),
-                    "soc_mean": float(numeric(df, "TES_SOC").mean()),
-                    "soc_max": float(numeric(df, "TES_SOC").max()),
+                    "valve_mean_abs": float(actual_valve.abs().mean()) if actual_valve.notna().any() else None,
+                    "valve_active_fraction": float((actual_valve.abs() > 0.05).mean()) if actual_valve.notna().any() else None,
+                    "charge_fraction": float((actual_valve < -0.05).mean()) if actual_valve.notna().any() else None,
+                    "discharge_fraction": float((actual_valve > 0.05).mean()) if actual_valve.notna().any() else None,
+                    "soc_min": float(soc.min()) if soc.notna().any() else None,
+                    "soc_mean": float(soc.mean()) if soc.notna().any() else None,
+                    "soc_max": float(soc.max()) if soc.notna().any() else None,
                 }
             )
             rows.append(metrics)
@@ -1024,6 +1472,11 @@ def rows_from_file(path: Path) -> list[dict[str, Any]]:
                             row,
                             status=row.get("status", "planned"),
                             action_dim=data.get("action_dim"),
+                            tes_action_semantics=data.get("tes_action_semantics"),
+                            tes_direction_deadband=data.get("tes_direction_deadband"),
+                            tes_option_hold_steps=data.get("tes_option_hold_steps"),
+                            provenance_metadata_missing=data.get("provenance_metadata_missing"),
+                            provenance_metadata_sources=data.get("provenance_metadata_sources"),
                             checkpoint=data.get("checkpoint"),
                             workspace=data.get("workspace"),
                             source=str(path),
@@ -1065,6 +1518,180 @@ def dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         unique.append(row)
     return unique
+
+
+def is_missing_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, float) and not math.isfinite(value):
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in ("", "none", "null", "nan")
+    return False
+
+
+def row_needs_p02_gate_fill(row: dict[str, Any]) -> bool:
+    return any(is_missing_value(row.get(field)) for field in TES_MECHANISM_FIELDS)
+
+
+def ensure_p02_gate_nulls(row: dict[str, Any]) -> None:
+    for field in TES_MECHANISM_FIELDS:
+        if is_missing_value(row.get(field)):
+            row[field] = None
+
+
+def resolve_monitor_csv(row: dict[str, Any]) -> tuple[Path | None, str | None]:
+    monitor = row.get("monitor_csv")
+    if is_missing_value(monitor):
+        return None, "missing monitor_csv"
+
+    raw = Path(str(monitor))
+    candidates = [raw] if raw.is_absolute() else [ROOT / raw, raw]
+    source = row.get("source")
+    if not raw.is_absolute() and not is_missing_value(source):
+        candidates.append(Path(str(source)).parent / raw)
+
+    seen: set[str] = set()
+    unique_candidates: list[Path] = []
+    for candidate in candidates:
+        key = str(candidate)
+        if key not in seen:
+            seen.add(key)
+            unique_candidates.append(candidate)
+    for candidate in unique_candidates:
+        if candidate.exists():
+            return candidate, None
+    searched = ", ".join(str(candidate) for candidate in unique_candidates)
+    return None, f"monitor_csv not found; searched: {searched}"
+
+
+def p02_gate_column_notes(df: pd.DataFrame) -> list[str]:
+    notes: list[str] = []
+    required = ["TES_SOC", "price_current_norm"]
+    missing_required = [col for col in required if col not in df.columns]
+    if missing_required:
+        notes.append(f"missing required gate columns: {missing_required}")
+    if "price_hours_to_next_peak_norm" not in df.columns:
+        notes.append("missing price_hours_to_next_peak_norm; low-price pre-peak metrics are null")
+    if optional_any_column(df, GUARD_ACTUAL_VALVE_COLUMNS) is None:
+        notes.append("missing actual valve column; sign-rate and sign-flip metrics are null")
+    if optional_any_column(df, GUARD_RAW_TARGET_COLUMNS) is None:
+        notes.append("missing raw target column; switch divergence metrics are null")
+    return notes
+
+
+def fill_p02_gate_metrics_from_monitor(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any]:
+    status_counts: dict[str, int] = {}
+    for row in rows:
+        if not row_needs_p02_gate_fill(row):
+            continue
+
+        monitor_path, reason = resolve_monitor_csv(row)
+        if monitor_path is None:
+            ensure_p02_gate_nulls(row)
+            row["p02_gate_metrics_status"] = "not_available"
+            row["p02_gate_metrics_reason"] = reason
+            status_counts["not_available"] = status_counts.get("not_available", 0) + 1
+            continue
+
+        try:
+            df = read_monitor_csv(monitor_path)
+            metrics = tes_mechanism_metrics_from_df(df, args, monitor_path)
+            for key, value in metrics.items():
+                if is_missing_value(row.get(key)):
+                    row[key] = value
+            ensure_p02_gate_nulls(row)
+            notes = p02_gate_column_notes(df)
+            row["p02_gate_metrics_status"] = "filled_from_monitor_csv"
+            row["p02_gate_metrics_monitor_csv"] = str(monitor_path)
+            if notes:
+                row["p02_gate_metrics_reason"] = "; ".join(notes)
+            status_counts["filled_from_monitor_csv"] = status_counts.get("filled_from_monitor_csv", 0) + 1
+        except Exception as exc:
+            ensure_p02_gate_nulls(row)
+            row["p02_gate_metrics_status"] = "error"
+            row["p02_gate_metrics_reason"] = str(exc)
+            status_counts["error"] = status_counts.get("error", 0) + 1
+
+    return {"status_counts": status_counts}
+
+
+def row_cost_usd(row: dict[str, Any]) -> float | None:
+    cost = finite_float(row.get("cost_usd"))
+    return cost if cost is not None else finite_float(row.get("cost_usd_annual"))
+
+
+def tag_without_mode(row: dict[str, Any]) -> str | None:
+    tag = row.get("tag")
+    mode = row.get("mode")
+    if not tag or not mode:
+        return None
+    tag_text = str(tag)
+    suffix = f"_{mode}"
+    if tag_text.endswith(suffix):
+        return tag_text[: -len(suffix)]
+    return None
+
+
+def counterfactual_pair_key(row: dict[str, Any]) -> dict[str, Any]:
+    key_fields = [
+        "action_dim",
+        "design",
+        "checkpoint",
+        "workspace",
+        "reward_cls",
+        "max_steps",
+    ]
+    key = {field: row.get(field) for field in key_fields if row.get(field) not in (None, "")}
+    tag_base = tag_without_mode(row)
+    if tag_base:
+        key["tag_base"] = tag_base
+    return key
+
+
+def compute_counterfactual_marginal_savings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, int]] = {}
+    key_payloads: dict[str, dict[str, Any]] = {}
+    for idx, row in enumerate(rows):
+        if row.get("status") not in (None, "", "ok"):
+            continue
+        mode = row.get("mode")
+        if mode not in ("full_learned", "learned_hvac_tes_zero"):
+            continue
+        key_payload = counterfactual_pair_key(row)
+        key = json.dumps(json_ready(key_payload), sort_keys=True)
+        grouped.setdefault(key, {})[str(mode)] = idx
+        key_payloads[key] = key_payload
+
+    pairs: list[dict[str, Any]] = []
+    basis = (
+        "cost_usd(learned_hvac_tes_zero) - cost_usd(full_learned); "
+        "separate deterministic rollouts matched by checkpoint/design/workspace/tag_base when available"
+    )
+    for key, modes in grouped.items():
+        if "full_learned" not in modes or "learned_hvac_tes_zero" not in modes:
+            continue
+        full_row = rows[modes["full_learned"]]
+        zero_row = rows[modes["learned_hvac_tes_zero"]]
+        full_cost = row_cost_usd(full_row)
+        zero_cost = row_cost_usd(zero_row)
+        if full_cost is None or zero_cost is None:
+            continue
+        saving = float(zero_cost - full_cost)
+        for idx in modes.values():
+            rows[idx]["tes_marginal_saving_usd"] = saving
+            rows[idx]["tes_marginal_saving_basis"] = basis
+            rows[idx]["tes_marginal_saving_pair_key"] = key
+        pairs.append(
+            {
+                "pair_key": key_payloads[key],
+                "full_learned_cost_usd": float(full_cost),
+                "learned_hvac_tes_zero_cost_usd": float(zero_cost),
+                "tes_marginal_saving_usd": saving,
+                "basis": basis,
+            }
+        )
+    return pairs
 
 
 def aggregate_row_subset(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1133,10 +1760,17 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     if not rows:
         rows.append({"status": "no_inputs", "reason": "No JSON/CSV files found."})
     rows = dedupe_rows(rows)
+    p02_gate_fill = fill_p02_gate_metrics_from_monitor(rows, args)
+    counterfactual_pairs = compute_counterfactual_marginal_savings(rows)
+    aggregate = aggregate_rows(rows)
+    if p02_gate_fill["status_counts"]:
+        aggregate["p02_gate_fill"] = p02_gate_fill
+    if counterfactual_pairs:
+        aggregate["counterfactual_marginal_savings"] = counterfactual_pairs
 
     payload = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
-        "aggregate": aggregate_rows(rows),
+        "aggregate": aggregate,
         "rows": rows,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -1187,6 +1821,10 @@ def add_common_eval_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--soc-discharge-limit", type=float, default=0.25)
     ap.add_argument("--charge-target", type=float, default=0.85)
     ap.add_argument("--discharge-target", type=float, default=0.85)
+    ap.add_argument("--enable-tes-state-augmentation", action="store_true")
+    ap.add_argument("--tes-action-semantics", choices=["signed_scalar", "direction_amp", "direction_amp_hold"], default="signed_scalar")
+    ap.add_argument("--tes-direction-deadband", type=float, default=0.15)
+    ap.add_argument("--tes-option-hold-steps", type=int, default=4)
     ap.add_argument("--frozen-ct-pump-action", type=float, default=0.5)
     ap.add_argument("--frozen-crah-temp-action", type=float, default=0.5)
     ap.add_argument("--frozen-chiller-temp-action", type=float, default=0.5)
@@ -1212,6 +1850,11 @@ def parse_args() -> argparse.Namespace:
     guard.add_argument("--out-dir", type=Path, default=Path("runs/m2_validate_tes_failure_modes/guard_probe"))
     guard.add_argument("--tes-guard-soc-low", type=float, default=0.10)
     guard.add_argument("--tes-guard-soc-high", type=float, default=0.90)
+    guard.add_argument("--high-price-threshold", type=float, default=0.75)
+    guard.add_argument("--low-price-threshold", type=float, default=-0.50)
+    guard.add_argument("--near-peak-threshold", type=float, default=0.40)
+    guard.add_argument("--soc-charge-limit", type=float, default=0.85)
+    guard.add_argument("--soc-discharge-limit", type=float, default=0.25)
     guard.add_argument("--no-strict", dest="strict", action="store_false", help="Return success when at least one input is ok, even if others fail.")
     guard.set_defaults(strict=True)
     guard.set_defaults(func=cmd_guard_probe)
@@ -1231,12 +1874,18 @@ def parse_args() -> argparse.Namespace:
     summ = sub.add_parser("summarize", help="Aggregate validation JSON/CSV metrics.")
     summ.add_argument("inputs", nargs="+", help="result.json, summary.json, summary.csv, or directories.")
     summ.add_argument("--out", type=Path, default=Path("runs/m2_validate_tes_failure_modes/summary.json"))
+    summ.add_argument("--high-price-threshold", type=float, default=0.75)
+    summ.add_argument("--low-price-threshold", type=float, default=-0.50)
+    summ.add_argument("--near-peak-threshold", type=float, default=0.40)
+    summ.add_argument("--soc-charge-limit", type=float, default=0.85)
+    summ.add_argument("--soc-discharge-limit", type=float, default=0.25)
     summ.set_defaults(func=cmd_summarize)
     return ap.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    _normalize_data_paths(args)
     raise SystemExit(args.func(args))
 
 

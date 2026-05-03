@@ -11,7 +11,14 @@ M2_FIXED_FAN_VALUE = 1.0
 
 
 def checkpoint_action_dim(checkpoint: str | Path) -> int:
-    """Read the saved SB3 action-space dimension without loading the policy."""
+    """Read the saved SB3 action-space dimension without loading the policy.
+
+    C5 fix: SB3's serialized ``action_space`` has used both ``_shape`` and
+    ``shape`` across versions/plugins. We accept either, validate the value
+    looks like a (length-1) shape tuple, and emit the available keys when
+    parsing fails so the failure is debuggable instead of a vague
+    'unreadable checkpoint'.
+    """
     path = Path(checkpoint)
     try:
         with zipfile.ZipFile(path) as archive:
@@ -20,9 +27,20 @@ def checkpoint_action_dim(checkpoint: str | Path) -> int:
         raise RuntimeError(f"Could not inspect checkpoint action_space: {path}") from exc
 
     action_space = data.get("action_space")
-    shape = action_space.get("_shape") if isinstance(action_space, dict) else None
-    if not shape:
-        raise RuntimeError(f"Checkpoint has no readable action_space._shape: {path}")
+    if not isinstance(action_space, dict):
+        raise RuntimeError(
+            f"Checkpoint has no dict-shaped action_space: {path} "
+            f"(got type={type(action_space).__name__})"
+        )
+
+    # Try both common SB3 serialization keys.
+    shape = action_space.get("_shape") or action_space.get("shape")
+    if not shape or not isinstance(shape, (list, tuple)) or len(shape) == 0:
+        keys = sorted(action_space.keys())
+        raise RuntimeError(
+            f"Checkpoint has no readable action_space shape: {path}. "
+            f"Tried keys ['_shape', 'shape']; available action_space keys: {keys}"
+        )
     return int(shape[0])
 
 

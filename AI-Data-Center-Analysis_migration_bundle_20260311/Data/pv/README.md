@@ -43,4 +43,4 @@ D:/Anaconda/python.exe tools/generate_pvgis.py --site palo-alto
 
 获取：`D:/Anaconda/python.exe tools/generate_pvgis.py --site singapore`
 
-决策背景详见 `项目目标/决策-站点切换-CAISO-2026-04-19.md`。
+决策背景详见 `项目目标/archive/决策-站点切换-CAISO-2026-04-19.md`。

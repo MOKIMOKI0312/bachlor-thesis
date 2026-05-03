@@ -26,7 +26,7 @@ REFERENCES
 ----------
 - gridstatus: https://github.com/gridstatus/gridstatus
 - CAISO OASIS: http://oasis.caiso.com
-- 决策文档: 项目目标/决策-站点切换-CAISO-2026-04-19.md
+- 决策文档: 项目目标/archive/决策-站点切换-CAISO-2026-04-19.md
 """
 from __future__ import annotations
 

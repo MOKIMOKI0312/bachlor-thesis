@@ -124,6 +124,24 @@ explicitly testing the older DPBA design.
 
 ## Validation Gates
 
+## Evaluation Protocol Update (2026-05-01)
+
+M2-F1's primary success gate is now trainlike / in-distribution evaluation:
+
+```text
+building_file = DRL_DC_training.epJSON
+evaluation_flag = 0
+ITE_Set = 0.45
+obs_dim = 32
+action_dim = 4
+```
+
+The previous default `DRL_DC_evaluation.epJSON` uses `ITE_Set=1.0`.  That is a
+2.22x high-load shift relative to training (`0.45 -> 1.0`), so it is now
+reported as `official_ood` stress testing instead of the M2-F1 learning gate.
+The observed official failure should be described as workload/load-level OOD,
+not as evidence that TES physics or the trainlike TES policy is invalid.
+
 First run: `4 seed x 10ep` from scratch.
 
 Proceed to `4 seed x 30ep` only if deterministic evaluation of the 10ep

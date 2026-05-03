@@ -34,7 +34,9 @@ from sinergym.utils.common import get_ids
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
 from sinergym.envs.tes_wrapper import (
     FixedActionInsertWrapper,
+    TESDirectionAmplitudeActionWrapper,
     TESPriceShapingWrapper,
+    TESStateAugmentationWrapper,
     TESTargetValveWrapper,
 )
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
@@ -42,6 +44,34 @@ from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from tools.m2_action_guard import M2_FIXED_FAN_VALUE
+
+
+def m2_action_dim(action_semantics: str) -> int:
+    return 5 if action_semantics in {"direction_amp", "direction_amp_hold"} else 4
+
+
+def m2_action_bounds(action_semantics: str) -> tuple[np.ndarray, np.ndarray]:
+    if action_semantics in {"direction_amp", "direction_amp_hold"}:
+        return (
+            np.array([0.0, 0.0, 0.0, -1.0, -1.0], dtype=np.float32),
+            np.array([1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+        )
+    return (
+        np.array([0.0, 0.0, 0.0, -1.0], dtype=np.float32),
+        np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+    )
+
+
+def m2_action_variables(action_semantics: str) -> list[str]:
+    if action_semantics in {"direction_amp", "direction_amp_hold"}:
+        return [
+            "CT_Pump_DRL",
+            "CRAH_T_DRL",
+            "Chiller_T_DRL",
+            "TES_direction_DRL",
+            "TES_amplitude_DRL",
+        ]
+    return ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"]
 
 
 def _index(obs_names: list[str], candidates: tuple[str, ...]) -> int:
@@ -113,8 +143,26 @@ def main():
     ap.add_argument("--disable-tes-tou-shaping", action="store_true")
     ap.add_argument("--tes-teacher-weight", type=float, default=0.0)
     ap.add_argument("--tes-invalid-action-penalty-weight", type=float, default=0.0)
+    ap.add_argument("--tes-tou-alignment-weight", type=float, default=0.0)
+    ap.add_argument("--tes-target-soc-kappa", type=float, default=1.0)
+    ap.add_argument("--tes-valve-penalty-weight", type=float, default=0.02)
+    ap.add_argument("--tes-high-price-threshold", type=float, default=0.75)
+    ap.add_argument("--tes-low-price-threshold", type=float, default=-0.50)
+    ap.add_argument("--tes-near-peak-threshold", type=float, default=0.40)
+    ap.add_argument("--tes-target-soc-high", type=float, default=0.85)
+    ap.add_argument("--tes-target-soc-low", type=float, default=0.30)
+    ap.add_argument("--tes-target-soc-neutral", type=float, default=0.50)
+    ap.add_argument("--tes-neutral-pbrs-mode", choices=["target", "zero"], default="target")
+    ap.add_argument("--tes-soc-charge-limit", type=float, default=0.85)
+    ap.add_argument("--tes-soc-discharge-limit", type=float, default=0.20)
+    ap.add_argument("--enable-tes-state-augmentation", action="store_true")
+    ap.add_argument("--tes-action-semantics", choices=["signed_scalar", "direction_amp", "direction_amp_hold"], default="signed_scalar")
+    ap.add_argument("--tes-direction-deadband", type=float, default=0.15)
+    ap.add_argument("--tes-option-hold-steps", type=int, default=4)
+    ap.add_argument("--gamma-pbrs", type=float, default=0.99)
     ap.add_argument("--kappa-shape", type=float, default=0.0)
     args = ap.parse_args()
+    expected_action_dim = m2_action_dim(args.tes_action_semantics)
 
     assert "Eplus-DC-Cooling-TES" in get_ids()
 
@@ -132,6 +180,13 @@ def main():
         fixed_actions={0: M2_FIXED_FAN_VALUE},
         fixed_action_names={0: "CRAH_Fan_DRL"},
     )
+    if args.tes_action_semantics in {"direction_amp", "direction_amp_hold"}:
+        env = TESDirectionAmplitudeActionWrapper(
+            env,
+            direction_deadband=args.tes_direction_deadband,
+            action_semantics=args.tes_action_semantics,
+            hold_steps=args.tes_option_hold_steps,
+        )
     env = TimeEncodingWrapper(env)
     env = TempTrendWrapper(
         env,
@@ -141,11 +196,31 @@ def main():
     env = PriceSignalWrapper(env, price_csv_path="Data/prices/Jiangsu_TOU_2025_hourly.csv")
     env = PVSignalWrapper(env, pv_csv_path="Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv")
     env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
+    if args.enable_tes_state_augmentation:
+        env = TESStateAugmentationWrapper(
+            env,
+            high_price_threshold=args.tes_high_price_threshold,
+            low_price_threshold=args.tes_low_price_threshold,
+            near_peak_threshold=args.tes_near_peak_threshold,
+        )
     if not args.disable_tes_tou_shaping:
         env = TESPriceShapingWrapper(
             env,
+            gamma=args.gamma_pbrs,
+            kappa=args.tes_target_soc_kappa,
             teacher_initial_weight=args.tes_teacher_weight,
+            valve_penalty_weight=args.tes_valve_penalty_weight,
             invalid_action_penalty_weight=args.tes_invalid_action_penalty_weight,
+            tou_alignment_weight=args.tes_tou_alignment_weight,
+            high_price_threshold=args.tes_high_price_threshold,
+            low_price_threshold=args.tes_low_price_threshold,
+            near_peak_threshold=args.tes_near_peak_threshold,
+            target_soc_high=args.tes_target_soc_high,
+            target_soc_low=args.tes_target_soc_low,
+            target_soc_neutral=args.tes_target_soc_neutral,
+            neutral_pbrs_mode=args.tes_neutral_pbrs_mode,
+            soc_charge_limit=args.tes_soc_charge_limit,
+            soc_discharge_limit=args.tes_soc_discharge_limit,
         )
 
     # Patch reward if requested
@@ -194,26 +269,31 @@ def main():
         )
 
     # Post H2a/H2b/H2c/H2d: 20 + 6 + 3 + 3 = 32 dims.
-    expected_dim = 32
+    # C2b optionally appends 2 TES state features.
+    expected_dim = 32 + (2 if args.enable_tes_state_augmentation else 0)
     assert env.observation_space.shape == (expected_dim,), (
         f"Expected obs_dim={expected_dim}, got {env.observation_space.shape}"
     )
-    assert env.action_space.shape == (4,), (
-        f"Expected action_dim=4, got {env.action_space.shape}"
+    assert env.action_space.shape == (expected_action_dim,), (
+        f"Expected action_dim={expected_action_dim}, got {env.action_space.shape}"
     )
-    assert np.allclose(env.action_space.low, np.array([0.0, 0.0, 0.0, -1.0], dtype=np.float32))
-    assert np.allclose(env.action_space.high, np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32))
+    expected_low, expected_high = m2_action_bounds(args.tes_action_semantics)
+    assert np.allclose(env.action_space.low, expected_low)
+    assert np.allclose(env.action_space.high, expected_high)
     print(
-        f"Env stack OK: obs_dim={expected_dim}, action_dim=4, reward={args.reward_cls}, "
+        f"Env stack OK: obs_dim={expected_dim}, action_dim={expected_action_dim}, reward={args.reward_cls}, "
         f"fixed_CRAH_Fan_DRL={M2_FIXED_FAN_VALUE}, "
-        f"tes_tou_shaping={not args.disable_tes_tou_shaping}"
+        f"tes_tou_shaping={not args.disable_tes_tou_shaping}, "
+        f"enable_tes_state_augmentation={args.enable_tes_state_augmentation}, "
+        f"tes_action_semantics={args.tes_action_semantics}, "
+        f"tes_option_hold_steps={args.tes_option_hold_steps}"
     )
     obs_names = list(env.get_wrapper_attr("observation_variables"))
     assert len(obs_names) == expected_dim, (
         f"observation_variables length mismatch: {len(obs_names)} != {expected_dim}"
     )
     act_names = list(env.get_wrapper_attr("action_variables"))
-    assert act_names == ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"], (
+    assert act_names == m2_action_variables(args.tes_action_semantics), (
         f"Unexpected M2-F1 action_variables: {act_names}"
     )
 
@@ -226,13 +306,22 @@ def main():
     pbrs_terms: list[float] = []
     for i in range(args.steps):
         if i == 0:
-            a = np.array([0.5, 0.5, 0.5, -1.0], dtype=np.float32)
+            if args.tes_action_semantics in {"direction_amp", "direction_amp_hold"}:
+                a = np.array([0.5, 0.5, 0.5, -1.0, 1.0], dtype=np.float32)
+            else:
+                a = np.array([0.5, 0.5, 0.5, -1.0], dtype=np.float32)
         elif i == 1:
-            a = np.array([0.5, 0.5, 0.5, +1.0], dtype=np.float32)
+            if args.tes_action_semantics in {"direction_amp", "direction_amp_hold"}:
+                a = np.array([0.5, 0.5, 0.5, +1.0, 1.0], dtype=np.float32)
+            else:
+                a = np.array([0.5, 0.5, 0.5, +1.0], dtype=np.float32)
         elif i == 2:
-            a = np.array([0.5, 0.5, 0.5, +1.0], dtype=np.float32)
+            if args.tes_action_semantics in {"direction_amp", "direction_amp_hold"}:
+                a = np.array([0.5, 0.5, 0.5, +1.0, 1.0], dtype=np.float32)
+            else:
+                a = np.array([0.5, 0.5, 0.5, +1.0], dtype=np.float32)
         else:
-            a = rng.uniform(-1, 1, size=(4,)).astype(np.float32)
+            a = rng.uniform(-1, 1, size=(expected_action_dim,)).astype(np.float32)
             a[:3] = np.clip(a[:3], 0.0, 1.0)
         obs, r, term, trunc, info = env.step(a)
         full_action = np.asarray(info.get("full_action"), dtype=np.float32)
@@ -240,7 +329,9 @@ def main():
         assert abs(float(full_action[0]) - M2_FIXED_FAN_VALUE) < 1e-7, (
             f"CRAH fan full action drifted: {full_action}"
         )
-        assert np.asarray(info.get("action")).shape == (4,), "Logger-facing action must stay 4D"
+        assert np.asarray(info.get("action")).shape == (expected_action_dim,), (
+            f"Logger-facing action must be {expected_action_dim}D"
+        )
         assert obs.shape == (expected_dim,)
         assert np.isfinite(r)
         idx = _check_obs_semantics(obs, obs_names, f"step {i+1}")
@@ -262,11 +353,28 @@ def main():
         summary = {
             "step": i + 1, "reward": round(float(r), 3),
             "fixed_fan_full_action": round(float(full_action[0]), 3),
-            "tes_target_action": round(float(a[3]), 3),
+            "tes_target_action": round(float(info.get("tes_signed_target_from_semantics", a[3])), 3),
+            "tes_action_semantics": info.get("tes_action_semantics"),
+            "tes_direction_mode": info.get("tes_direction_mode"),
+            "tes_direction_raw": info.get("tes_direction_raw"),
+            "tes_amplitude_raw": info.get("tes_amplitude_raw"),
+            "tes_amplitude_mapped": info.get("tes_amplitude_mapped"),
+            "tes_option_hold_counter_remaining": info.get("tes_option_hold_counter_remaining"),
+            "tes_option_accepted_new_mode": info.get("tes_option_accepted_new_mode"),
+            "tes_held_direction_mode": info.get("tes_held_direction_mode"),
+            "tes_held_amplitude_mapped": info.get("tes_held_amplitude_mapped"),
             "tes_valve_obs": round(float(obs[idx["tes_valve"]]), 3),
             "tes_valve_info": round(float(info.get("tes_valve_position", 0.0)), 3),
             "tes_soc_target": round(float(info.get("tes_soc_target", 0.0)), 3),
+            "tes_pbrs_phase": info.get("tes_pbrs_phase"),
+            "tes_pbrs_active": bool(info.get("tes_pbrs_active", False)),
+            "tes_phi_value": round(float(info.get("tes_phi_value", 0.0)), 4),
             "tes_shape": round(float(info.get("tes_shaping_total", 0.0)), 4),
+            "tes_tou_alignment": round(float(info.get("tes_tou_alignment_term", 0.0)), 4),
+            "tes_tou_desired_sign": round(float(info.get("tes_tou_desired_sign", 0.0)), 3),
+            "tes_tou_phase_for_state": info.get("tes_tou_phase_for_state"),
+            "delta_soc_1step": round(float(info.get("delta_soc_1step", 0.0)), 5),
+            "time_in_tou_window_norm": round(float(info.get("time_in_tou_window_norm", 0.0)), 5),
             "tes_invalid_action_penalty": round(float(info.get("tes_invalid_action_penalty", 0.0)), 4),
             "tes_guard": bool(info.get("tes_guard_clipped", False)),
             "pv_kw": round(float(info.get("current_pv_kw", 0)), 1),
@@ -287,10 +395,64 @@ def main():
         shaping_keys = (
             "tes_soc_target", "tes_pbrs_term", "tes_teacher_term",
             "tes_teacher_weight", "tes_valve_penalty",
-            "tes_invalid_action_penalty", "tes_shaping_total",
+            "tes_pbrs_phase", "tes_pbrs_active", "tes_phi_value", "tes_neutral_pbrs_mode",
+            "tes_invalid_action_penalty", "tes_tou_alignment_term",
+            "tes_tou_desired_sign", "tes_tou_alignment_weight",
+            "tes_shaping_total",
         )
         for k in target_wrapper_keys:
             assert k in info, f"TES shaping/target wrapper did not emit {k!r}"
+        action_semantics_keys = (
+            "action_dim",
+            "tes_action_semantics",
+            "tes_direction_deadband",
+            "tes_direction_raw",
+            "tes_amplitude_raw",
+            "tes_amplitude_mapped",
+            "tes_direction_mode",
+            "tes_signed_target_from_semantics",
+            "tes_option_hold_steps",
+            "tes_option_hold_counter_remaining",
+            "tes_option_accepted_new_mode",
+            "tes_held_direction_mode",
+            "tes_held_amplitude_mapped",
+        )
+        for k in action_semantics_keys:
+            assert k in info, f"TES action semantics info did not emit {k!r}"
+        assert int(info["action_dim"]) == expected_action_dim
+        assert info["tes_action_semantics"] == args.tes_action_semantics
+        if args.tes_action_semantics in {"direction_amp", "direction_amp_hold"}:
+            assert info["tes_direction_mode"] in ("charge", "idle", "discharge")
+            assert info["tes_held_direction_mode"] in ("charge", "idle", "discharge")
+            assert 0.0 <= float(info["tes_amplitude_mapped"]) <= 1.0
+            assert 0.0 <= float(info["tes_held_amplitude_mapped"]) <= 1.0
+            assert int(info["tes_option_hold_steps"]) == (
+                args.tes_option_hold_steps
+                if args.tes_action_semantics == "direction_amp_hold"
+                else 1
+            )
+            assert int(info["tes_option_hold_counter_remaining"]) >= 0
+        if args.tes_action_semantics == "direction_amp_hold":
+            if i == 0:
+                assert bool(info["tes_option_accepted_new_mode"]) is True
+                assert int(info["tes_option_hold_counter_remaining"]) == args.tes_option_hold_steps - 1
+            elif i < args.tes_option_hold_steps:
+                assert bool(info["tes_option_accepted_new_mode"]) is False
+        state_aug_keys = (
+            "delta_soc_1step",
+            "time_in_tou_window_norm",
+            "tes_tou_phase_for_state",
+            "enable_tes_state_augmentation",
+        )
+        if args.enable_tes_state_augmentation:
+            for k in state_aug_keys:
+                assert k in info, f"TES state augmentation wrapper did not emit {k!r}"
+            assert bool(info["enable_tes_state_augmentation"]) is True
+            assert "delta_soc_1step" in obs_names
+            assert "time_in_tou_window_norm" in obs_names
+        else:
+            for k in state_aug_keys:
+                assert k not in info, f"TES state augmentation disabled but info still contains {k!r}"
         if args.disable_tes_tou_shaping:
             for k in shaping_keys:
                 assert k not in info, f"TES TOU shaping disabled but info still contains {k!r}"
@@ -337,7 +499,7 @@ def main():
                     f"{type(env.unwrapped.reward_fn).__name__})."
                 )
 
-    if not args.disable_tes_tou_shaping:
+    if not args.disable_tes_tou_shaping and args.tes_neutral_pbrs_mode == "target":
         assert any(abs(v) > 1e-12 for v in pbrs_terms), (
             "TES target-SOC PBRS emitted only zero terms during smoke."
         )

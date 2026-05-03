@@ -1,0 +1,181 @@
+{
+  "implementation": {
+    "script": "tmp/m2_stochastic_eval_diag_20260428.py",
+    "source_modification": "none",
+    "method": "import tools.evaluate_m2 and monkeypatch DSAC_T.load to proxy predict(..., deterministic=False)",
+    "training_started": false
+  },
+  "seeds": [
+    {
+      "seed": "m2f1_rlcost_30ep_seed4_stochastic_20260428",
+      "reward_cls": "rl_cost",
+      "checkpoint": "runs\\run\\run-054\\m2_f1_rlcost_30ep_seed4.zip",
+      "steps": 35040,
+      "total_reward": -136402.97944530813,
+      "total_facility_MWh": 160377.358332,
+      "total_ite_MWh": 131908.324954,
+      "energy_unit_detected": "MWh",
+      "pue": 1.2158243870349192,
+      "comfort_violation_pct": 100.0,
+      "mean_temperature_C": 44.34087487143631,
+      "max_temperature_C": 51.835964,
+      "p95_temperature_C": 51.692696,
+      "cost_usd_annual": 14322614.2872674,
+      "pv_self_consumption_pct": 4.454090012639079,
+      "tes_annual_cycles_rough": 5654.162781991598,
+      "tes_soc_daily_amplitude_mean": 0.7250463893142466,
+      "tes_activated": true,
+      "valve_mean_abs": 0.64526790754577,
+      "valve_active_fraction": 0.8139037127935846,
+      "valve_saturation_fraction": 0.4444222482235096,
+      "charge_fraction": 0.4997574270140692,
+      "discharge_fraction": 0.3141462857795154,
+      "price_low_valve_mean": 0.11511881654842858,
+      "price_high_valve_mean": -0.2850283622908835,
+      "price_response_high_minus_low": -0.4001471788393121,
+      "pv_low_valve_mean": 0.06958044229898401,
+      "pv_high_valve_mean": -0.4169965790480397,
+      "pv_response_high_minus_low": -0.48657702134702374,
+      "monitor_csv": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\eval\\run-019\\episode-001\\monitor.csv",
+      "elapsed_seconds": 39.42761299999984,
+      "eval_policy": "stochastic_predict_deterministic_false",
+      "eval_seed": 20260432,
+      "monitor_summary": {
+        "monitor_csv": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\AI-Data-Center-Analysis_migration_bundle_20260311\\runs\\eval\\run-019\\episode-001\\monitor.csv",
+        "rows": 35041,
+        "action_summary": {
+          "CRAH_Fan_DRL": {
+            "mean": 0.017178930793517955,
+            "std": 0.02557720001112537,
+            "min": 4.6789646e-05,
+            "max": 0.3710059,
+            "near_low_frac": 0.0,
+            "near_high_frac": 0.0,
+            "abs_gt_0_95_frac": 0.0,
+            "nan_count": 1
+          },
+          "CT_Pump_DRL": {
+            "mean": 0.9902942665696348,
+            "std": 0.03092501918923058,
+            "min": 0.15396878,
+            "max": 1.0,
+            "near_low_frac": 0.0,
+            "near_high_frac": 0.9541679746582574,
+            "abs_gt_0_95_frac": 0.9541679746582574,
+            "nan_count": 1
+          },
+          "CRAH_T_DRL": {
+            "mean": 0.3447049680374338,
+            "std": 0.30737608693300456,
+            "min": 0.00049486756,
+            "max": 0.9851601,
+            "near_low_frac": 0.0,
+            "near_high_frac": 0.010273679404126594,
+            "abs_gt_0_95_frac": 0.010273679404126594,
+            "nan_count": 1
+          },
+          "Chiller_T_DRL": {
+            "mean": 0.13862646553285077,
+            "std": 0.15200639000851462,
+            "min": 0.00029182434,
+            "max": 0.96355057,
+            "near_low_frac": 0.0,
+            "near_high_frac": 2.8537998344796096e-05,
+            "abs_gt_0_95_frac": 2.8537998344796096e-05,
+            "nan_count": 1
+          },
+          "TES_DRL": {
+            "mean": -0.12796671623198422,
+            "std": 0.7485680847041367,
+            "min": -0.9999999,
+            "max": 1.0,
+            "near_low_frac": 0.23312690847863932,
+            "near_high_frac": 0.2112953397448703,
+            "abs_gt_0_95_frac": 0.4444222482235096,
+            "nan_count": 1
+          },
+          "tes_valve_target": {
+            "mean": 0.051117746184151935,
+            "std": 0.8976689779633068,
+            "min": -0.9999998807907104,
+            "max": 1.0,
+            "near_low_frac": 0.2785879398418995,
+            "near_high_frac": 0.36979538255186784,
+            "abs_gt_0_95_frac": 0.6483833223937673,
+            "nan_count": 0
+          },
+          "tes_valve_position": {
+            "mean": -0.12796306418064832,
+            "std": 0.7485577150949414,
+            "min": -0.9999998807907104,
+            "max": 1.0,
+            "near_low_frac": 0.23312690847863932,
+            "near_high_frac": 0.2112953397448703,
+            "abs_gt_0_95_frac": 0.4444222482235096,
+            "nan_count": 0
+          },
+          "TES_valve_wrapper_position": {
+            "mean": -0.12796306431804821,
+            "std": 0.7485577151550109,
+            "min": -0.9999999,
+            "max": 1.0,
+            "near_low_frac": 0.23312690847863932,
+            "near_high_frac": 0.2112953397448703,
+            "abs_gt_0_95_frac": 0.4444222482235096,
+            "nan_count": 0
+          }
+        },
+        "abnormal_summary": {
+          "any_action_nan": true,
+          "hvac_nan_count": 4,
+          "hvac_near_bounds_fraction": {
+            "CRAH_Fan_DRL": 0.0,
+            "CT_Pump_DRL": 0.9541679746582574,
+            "CRAH_T_DRL": 0.010273679404126594,
+            "Chiller_T_DRL": 2.8537998344796096e-05
+          },
+          "tes_guard_clipped_fraction": 0.17816272366656202,
+          "tes_action_mode_counts": {
+            "target_rate_limited": 35041
+          },
+          "air_temperature_max": 51.835964,
+          "air_temperature_gt_25_fraction": 1.0,
+          "air_temperature_gt_35_count": 35041
+        }
+      },
+      "deterministic_result_path": "runs\\eval_m2\\m2f1_rlcost_30ep_seed4\\result.json",
+      "deterministic_compare": {
+        "price_response_high_minus_low": {
+          "deterministic": -0.3710135649372329,
+          "stochastic": -0.4001471788393121,
+          "delta_stochastic_minus_det": -0.029133613902079192
+        },
+        "tes_soc_daily_amplitude_mean": {
+          "deterministic": 0.7170162413380822,
+          "stochastic": 0.7250463893142466,
+          "delta_stochastic_minus_det": 0.008030147976164415
+        },
+        "valve_saturation_fraction": {
+          "deterministic": 0.45078622185439915,
+          "stochastic": 0.4444222482235096,
+          "delta_stochastic_minus_det": -0.00636397363088953
+        },
+        "comfort_violation_pct": {
+          "deterministic": 100.0,
+          "stochastic": 100.0,
+          "delta_stochastic_minus_det": 0.0
+        },
+        "price_low_valve_mean": {
+          "deterministic": 0.09576379928953427,
+          "stochastic": 0.11511881654842858,
+          "delta_stochastic_minus_det": 0.01935501725889431
+        },
+        "price_high_valve_mean": {
+          "deterministic": -0.27524976564769865,
+          "stochastic": -0.2850283622908835,
+          "delta_stochastic_minus_det": -0.009778596643184867
+        }
+      }
+    }
+  ]
+}

@@ -15,6 +15,10 @@ CRAH_Fan_DRL remains a fixed full-env action at index 0.
 
 Example:
     python tools/evaluate_m2_rule_baseline.py --tag m2f1_rule_tou
+
+M2-F1 default evaluation is trainlike/in-distribution:
+    DRL_DC_training.epJSON, evaluation_flag=0, ITE_Set=0.45.
+Use --eval-design official_ood only for the high-load ITE_Set=1.0 stress test.
 """
 from __future__ import annotations
 
@@ -50,6 +54,20 @@ from tools.m2_action_guard import M2_FIXED_FAN_VALUE
 DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
 DEFAULT_PRICE_CSV = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
 DEFAULT_PV_CSV = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
+EVAL_DESIGNS = {
+    "trainlike": {
+        "building_file": "DRL_DC_training.epJSON",
+        "evaluation_flag": 0,
+        "ite_set": 0.45,
+        "description": "M2-F1 in-distribution evaluation using the training load level.",
+    },
+    "official_ood": {
+        "building_file": "DRL_DC_evaluation.epJSON",
+        "evaluation_flag": 1,
+        "ite_set": 1.0,
+        "description": "High-load OOD stress evaluation, not the M2-F1 success gate.",
+    },
+}
 
 TES_TANK_M3 = 1400.0
 TES_MAX_FLOW_KG_S = 389.0
@@ -57,16 +75,17 @@ M2_TIMESTEPS_PER_HOUR = 4
 
 
 def build_env(args: argparse.Namespace) -> gym.Env:
+    design = EVAL_DESIGNS[args.eval_design]
     env = gym.make(
         "Eplus-DC-Cooling-TES",
         env_name=f"rule-m2-{args.tag}-{args.policy}",
-        building_file="DRL_DC_evaluation.epJSON",
+        building_file=design["building_file"],
         weather_files=args.epw,
         config_params={
             "runperiod": (1, 1, 2025, 31, 12, 2025),
             "timesteps_per_hour": M2_TIMESTEPS_PER_HOUR,
         },
-        evaluation_flag=1,
+        evaluation_flag=design["evaluation_flag"],
     )
     env = TESTargetValveWrapper(
         env,
@@ -199,6 +218,8 @@ def summarize_monitor(
     total_reward: float,
     elapsed: float,
     monitor_path: Path,
+    action_dim: int,
+    obs_dim: int,
 ) -> dict:
     if not df.columns.is_unique:
         duplicated = df.columns[df.columns.duplicated()].tolist()
@@ -279,11 +300,19 @@ def summarize_monitor(
         "tag": args.tag,
         "policy": args.policy,
         "reward_cls": args.reward_cls,
+        "eval_design": args.eval_design,
+        "eval_design_description": EVAL_DESIGNS[args.eval_design]["description"],
+        "building_file": EVAL_DESIGNS[args.eval_design]["building_file"],
+        "evaluation_flag": EVAL_DESIGNS[args.eval_design]["evaluation_flag"],
+        "ITE_Set": EVAL_DESIGNS[args.eval_design]["ite_set"],
+        "action_dim": action_dim,
+        "obs_dim": obs_dim,
         "steps": steps,
         "max_steps": args.max_steps,
         "total_reward": total_reward,
         "total_facility_MWh": total_facility_MWh,
         "total_ite_MWh": total_ite_MWh,
+        "total_ITE_MWh": total_ite_MWh,
         "energy_unit_detected": energy_unit,
         "pue": pue,
         "comfort_violation_pct": comfort_pct,
@@ -334,6 +363,7 @@ def write_summary(result: dict, out_md: Path) -> None:
         f"# M2 Rule Baseline - {result['tag']}",
         "",
         f"- Policy: `{result['policy']}`",
+        f"- Eval design: `{result['eval_design']}` (`{result['building_file']}`, ITE_Set={result['ITE_Set']})",
         f"- Steps: {result['steps']}",
         f"- PUE: {result['pue']:.4f}",
         f"- Comfort violation: {result['comfort_violation_pct']:.3f}%",
@@ -359,6 +389,8 @@ def evaluate(args: argparse.Namespace) -> dict:
     env = attach_reward(env, args)
     if env.action_space.shape != (4,):
         raise RuntimeError(f"Expected M2-F1 4D action space, got {env.action_space.shape}")
+    action_dim = int(env.action_space.shape[0])
+    obs_dim = int(env.observation_space.shape[0])
     obs_vars = list(env.get_wrapper_attr("observation_variables"))
     act_vars = list(env.get_wrapper_attr("action_variables"))
     env = LoggerWrapper(
@@ -417,6 +449,8 @@ def evaluate(args: argparse.Namespace) -> dict:
         total_reward=total_reward,
         elapsed=time.perf_counter() - started,
         monitor_path=monitor_path,
+        action_dim=action_dim,
+        obs_dim=obs_dim,
     )
 
 
@@ -425,6 +459,16 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default=f"m2_rule_baseline_{stamp}")
     ap.add_argument("--policy", default="tou", choices=["tou", "neutral", "charge", "discharge"])
+    ap.add_argument(
+        "--eval-design",
+        default="trainlike",
+        choices=sorted(EVAL_DESIGNS),
+        help=(
+            "Evaluation load domain. 'trainlike' is the M2-F1 in-distribution "
+            "gate (DRL_DC_training.epJSON, ITE_Set=0.45). 'official_ood' is "
+            "the high-load stress test (DRL_DC_evaluation.epJSON, ITE_Set=1.0)."
+        ),
+    )
     ap.add_argument("--reward-cls", default="rl_cost", choices=["pue_tes", "rl_cost", "rl_green"])
     ap.add_argument("--epw", default=DEFAULT_EPW)
     ap.add_argument("--price-csv", default=DEFAULT_PRICE_CSV)

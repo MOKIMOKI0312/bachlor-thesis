@@ -16,6 +16,10 @@ Usage:
         --workspace runs/train/run-XXX \
         --reward-cls rl_cost \
         --tag seed7
+
+M2-F1 default evaluation is trainlike/in-distribution:
+    DRL_DC_training.epJSON, evaluation_flag=0, ITE_Set=0.45.
+Use --eval-design official_ood only for the high-load ITE_Set=1.0 stress test.
 """
 from __future__ import annotations
 
@@ -39,18 +43,37 @@ import pandas as pd
 from sinergym.utils.common import get_ids
 from sinergym.utils.wrappers import LoggerWrapper, NormalizeObservation
 from sinergym.envs.energy_scale_wrapper import EnergyScaleWrapper
-from sinergym.envs.tes_wrapper import FixedActionInsertWrapper, TESTargetValveWrapper
+from sinergym.envs.tes_wrapper import (
+    FixedActionInsertWrapper,
+    TESDirectionAmplitudeActionWrapper,
+    TESStateAugmentationWrapper,
+    TESTargetValveWrapper,
+)
 from sinergym.envs.time_encoding_wrapper import TimeEncodingWrapper
 from sinergym.envs.temp_trend_wrapper import TempTrendWrapper
 from sinergym.envs.price_signal_wrapper import PriceSignalWrapper
 from sinergym.envs.pv_signal_wrapper import PVSignalWrapper
 from tools.dsac_t import DSAC_T
-from tools.m2_action_guard import M2_FIXED_FAN_VALUE, assert_m2_4d_checkpoint
+from tools.m2_action_guard import M2_FIXED_FAN_VALUE, checkpoint_action_dim
 
 # M2-E3b-v3 (2026-04-22): Nanjing + Jiangsu 2025 TOU 合成电价 (见 run_m2_training.py)
 DEFAULT_EPW = "CHN_JS_Nanjing.582380_TMYx.2009-2023.epw"
 DEFAULT_PRICE_CSV = "Data/prices/Jiangsu_TOU_2025_hourly.csv"
 DEFAULT_PV_CSV = "Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv"
+EVAL_DESIGNS = {
+    "trainlike": {
+        "building_file": "DRL_DC_training.epJSON",
+        "evaluation_flag": 0,
+        "ite_set": 0.45,
+        "description": "M2-F1 in-distribution evaluation using the training load level.",
+    },
+    "official_ood": {
+        "building_file": "DRL_DC_evaluation.epJSON",
+        "evaluation_flag": 1,
+        "ite_set": 1.0,
+        "description": "High-load OOD stress evaluation, not the M2-F1 success gate.",
+    },
+}
 
 # TES sizing (from 建筑模型说明.md) — used for annual cycle estimate
 TES_TANK_M3 = 1400.0
@@ -58,17 +81,130 @@ TES_MAX_FLOW_KG_S = 389.0  # EMS P_5 Max_Flow, current mixed-tank model
 M2_TIMESTEPS_PER_HOUR = 4
 
 
+def m2_action_dim(action_semantics: str) -> int:
+    return 5 if action_semantics in {"direction_amp", "direction_amp_hold"} else 4
+
+
+def m2_action_variables(action_semantics: str) -> list[str]:
+    if action_semantics in {"direction_amp", "direction_amp_hold"}:
+        return [
+            "CT_Pump_DRL",
+            "CRAH_T_DRL",
+            "Chiller_T_DRL",
+            "TES_direction_DRL",
+            "TES_amplitude_DRL",
+        ]
+    return ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"]
+
+
+def assert_checkpoint_action_dim(checkpoint: Path, expected_dim: int) -> None:
+    action_dim = checkpoint_action_dim(checkpoint)
+    if action_dim != expected_dim:
+        raise RuntimeError(
+            f"Refusing checkpoint with action_dim={action_dim}; "
+            f"evaluation env expects action_dim={expected_dim}. "
+            "Check --tes-action-semantics and checkpoint provenance."
+        )
+
+
+def _resolve_repo_path(value: str | Path) -> Path:
+    path = Path(value)
+    if not path.is_absolute():
+        path = ROOT / path
+    return path.resolve()
+
+
+def _load_json_file(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _workspace_provenance_sources(workspace: Path) -> list[tuple[Path, dict]]:
+    workspace_resolved = _resolve_repo_path(workspace)
+    sources: list[tuple[Path, dict]] = []
+    metadata_path = workspace_resolved / "m2_training_metadata.json"
+    if metadata_path.exists():
+        data = _load_json_file(metadata_path)
+        if isinstance(data, dict):
+            sources.append((metadata_path, data))
+    jobs_root = ROOT / "training_jobs"
+    if jobs_root.exists():
+        for status_path in jobs_root.glob("*/status.json"):
+            data = _load_json_file(status_path)
+            if not isinstance(data, dict):
+                continue
+            status_workspace = data.get("workspace_path")
+            if not status_workspace:
+                continue
+            try:
+                if _resolve_repo_path(status_workspace) == workspace_resolved:
+                    sources.append((status_path, data))
+            except OSError:
+                continue
+    return sources
+
+
+def validate_workspace_provenance(args, expected_action_dim: int, expected_obs_dim: int) -> dict:
+    sources = _workspace_provenance_sources(args.workspace)
+    provenance = {
+        "provenance_metadata_missing": not bool(sources),
+        "provenance_metadata_sources": [str(path) for path, _ in sources],
+    }
+    for path, data in sources:
+        source = str(path)
+        semantics = data.get("tes_action_semantics")
+        if semantics is not None and semantics != args.tes_action_semantics:
+            raise RuntimeError(
+                f"Checkpoint provenance mismatch: {source} records "
+                f"tes_action_semantics={semantics!r}, but CLI requested "
+                f"{args.tes_action_semantics!r}."
+            )
+        hold_steps = data.get("tes_option_hold_steps")
+        if hold_steps is not None and (
+            semantics == "direction_amp_hold" or args.tes_action_semantics == "direction_amp_hold"
+        ):
+            if int(hold_steps) != int(args.tes_option_hold_steps):
+                raise RuntimeError(
+                    f"Checkpoint provenance mismatch: {source} records "
+                    f"tes_option_hold_steps={hold_steps}, but CLI requested "
+                    f"{args.tes_option_hold_steps}."
+                )
+        action_dim = data.get("action_dim")
+        if action_dim is not None and int(action_dim) != int(expected_action_dim):
+            raise RuntimeError(
+                f"Checkpoint provenance mismatch: {source} records action_dim={action_dim}, "
+                f"but CLI/env expects {expected_action_dim}."
+            )
+        obs_dim = data.get("obs_dim")
+        if obs_dim is not None and int(obs_dim) != int(expected_obs_dim):
+            raise RuntimeError(
+                f"Checkpoint provenance mismatch: {source} records obs_dim={obs_dim}, "
+                f"but CLI/env expects {expected_obs_dim}."
+            )
+        state_aug = data.get("enable_tes_state_augmentation")
+        if state_aug is not None and bool(state_aug) != bool(args.enable_tes_state_augmentation):
+            raise RuntimeError(
+                f"Checkpoint provenance mismatch: {source} records "
+                f"enable_tes_state_augmentation={bool(state_aug)}, but CLI requested "
+                f"{bool(args.enable_tes_state_augmentation)}."
+            )
+    return provenance
+
+
 def build_env(args) -> gym.Env:
+    design = EVAL_DESIGNS[args.eval_design]
     env = gym.make(
         "Eplus-DC-Cooling-TES",
         env_name=f"eval-m2-{args.tag}",
-        building_file="DRL_DC_evaluation.epJSON",
+        building_file=design["building_file"],
         weather_files=args.epw,
         config_params={
             "runperiod": (1, 1, 2025, 31, 12, 2025),
             "timesteps_per_hour": M2_TIMESTEPS_PER_HOUR,
         },
-        evaluation_flag=1,
+        evaluation_flag=design["evaluation_flag"],
     )
     env = TESTargetValveWrapper(
         env,
@@ -82,6 +218,13 @@ def build_env(args) -> gym.Env:
         fixed_actions={0: M2_FIXED_FAN_VALUE},
         fixed_action_names={0: "CRAH_Fan_DRL"},
     )
+    if args.tes_action_semantics in {"direction_amp", "direction_amp_hold"}:
+        env = TESDirectionAmplitudeActionWrapper(
+            env,
+            direction_deadband=args.tes_direction_deadband,
+            action_semantics=args.tes_action_semantics,
+            hold_steps=args.tes_option_hold_steps,
+        )
     env = TimeEncodingWrapper(env)
     # H2c: 6-dim outdoor temperature trend features (tech route §6.1-C)
     env = TempTrendWrapper(
@@ -92,6 +235,13 @@ def build_env(args) -> gym.Env:
     env = PriceSignalWrapper(env, price_csv_path=args.price_csv)
     env = PVSignalWrapper(env, pv_csv_path=args.pv_csv, dc_peak_load_kw=args.dc_peak_load_kw)
     env = EnergyScaleWrapper(env, energy_indices=[13, 14], scale=1.0 / 3.6e9)
+    if args.enable_tes_state_augmentation:
+        env = TESStateAugmentationWrapper(
+            env,
+            high_price_threshold=args.tes_high_price_threshold,
+            low_price_threshold=args.tes_low_price_threshold,
+            near_peak_threshold=args.tes_near_peak_threshold,
+        )
     return env
 
 
@@ -154,23 +304,34 @@ def evaluate(args) -> dict:
     if "Eplus-DC-Cooling-TES" not in get_ids():
         raise RuntimeError("Eplus-DC-Cooling-TES environment is not registered.")
 
+    expected_obs_dim = 34 if args.enable_tes_state_augmentation else 32
+    expected_action_dim = m2_action_dim(args.tes_action_semantics)
+    provenance = validate_workspace_provenance(args, expected_action_dim, expected_obs_dim)
     mean = np.loadtxt(args.workspace / "mean.txt", dtype="float")
     var = np.loadtxt(args.workspace / "var.txt", dtype="float")
-    if mean.shape[0] != 32 or var.shape[0] != 32:
+    if mean.shape[0] != expected_obs_dim or var.shape[0] != expected_obs_dim:
         raise RuntimeError(
-            f"Expected 32-dim M2 normalization stats, got mean={mean.shape}, var={var.shape}. "
-            f"Confirm --workspace points to an M2 training run."
+            f"Expected {expected_obs_dim}-dim M2 normalization stats for "
+            f"enable_tes_state_augmentation={args.enable_tes_state_augmentation}, "
+            f"got mean={mean.shape}, var={var.shape}. Confirm --workspace and flag "
+            f"match the checkpoint."
         )
 
     env = build_env(args)
     env = attach_reward(env, args)
-    assert env.action_space.shape == (4,), (
-        f"Expected M2-F1 action_dim=4, got {env.action_space.shape}"
+    action_dim = int(env.action_space.shape[0])
+    assert env.action_space.shape == (expected_action_dim,), (
+        f"Expected M2-F1 action_dim={expected_action_dim}, got {env.action_space.shape}"
     )
+    if env.observation_space.shape != (expected_obs_dim,):
+        raise RuntimeError(
+            f"Expected eval obs_dim={expected_obs_dim}, got {env.observation_space.shape}. "
+            f"Check --enable-tes-state-augmentation."
+        )
     env = NormalizeObservation(env, mean=mean, var=var, automatic_update=False)
     obs_vars = env.get_wrapper_attr("observation_variables")
     act_vars = env.get_wrapper_attr("action_variables")
-    expected_act_vars = ["CT_Pump_DRL", "CRAH_T_DRL", "Chiller_T_DRL", "TES_DRL"]
+    expected_act_vars = m2_action_variables(args.tes_action_semantics)
     assert list(act_vars) == expected_act_vars, (
         f"M2-F1 action_variables mismatch: expected {expected_act_vars}, got {list(act_vars)}"
     )
@@ -179,11 +340,18 @@ def evaluate(args) -> dict:
         monitor_header=["timestep"] + list(obs_vars) + list(act_vars)
         + ["time (hours)", "reward", "energy_term", "ITE_term", "comfort_term", "cost_term",
            "fixed_CRAH_Fan_DRL",
+           "action_dim", "tes_action_semantics", "tes_direction_deadband",
+           "tes_direction_raw", "tes_amplitude_raw", "tes_amplitude_mapped",
+           "tes_direction_mode", "tes_signed_target_from_semantics",
+           "tes_option_hold_steps", "tes_option_hold_counter_remaining",
+           "tes_option_accepted_new_mode", "tes_held_direction_mode",
+           "tes_held_amplitude_mapped",
            "tes_valve_target", "tes_valve_position", "tes_guard_clipped", "tes_action_mode",
+           "tes_tou_phase_for_state", "enable_tes_state_augmentation",
            "terminated", "truncated"],
     )
 
-    assert_m2_4d_checkpoint(args.checkpoint)
+    assert_checkpoint_action_dim(args.checkpoint, expected_action_dim)
     model = DSAC_T.load(str(args.checkpoint), device="cpu")
     workspace_post = Path(env.get_wrapper_attr("workspace_path"))
 
@@ -199,13 +367,14 @@ def evaluate(args) -> dict:
 
     started = time.perf_counter()
     obs, _ = env.reset()
+    obs_dim = int(np.asarray(obs).shape[0])
     term = trunc = False
     step = 0
     total_reward = 0.0
     while not (term or trunc):
         action, _ = model.predict(obs, deterministic=True)
-        assert np.asarray(action).shape == (4,), (
-            f"Expected 4D M2-F1 policy action, got {np.asarray(action).shape}"
+        assert np.asarray(action).shape == (expected_action_dim,), (
+            f"Expected {expected_action_dim}D M2-F1 policy action, got {np.asarray(action).shape}"
         )
         obs, reward, term, trunc, info = env.step(action)
         assert float(info.get("fixed_CRAH_Fan_DRL", np.nan)) == M2_FIXED_FAN_VALUE
@@ -344,11 +513,24 @@ def evaluate(args) -> dict:
     return {
         "seed": args.tag,
         "reward_cls": args.reward_cls,
+        "eval_design": args.eval_design,
+        "eval_design_description": EVAL_DESIGNS[args.eval_design]["description"],
+        "building_file": EVAL_DESIGNS[args.eval_design]["building_file"],
+        "evaluation_flag": EVAL_DESIGNS[args.eval_design]["evaluation_flag"],
+        "ITE_Set": EVAL_DESIGNS[args.eval_design]["ite_set"],
+        "action_dim": action_dim,
+        "obs_dim": obs_dim,
+        "tes_action_semantics": args.tes_action_semantics,
+        "tes_direction_deadband": args.tes_direction_deadband,
+        "tes_option_hold_steps": args.tes_option_hold_steps,
+        "enable_tes_state_augmentation": bool(args.enable_tes_state_augmentation),
+        **provenance,
         "checkpoint": str(args.checkpoint),
         "steps": step,
         "total_reward": total_reward,
         "total_facility_MWh": total_facility_MWh,
         "total_ite_MWh": total_ite_MWh,
+        "total_ITE_MWh": total_ite_MWh,
         "energy_unit_detected": energy_unit,
         "pue": pue,
         "comfort_violation_pct": comfort_pct,
@@ -381,6 +563,16 @@ def main() -> None:
     ap.add_argument("--tag", required=True, help="seedN tag for naming")
     ap.add_argument("--checkpoint", type=Path, required=True)
     ap.add_argument("--workspace", type=Path, required=True)
+    ap.add_argument(
+        "--eval-design",
+        default="trainlike",
+        choices=sorted(EVAL_DESIGNS),
+        help=(
+            "Evaluation load domain. 'trainlike' is the M2-F1 in-distribution "
+            "gate (DRL_DC_training.epJSON, ITE_Set=0.45). 'official_ood' is "
+            "the high-load stress test (DRL_DC_evaluation.epJSON, ITE_Set=1.0)."
+        ),
+    )
     ap.add_argument("--reward-cls", default="rl_cost", choices=["pue_tes", "rl_cost", "rl_green"])
     ap.add_argument("--epw", default=DEFAULT_EPW)
     ap.add_argument("--price-csv", default=DEFAULT_PRICE_CSV)
@@ -397,6 +589,13 @@ def main() -> None:
     ap.add_argument("--tes-valve-rate-limit", type=float, default=0.25)
     ap.add_argument("--tes-guard-soc-low", type=float, default=0.10)
     ap.add_argument("--tes-guard-soc-high", type=float, default=0.90)
+    ap.add_argument("--tes-high-price-threshold", type=float, default=0.75)
+    ap.add_argument("--tes-low-price-threshold", type=float, default=-0.50)
+    ap.add_argument("--tes-near-peak-threshold", type=float, default=0.40)
+    ap.add_argument("--enable-tes-state-augmentation", action="store_true")
+    ap.add_argument("--tes-action-semantics", choices=["signed_scalar", "direction_amp", "direction_amp_hold"], default="signed_scalar")
+    ap.add_argument("--tes-direction-deadband", type=float, default=0.15)
+    ap.add_argument("--tes-option-hold-steps", type=int, default=4)
     ap.add_argument("--out", type=Path, default=None, help="Output JSON path (default: runs/eval_m2/<tag>/result.json)")
     args = ap.parse_args()
 

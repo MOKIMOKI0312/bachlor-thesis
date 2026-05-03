@@ -4,7 +4,7 @@
 **总时长**：约 16.4 小时
 **CPU 投入**：16.4 h × 6 seed ≈ **98 CPU-小时**
 **完成度**：ep 132-145（目标 300 ep）
-**最终决策**：弃用（切换 Jiangsu TOU，见 `项目目标/决策-切回-Nanjing-Jiangsu-TOU-2026-04-22.md`）
+**最终决策**：弃用（切换 Jiangsu TOU，见 `项目目标/archive/决策-切回-Nanjing-Jiangsu-TOU-2026-04-22.md`）
 
 ## 配置
 

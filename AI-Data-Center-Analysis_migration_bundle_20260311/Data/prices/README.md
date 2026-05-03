@@ -34,6 +34,6 @@ D:/Anaconda/python.exe tools/download_caiso_lmp.py
 2. 典型 Singapore 批发电价日内曲线（夜谷 02-06，晚峰 19-22）
 3. Log-normal 小时噪声（sigma=0.22），月均保持不变
 
-EMC 的真实半小时 USEP 需 SAML SSO 账号（SEW+ 门户），非市场参与者无法获取，详见 `项目目标/决策-站点切换-CAISO-2026-04-19.md`。此文件不在 M2 主实验中使用。
+EMC 的真实半小时 USEP 需 SAML SSO 账号（SEW+ 门户），非市场参与者无法获取，详见 `项目目标/archive/决策-站点切换-CAISO-2026-04-19.md`。此文件不在 M2 主实验中使用。
 
 产出脚本：`tools/download_usep.py`。

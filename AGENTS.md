@@ -32,7 +32,7 @@
 - `docs/project_management/`：项目进度和管理性文档。
 - `_archive/runtime/`：agent 通信和其它运行期协作记录，默认不作为论文代码入口。
 - `_archive/external_projects/`：外部仓库或第三方参考实现。
-- `项目目标/`：目标定义和路线性文档。
+- `_archive/project_goals/`：废弃的历史 `项目目标/` 内容，默认只读，不作为当前执行入口。
 
 ### 核心工作区结构
 
@@ -48,15 +48,23 @@
 - EnergyPlus 模型问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/model/` 和 `Nanjing-DataCenter-TES-EnergyPlus/docs/`。
 - 天气、电价、PV 数据问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/weather/` 和 `Nanjing-DataCenter-TES-EnergyPlus/inputs/`。
 - 仿真运行问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/run_energyplus_nanjing.ps1` 和本地 `Nanjing-DataCenter-TES-EnergyPlus/out/`。
-- 文献、报告、历史路线和背景说明问题：再转向 `docs/`、`项目目标/` 和 `_archive/`。
+- 文献、报告、当前路线和项目管理问题：再转向 `docs/`。
+- 历史目标、旧路线和过时任务包仅在需要追溯背景时查看 `_archive/project_goals/`。
 
 ## 当前计划与结果落盘
 
 - 当前主线是南京 TES + PV + 电价 EnergyPlus 最小模型包，不再默认延续旧 RL/MPC/W2 实验目录结构。
 - 模型说明、manifest 和验证口径默认写到 `Nanjing-DataCenter-TES-EnergyPlus/docs/`。
 - EnergyPlus 本地运行结果默认写到 `Nanjing-DataCenter-TES-EnergyPlus/out/`，该目录默认不入库。
-- 新的项目级路线说明、交接文档、决策记录默认写到 `项目目标/`。
+- 新的项目级路线说明、交接文档、决策记录默认写到 `docs/project_management/`。
 - 只有在用户明确要求时，才更新 `docs/project_management/毕业设计项目进度/代码开发进度管理.md` 这类总进度文件。
+
+## 论文同步要求
+
+- 每次准备提交代码、模型、输入数据、验证结果或项目结构变更前，必须检查是否影响论文事实基础。
+- 如果变更影响论文中的模型描述、技术路线、输入数据、实验结果、验证状态或目录结构，必须同步更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 如果新增或删除论文引用，必须同步更新 `docs/project_management/毕业设计论文/references.bib`。
+- 如果判断无需更新论文，最终回复或提交说明中应明确写出原因。
 
 ## 通用 Subagent 角色
 

@@ -14,7 +14,9 @@ training_jobs/
 .claude/
 .playwright-mcp/
 _worktree_artifacts_backup_*/
-Nanjing-DataCenter-TES-EnergyPlus/out/
+Nanjing-DataCenter-TES-EnergyPlus/out/*
+!Nanjing-DataCenter-TES-EnergyPlus/out/
+!Nanjing-DataCenter-TES-EnergyPlus/out/AGENTS.md
 _archive/external_projects/外部项目/SustainDC/
 docs/literature/other_references/*.pdf
 

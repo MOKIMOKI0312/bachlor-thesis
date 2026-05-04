@@ -16,10 +16,10 @@ EnergyPlus package.
 
 - `docs/literature/`: reproduction papers and other references.
 - `docs/project_management/`: project management notes and implementation
-  suggestions.
-- `项目目标/`: route, goals, decisions, evidence, and archived task plans.
+  suggestions, including active route and decision notes.
 - `_archive/`: runtime communication logs and external/legacy reference
   material that is not part of the active model package.
+  Historical `项目目标/` materials are archived under `_archive/project_goals/`.
 
 ## Local Outputs
 

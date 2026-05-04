@@ -15,15 +15,14 @@ training_jobs/
 .playwright-mcp/
 _worktree_artifacts_backup_*/
 Nanjing-DataCenter-TES-EnergyPlus/out/
-
-# 参考文献 PDF（124 MB，不入库；引用清单见 analysis/literature_mpc_tes_202605/paper_matrix.md）
-其它参考文献/
+_archive/external_projects/外部项目/SustainDC/
+docs/literature/other_references/*.pdf
 
 # PR 临时辅助文件（_tmp 前缀的 commit body / comment 草稿）
 .pr_body_tmp.md
 .pr_comment_tmp.md
 
-# agent_comms 协议运行时文件（不入库；协议本身见 agent_comms/README.md）
-agent_comms/_poll.log
-agent_comms/_new_task_for_codex.flag
-agent_comms/_last_seen_turn.txt
+# archived agent_comms runtime state files
+_archive/runtime/agent_comms/_poll.log
+_archive/runtime/agent_comms/_new_task_for_codex.flag
+_archive/runtime/agent_comms/_last_seen_turn.txt

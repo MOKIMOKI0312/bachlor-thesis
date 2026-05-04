@@ -28,12 +28,11 @@
 ### 根目录分层
 
 - `Nanjing-DataCenter-TES-EnergyPlus/`：当前核心代码工作区，保留南京数据中心 TES EnergyPlus 最小模型包。
-- `其它参考文献/`：参考材料，不是主代码入口。
-- `复现论文/`：论文复现相关资料。
-- `外部项目/`：外部仓库或第三方参考实现。
-- `毕业设计项目进度/`：项目进度和管理性文档。
+- `docs/literature/`：论文复现材料和其它参考文献，不是主代码入口。
+- `docs/project_management/`：项目进度和管理性文档。
+- `_archive/runtime/`：agent 通信和其它运行期协作记录，默认不作为论文代码入口。
+- `_archive/external_projects/`：外部仓库或第三方参考实现。
 - `项目目标/`：目标定义和路线性文档。
-- `deep-research-report (1).md`：单独的研究报告文件。
 
 ### 核心工作区结构
 
@@ -49,7 +48,7 @@
 - EnergyPlus 模型问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/model/` 和 `Nanjing-DataCenter-TES-EnergyPlus/docs/`。
 - 天气、电价、PV 数据问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/weather/` 和 `Nanjing-DataCenter-TES-EnergyPlus/inputs/`。
 - 仿真运行问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/run_energyplus_nanjing.ps1` 和本地 `Nanjing-DataCenter-TES-EnergyPlus/out/`。
-- 文献、报告、历史路线和背景说明问题：再转向根目录下的参考资料目录和 Markdown 文档。
+- 文献、报告、历史路线和背景说明问题：再转向 `docs/`、`项目目标/` 和 `_archive/`。
 
 ## 当前计划与结果落盘
 
@@ -57,7 +56,7 @@
 - 模型说明、manifest 和验证口径默认写到 `Nanjing-DataCenter-TES-EnergyPlus/docs/`。
 - EnergyPlus 本地运行结果默认写到 `Nanjing-DataCenter-TES-EnergyPlus/out/`，该目录默认不入库。
 - 新的项目级路线说明、交接文档、决策记录默认写到 `项目目标/`。
-- 只有在用户明确要求时，才更新 `毕业设计项目进度/代码开发进度管理.md` 这类总进度文件。
+- 只有在用户明确要求时，才更新 `docs/project_management/毕业设计项目进度/代码开发进度管理.md` 这类总进度文件。
 
 ## 通用 Subagent 角色
 

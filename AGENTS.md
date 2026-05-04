@@ -22,12 +22,12 @@
 ## 项目结构
 
 - 当前项目根目录 `毕业设计代码/` 是一个总工作区，不是单一代码包。
-- 默认情况下，真正的代码、训练、评估和实验工作区是 `AI-Data-Center-Analysis_migration_bundle_20260311/`。
-- 如果用户没有特别说明，代码阅读、代码修改、实验排查、训练执行和评估审查都应先从 `AI-Data-Center-Analysis_migration_bundle_20260311/` 开始，而不是从参考资料目录开始。
+- 默认情况下，当前代码工作区是 `Nanjing-DataCenter-TES-EnergyPlus/`。
+- 如果用户没有特别说明，EnergyPlus 模型、天气、价格/PV 输入、runner、模型说明和仿真验证都应先从 `Nanjing-DataCenter-TES-EnergyPlus/` 开始，而不是从参考资料目录开始。
 
 ### 根目录分层
 
-- `AI-Data-Center-Analysis_migration_bundle_20260311/`：核心代码与实验工作区。
+- `Nanjing-DataCenter-TES-EnergyPlus/`：当前核心代码工作区，保留南京数据中心 TES EnergyPlus 最小模型包。
 - `其它参考文献/`：参考材料，不是主代码入口。
 - `复现论文/`：论文复现相关资料。
 - `外部项目/`：外部仓库或第三方参考实现。
@@ -37,63 +37,27 @@
 
 ### 核心工作区结构
 
-- `AI-Data-Center-Analysis_migration_bundle_20260311/sinergym/envs/`：环境封装与 wrapper 逻辑。这里有 `tes_wrapper.py`、`time_encoding_wrapper.py`、`price_signal_wrapper.py`、`pv_signal_wrapper.py`、`temp_trend_wrapper.py`、`energy_scale_wrapper.py` 等核心行为文件。
-- `AI-Data-Center-Analysis_migration_bundle_20260311/tools/`：训练、评估、诊断、下载、启动和监控脚本主目录。M2 相关关键入口通常在这里，例如 `run_m2_training.py`、`evaluate_m2.py`、`evaluate_m2_rule_baseline.py`、`m2_reward_audit.py`、`m2_validate_tes_failure_modes.py`。
-- `AI-Data-Center-Analysis_migration_bundle_20260311/Data/`：输入数据目录，包含 `buildings/`、`weather/`、`prices/`、`pv/`、`Grid Data/`、`AI Trace Data/`。
-- `AI-Data-Center-Analysis_migration_bundle_20260311/analysis/`：分析结果、对比表、说明文档和审计产物。
-- `AI-Data-Center-Analysis_migration_bundle_20260311/runs/`：训练、评估、probe 和验证实验的运行产物目录。
-- `AI-Data-Center-Analysis_migration_bundle_20260311/training_jobs/`：后台训练任务与作业记录目录，主要用于追踪 job、workspace 和状态。
-- `AI-Data-Center-Analysis_migration_bundle_20260311/logs/`：运行日志目录。
-- `AI-Data-Center-Analysis_migration_bundle_20260311/results/`：评估输出和结果整理目录。
-- `AI-Data-Center-Analysis_migration_bundle_20260311/vendor/`、`wandb/`、`tmp/`：依赖、实验服务和临时产物相关目录。
+- `Nanjing-DataCenter-TES-EnergyPlus/model/`：唯一保留的 EnergyPlus epJSON 模型，当前为 `Nanjing_DataCenter_TES.epJSON`。
+- `Nanjing-DataCenter-TES-EnergyPlus/weather/`：南京 EPW 天气文件。
+- `Nanjing-DataCenter-TES-EnergyPlus/inputs/`：外部输入，当前保留江苏/南京 TOU 电价 CSV 和南京 PV 预测 CSV。
+- `Nanjing-DataCenter-TES-EnergyPlus/docs/`：模型说明、manifest、验证口径和后续接入说明。
+- `Nanjing-DataCenter-TES-EnergyPlus/run_energyplus_nanjing.ps1`：轻量 EnergyPlus runner，负责校验输入并运行模型。
+- `Nanjing-DataCenter-TES-EnergyPlus/out/`：本地 EnergyPlus 运行输出目录，默认不入库。
 
 ### 默认路径优先级
 
-- 代码行为问题：优先查看 `sinergym/envs/` 和 `tools/`。
-- 训练状态问题：优先查看 `training_jobs/`、`runs/train/`、`runs/run/`、`logs/`。
-- 评估结论问题：优先查看 `tools/evaluate_*.py`、`analysis/`、`runs/eval*`、`results/`。
-- 数据来源问题：优先查看 `Data/`。
-- 文献、报告、背景说明问题：再转向根目录下的参考资料目录和 Markdown 文档。
+- EnergyPlus 模型问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/model/` 和 `Nanjing-DataCenter-TES-EnergyPlus/docs/`。
+- 天气、电价、PV 数据问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/weather/` 和 `Nanjing-DataCenter-TES-EnergyPlus/inputs/`。
+- 仿真运行问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/run_energyplus_nanjing.ps1` 和本地 `Nanjing-DataCenter-TES-EnergyPlus/out/`。
+- 文献、报告、历史路线和背景说明问题：再转向根目录下的参考资料目录和 Markdown 文档。
 
 ## 当前计划与结果落盘
 
-### 默认查计划顺序
-
-- 如果任务与当前主线实验有关，先查看 `AI-Data-Center-Analysis_migration_bundle_20260311/analysis/` 下最新的任务清单、问题定义和阶段性分析文档。
-- 当前 M2-F1 主线下，默认先读：
-  - `AI-Data-Center-Analysis_migration_bundle_20260311/analysis/m2f1_tes_deep_research_task_checklist_20260502.md`
-  - `AI-Data-Center-Analysis_migration_bundle_20260311/analysis/chatgpt55pro_m2f1_tes_problem_20260501.md`
-- 然后查看项目级进度文件：
-  - `毕业设计项目进度/代码开发进度管理.md`
-- 再查看长期路线和约束：
-  - `项目目标/技术路线.md`
-- 如果需要理解为什么当前路线是这样定的，再查看 `项目目标/` 下最新的 handoff 和决策文档，例如：
-  - `项目目标/archive/handoff_GPTCodex_2026-04-25.md`
-  - `项目目标/archive/决策-切回-Nanjing-Jiangsu-TOU-2026-04-22.md`
-
-### 如何理解这些计划文件
-
-- `analysis/` 下的任务清单、问题定义和阶段分析：默认视为“当前执行层计划”和最近研究上下文。
-- `毕业设计项目进度/代码开发进度管理.md`：默认视为“总进度与阶段状态面板”。
-- `项目目标/技术路线.md`：默认视为“长期技术路线与总体设计约束”。
-- `项目目标/handoff_*.md` 和 `决策-*.md`：默认视为“历史决策与交接上下文”，用于解释为什么当前方案如此，而不是替代当前执行清单。
-
-### 默认写结果位置
-
-- 新的分析结论、审计报告、对比表、阶段性说明：默认写到 `AI-Data-Center-Analysis_migration_bundle_20260311/analysis/`。
-- 新的训练和评估运行产物：默认由脚本写到 `AI-Data-Center-Analysis_migration_bundle_20260311/runs/`，不要手工散落到根目录。
-- 新的后台作业记录、stdout/stderr、status、manifest：默认写到 `AI-Data-Center-Analysis_migration_bundle_20260311/training_jobs/`。
-- 新的项目级路线说明、交接文档、决策记录：默认写到 `项目目标/`。
+- 当前主线是南京 TES + PV + 电价 EnergyPlus 最小模型包，不再默认延续旧 RL/MPC/W2 实验目录结构。
+- 模型说明、manifest 和验证口径默认写到 `Nanjing-DataCenter-TES-EnergyPlus/docs/`。
+- EnergyPlus 本地运行结果默认写到 `Nanjing-DataCenter-TES-EnergyPlus/out/`，该目录默认不入库。
+- 新的项目级路线说明、交接文档、决策记录默认写到 `项目目标/`。
 - 只有在用户明确要求时，才更新 `毕业设计项目进度/代码开发进度管理.md` 这类总进度文件。
-
-### 结果命名约定
-
-- `analysis/` 下的新文件默认使用“主题 + 日期”的方式命名，并尽量延续现有风格，例如：
-  - `m2f1_<topic>_YYYYMMDD.md`
-  - `m2f1_<topic>_YYYYMMDD.json`
-  - `m2f1_<topic>_YYYYMMDD.csv`
-- 对已有结论做补充时，优先新建带日期的新文件，不覆盖旧证据。
-- 不要把临时分析结果直接写到项目根目录，除非用户明确要求。
 
 ## 通用 Subagent 角色
 
@@ -135,7 +99,7 @@
 ## 触发规则
 
 - 如果用户明确提到 `agent`、`subagent`、委派、并行处理，优先按上述角色分工。
-- 如果用户没有明确说明目标目录，但任务显然是代码、训练、评估或实验问题，默认目标目录是 `AI-Data-Center-Analysis_migration_bundle_20260311/`。
+- 如果用户没有明确说明目标目录，但任务显然是 EnergyPlus 模型、输入数据、runner 或仿真验证问题，默认目标目录是 `Nanjing-DataCenter-TES-EnergyPlus/`。
 - 如果用户说“看当前计划”“按现在计划做”“更新结果”，默认按本文件中的“当前计划与结果落盘”规则执行。
 - 新窗口不会继承旧窗口里已经创建好的 agent 实例；如果需要，应按本文件中的角色重新创建。
 

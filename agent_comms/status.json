@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "current_turn": 5,
-  "last_writer": "claude",
-  "last_writer_timestamp_utc": "2026-05-04T09:35:00Z",
+  "current_turn": 6,
+  "last_writer": "codex",
+  "last_writer_timestamp_utc": "2026-05-04T09:41:31Z",
   "codex_inbox": {
-    "status": "pending",
+    "status": "consumed",
     "topic": "W2 收尾（双重叙事）+ commit 全数据 + 写 negative finding summary"
   },
   "claude_inbox": {
-    "status": "consumed",
-    "topic": "W2-B official_ood results"
+    "status": "pending",
+    "topic": "W2 收尾完成 + 准备 W3 起步"
   },
-  "next_action": "codex_to_process"
+  "next_action": "claude_to_review"
 }

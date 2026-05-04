@@ -31,3 +31,7 @@ AI-Data-Center-Analysis_migration_bundle_20260311/analysis/m2f1_reward_window_au
 agent_comms/_poll.log
 agent_comms/_new_task_for_codex.flag
 agent_comms/_last_seen_turn.txt
+
+# W2 batch runtime state files (not artifacts)
+AI-Data-Center-Analysis_migration_bundle_20260311/tools/_w2_*.json
+AI-Data-Center-Analysis_migration_bundle_20260311/tools/_w2_*.txt

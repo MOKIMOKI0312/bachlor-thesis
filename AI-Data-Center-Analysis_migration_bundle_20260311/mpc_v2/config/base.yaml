@@ -1,0 +1,62 @@
+time:
+  dt_h: 0.25
+  horizon_steps: 192
+  default_closed_loop_steps: 96
+
+paths:
+  pv_csv: Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv
+  price_csv: Data/prices/Jiangsu_TOU_2025_hourly.csv
+  output_root: runs/mpc_v2
+
+temperature:
+  min_C: 18.0
+  max_C: 27.0
+
+tes:
+  effective_capacity_kwh: 18000.0
+  charge_efficiency: 0.94
+  discharge_efficiency: 0.92
+  standing_loss_per_h: 0.002
+  max_charge_kw: 4500.0
+  max_discharge_kw: 4500.0
+  initial_soc: 0.50
+  soc_min_phys: 0.05
+  soc_max_phys: 0.95
+  soc_min_plan: 0.15
+  soc_max_plan: 0.85
+  terminal_soc_target: 0.50
+
+room:
+  initial_temperature_C: 24.0
+  thermal_time_constant_h: 8.0
+  outdoor_gain_fraction: 0.18
+  ite_heat_gain_C_per_mwh: 0.012
+  cooling_gain_C_per_mwh: 0.018
+  base_cooling_kw: 2100.0
+
+pue:
+  base_pue: 1.18
+  outdoor_temp_coeff_per_C: 0.004
+  reference_outdoor_C: 25.0
+  charge_cop: 5.2
+  discharge_power_credit_cop: 5.0
+
+objective:
+  c_spill: 0.02
+  c_cycle: 0.001
+  rho_T: 1000.0
+  rho_soc: 200.0
+  rho_switch: 0.0005
+  rho_terminal: 100.0
+
+solver:
+  name: highs
+  time_limit_s: 30.0
+  mip_rel_gap: 0.005
+
+synthetic:
+  start_timestamp: "2025-07-01 00:00:00"
+  ite_power_kw: 18000.0
+  outdoor_base_C: 29.0
+  outdoor_amplitude_C: 6.0
+  seed: 7

@@ -1,9 +1,0 @@
-﻿{
-    "phase":  "w2b_full_batch",
-    "launch_ts":  "20260504_054336",
-    "pid":  60328,
-    "stdout":  "AI-Data-Center-Analysis_migration_bundle_20260311\\logs\\w2b_batch_launcher_20260504_054336\\batch.stdout.log",
-    "stderr":  "AI-Data-Center-Analysis_migration_bundle_20260311\\logs\\w2b_batch_launcher_20260504_054336\\batch.stderr.log",
-    "timeout_minutes":  300,
-    "started":  "2026-05-04T05:43:36.8429920+02:00"
-}

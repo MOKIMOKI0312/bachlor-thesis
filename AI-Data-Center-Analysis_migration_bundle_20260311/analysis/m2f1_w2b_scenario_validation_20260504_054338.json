@@ -1,4 +1,0 @@
-{
-  "status": "skipped_due_to_failure",
-  "error": "cost monotonicity failed: baseline=14206633.459784597, heuristic=14354248.124875812, milp=14310199.876191188"
-}

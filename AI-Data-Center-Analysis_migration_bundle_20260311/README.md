@@ -22,6 +22,9 @@ center scenario with TES, PV forecast input, and external TOU price input.
   - Lightweight PowerShell runner for EnergyPlus.
 - `docs/model_manifest.md`
   - File inventory and model assumptions.
+- `docs/nanjing_tes_pv_price_energyplus_model.md`
+  - Current model description, cooling-system logic, validation result, and
+    warning status.
 
 ## Important Boundary
 
@@ -46,13 +49,13 @@ that the CSV headers match the expected schema. Output is written to:
 out/energyplus_nanjing/
 ```
 
-## Timestep Note
+## Timestep
 
-The current model keeps the source model timestep:
+The current model has been validated at 15-minute resolution:
 
 ```text
-Timestep.number_of_timesteps_per_hour = 1
+Timestep.number_of_timesteps_per_hour = 4
 ```
 
-If a future MPC experiment requires 15-minute simulation, change this in a
-separate commit to `4` and rerun a dedicated EnergyPlus validation.
+The latest validation completed successfully with 1 expected sizing warning and
+0 severe errors. See `docs/nanjing_tes_pv_price_energyplus_model.md` for details.

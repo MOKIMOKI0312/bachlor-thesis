@@ -21,7 +21,11 @@ price input, and external PV forecast input.
 - Contains TES EMS actuator/sensor path through `TES_Set`, `TES_SOC_Obs`,
   and `TES_Avg_Temp_Obs`.
 - Uses source training load setting `ITE_Set = 0.45`.
-- Current EnergyPlus timestep is hourly: `number_of_timesteps_per_hour = 1`.
+- Current EnergyPlus timestep is 15 minutes:
+  `number_of_timesteps_per_hour = 4`.
+- Condenser-water loop and cooling tower are configured for Nanjing weather using
+  a user-defined YorkCalc tower performance object and fixed condenser-side
+  design flow consistency across chiller, pump, loop, and tower.
 - The TOU price and PV files are preserved as controller/post-processing inputs,
   not embedded EnergyPlus physical inputs.
 

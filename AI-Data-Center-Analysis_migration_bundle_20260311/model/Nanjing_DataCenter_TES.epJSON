@@ -663,7 +663,7 @@
       "optimum_part_load_ratio": 1,
       "reference_capacity": 50000000,
       "reference_chilled_water_flow_rate": "Autosize",
-      "reference_condenser_fluid_flow_rate": "Autosize",
+      "reference_condenser_fluid_flow_rate": 2.95108,
       "reference_cop": 6.28035714285714,
       "reference_entering_condenser_fluid_temperature": 35.0000000000001,
       "reference_leaving_chilled_water_temperature": 6.67,
@@ -911,20 +911,61 @@
       "design_air_flow_rate": "Autosize",
       "design_approach_temperature": 3.9,
       "design_fan_power": "Autosize",
-      "design_inlet_air_wet_bulb_temperature": 25.6,
-      "design_range_temperature": 5.6,
-      "design_water_flow_rate": "Autosize",
+      "design_inlet_air_wet_bulb_temperature": 28.0,
+      "design_range_temperature": 3.0,
+      "design_water_flow_rate": 2.95108,
       "drift_loss_percent": 0.0005,
       "end_use_subcategory": "General",
       "evaporation_loss_factor": 0.2,
       "evaporation_loss_mode": "SaturatedExit",
       "fraction_of_tower_capacity_in_free_convection_regime": 0.125,
       "minimum_air_flow_rate_ratio": 0.2,
-      "model_type": "YorkCalc",
+      "model_coefficient_name": "Nanjing YorkCalc Tower Model",
+      "model_type": "YorkCalcUserDefined",
       "number_of_cells": 2,
       "sizing_factor": 1,
       "water_inlet_node_name": "Centrifugal Fan Cycling Open Cooling Tower 40.2 gpm/hp Inlet Water Node",
       "water_outlet_node_name": "Centrifugal Fan Cycling Open Cooling Tower 40.2 gpm/hp Outlet Water Node"
+    }
+  },
+  "CoolingTowerPerformance:YorkCalc": {
+    "Nanjing YorkCalc Tower Model": {
+      "coefficient_1": -0.359741205,
+      "coefficient_2": -0.055053608,
+      "coefficient_3": 0.0023850432,
+      "coefficient_4": 0.173926877,
+      "coefficient_5": -0.0248473764,
+      "coefficient_6": 0.00048430224,
+      "coefficient_7": -0.005589849456,
+      "coefficient_8": 0.0005770079712,
+      "coefficient_9": -0.00001342427256,
+      "coefficient_10": 2.84765801111111,
+      "coefficient_11": -0.121765149,
+      "coefficient_12": 0.0014599242,
+      "coefficient_13": 1.680428651,
+      "coefficient_14": -0.0166920786,
+      "coefficient_15": -0.0007190532,
+      "coefficient_16": -0.025485194448,
+      "coefficient_17": 0.0000487491696,
+      "coefficient_18": 0.00002719234152,
+      "coefficient_19": -0.0653766255555556,
+      "coefficient_20": -0.002278167,
+      "coefficient_21": 0.0002500254,
+      "coefficient_22": -0.0910565458,
+      "coefficient_23": 0.00318176316,
+      "coefficient_24": 0.000038621772,
+      "coefficient_25": -0.0034285382352,
+      "coefficient_26": 0.00000856589904,
+      "coefficient_27": -0.000001516821552,
+      "maximum_approach_temperature": 40.0,
+      "maximum_inlet_air_wet_bulb_temperature": 32.0,
+      "maximum_liquid_to_gas_ratio": 8.0,
+      "maximum_range_temperature": 22.2222,
+      "maximum_water_flow_rate_ratio": 4.0,
+      "minimum_approach_temperature": 1.1111,
+      "minimum_inlet_air_wet_bulb_temperature": -34.4,
+      "minimum_range_temperature": 0.5,
+      "minimum_water_flow_rate_ratio": 0.5
     }
   },
   "Curve:Biquadratic": {
@@ -1202,15 +1243,6 @@
         },
         {
           "program_line": "SET Chiller_T = (max_value_HVAC-min_value_HVAC)*Chiller_T_S + min_value_HVAC"
-        },
-        {
-          "program_line": "SET min_value_HVAC = @Max CT_Pump_Now-100 300"
-        },
-        {
-          "program_line": "SET max_value_HVAC = @Min CT_Pump_Now+100 3300"
-        },
-        {
-          "program_line": "SET CT_Pump = (max_value_HVAC-min_value_HVAC)*CT_Pump_S + min_value_HVAC"
         }
       ]
     },
@@ -2024,6 +2056,41 @@
       "key_value": "Chilled Water Tank",
       "reporting_frequency": "Timestep",
       "variable_name": "Chilled Water Thermal Storage Source Side Heat Transfer Energy"
+    },
+    "CoolingTower_Inlet_Temperature": {
+      "key_value": "Centrifugal Fan Cycling Open Cooling Tower 40.2 gpm/hp",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Cooling Tower Inlet Temperature"
+    },
+    "CoolingTower_Outlet_Temperature": {
+      "key_value": "Centrifugal Fan Cycling Open Cooling Tower 40.2 gpm/hp",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Cooling Tower Outlet Temperature"
+    },
+    "CoolingTower_Mass_Flow_Rate": {
+      "key_value": "Centrifugal Fan Cycling Open Cooling Tower 40.2 gpm/hp",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Cooling Tower Mass Flow Rate"
+    },
+    "CoolingTower_Heat_Transfer_Rate": {
+      "key_value": "Centrifugal Fan Cycling Open Cooling Tower 40.2 gpm/hp",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Cooling Tower Heat Transfer Rate"
+    },
+    "CoolingTower_Fan_Electricity_Rate": {
+      "key_value": "Centrifugal Fan Cycling Open Cooling Tower 40.2 gpm/hp",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Cooling Tower Fan Electricity Rate"
+    },
+    "CoolingTower_Air_Flow_Rate_Ratio": {
+      "key_value": "Centrifugal Fan Cycling Open Cooling Tower 40.2 gpm/hp",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Cooling Tower Air Flow Rate Ratio"
+    },
+    "CoolingTower_Operating_Cells_Count": {
+      "key_value": "Centrifugal Fan Cycling Open Cooling Tower 40.2 gpm/hp",
+      "reporting_frequency": "Timestep",
+      "variable_name": "Cooling Tower Operating Cells Count"
     }
   },
   "Output:VariableDictionary": {
@@ -2192,7 +2259,7 @@
       "fluid_type": "Water",
       "load_distribution_scheme": "Optimal",
       "loop_temperature_setpoint_node_name": "Condenser Water Loop Supply Outlet Node",
-      "maximum_loop_flow_rate": "Autosize",
+      "maximum_loop_flow_rate": 2.95108,
       "maximum_loop_temperature": 80,
       "minimum_loop_flow_rate": 0,
       "minimum_loop_temperature": 5,
@@ -2247,7 +2314,7 @@
       "coefficient_1_of_the_part_load_performance_curve": 0,
       "coefficient_2_of_the_part_load_performance_curve": 1,
       "design_electric_power_per_unit_flow_rate": 348701.1,
-      "design_maximum_flow_rate": "Autosize",
+      "design_maximum_flow_rate": 2.95108,
       "design_minimum_flow_rate": "Autosize",
       "design_power_consumption": "Autosize",
       "design_power_sizing_method": "PowerPerFlowPerPressure",
@@ -2258,7 +2325,7 @@
       "inlet_node_name": "Condenser Water Loop Supply Inlet Node",
       "motor_efficiency": 0.945,
       "outlet_node_name": "Condenser Water Loop Constant Pump Outlet Water Node",
-      "pump_control_type": "Continuous"
+      "pump_control_type": "Intermittent"
     }
   },
   "RunPeriod": {
@@ -2267,7 +2334,7 @@
       "begin_day_of_month": 1,
       "begin_month": 1,
       "begin_year": 2024,
-      "day_of_week_for_start_day": "Sunday",
+      "day_of_week_for_start_day": "Monday",
       "end_day_of_month": 31,
       "end_month": 12,
       "end_year": 2024,
@@ -4661,7 +4728,7 @@
   "SetpointManager:FollowOutdoorAirTemperature": {
     "Condenser Water Loop Setpoint Manager Follow OATwb with 8.0F Approach": {
       "control_variable": "Temperature",
-      "maximum_setpoint_temperature": 29.4444444444445,
+      "maximum_setpoint_temperature": 36.0,
       "minimum_setpoint_temperature": 5.5555555555556,
       "offset_temperature_difference": 4.444444,
       "reference_temperature_type": "OutdoorAirWetBulb",
@@ -4931,7 +4998,7 @@
   },
   "Timestep": {
     "Timestep 1": {
-      "number_of_timesteps_per_hour": 1
+      "number_of_timesteps_per_hour": 4
     }
   },
   "Version": {

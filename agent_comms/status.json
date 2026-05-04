@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "current_turn": 1,
+  "last_writer": "claude",
+  "last_writer_timestamp_utc": "2026-05-04T03:10:00Z",
+  "codex_inbox": {
+    "status": "pending",
+    "topic": "W2 PHASE 3 diagnostic + forced emit"
+  },
+  "claude_inbox": {
+    "status": "empty",
+    "topic": null
+  },
+  "next_action": "codex_to_process"
+}

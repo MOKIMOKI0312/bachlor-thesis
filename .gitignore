@@ -26,3 +26,8 @@ AI-Data-Center-Analysis_migration_bundle_20260311/analysis/m2f1_reward_window_au
 # PR 临时辅助文件（_tmp 前缀的 commit body / comment 草稿）
 .pr_body_tmp.md
 .pr_comment_tmp.md
+
+# agent_comms 协议运行时文件（不入库；协议本身见 agent_comms/README.md）
+agent_comms/_poll.log
+agent_comms/_new_task_for_codex.flag
+agent_comms/_last_seen_turn.txt

@@ -289,6 +289,11 @@ def main() -> None:
     ap.add_argument("--baseline-dir", default=None, help="If baseline output not in runs-dir, override here.")
     ap.add_argument("--pv-csv", default="Data/pv/CHN_Nanjing_PV_6MWp_hourly.csv")
     ap.add_argument(
+        "--tag-prefix",
+        default="w2",
+        help="Tag prefix to glob (e.g. 'w2' for trainlike, 'w2b' for official_ood)",
+    )
+    ap.add_argument(
         "--skip-validation",
         action="store_true",
         help="Skip cost/SCR/comfort monotonicity checks; emit csv/md anyway.",
@@ -297,9 +302,9 @@ def main() -> None:
 
     runs_dir = Path(args.runs_dir)
     cells_spec = [
-        ("baseline_neutral", f"w2_baseline_neutral_year_{args.ts}", args.baseline_dir),
-        ("heuristic", f"w2_mpc_heuristic_year_{args.ts}", None),
-        ("mpc_milp", f"w2_mpc_milp_year_{args.ts}", None),
+        ("baseline_neutral", f"{args.tag_prefix}_baseline_neutral_year_{args.ts}", args.baseline_dir),
+        ("heuristic", f"{args.tag_prefix}_mpc_heuristic_year_{args.ts}", None),
+        ("mpc_milp", f"{args.tag_prefix}_mpc_milp_year_{args.ts}", None),
     ]
 
     rows: list[dict[str, Any]] = []
@@ -380,10 +385,10 @@ def main() -> None:
     else:
         validation = validate(df_out)
 
-    out_csv = Path(f"analysis/m2f1_w2_scenario_compare_{args.ts}.csv")
-    out_md = Path(f"analysis/m2f1_w2_scenario_compare_{args.ts}.md")
-    diag_path = Path(f"analysis/m2f1_w2_pv_diagnostic_{args.ts}.json")
-    val_path = Path(f"analysis/m2f1_w2_scenario_validation_{args.ts}.json")
+    out_csv = Path(f"analysis/m2f1_{args.tag_prefix}_scenario_compare_{args.ts}.csv")
+    out_md = Path(f"analysis/m2f1_{args.tag_prefix}_scenario_compare_{args.ts}.md")
+    diag_path = Path(f"analysis/m2f1_{args.tag_prefix}_pv_diagnostic_{args.ts}.json")
+    val_path = Path(f"analysis/m2f1_{args.tag_prefix}_scenario_validation_{args.ts}.json")
     df_out.to_csv(out_csv, index=False)
 
     energy_cols = [
@@ -410,7 +415,7 @@ def main() -> None:
     mpc_cols = ["algorithm", "sign_rate", "dsoc_prepeak", "dsoc_peak", "mode_switches", "mechanism_gate_pass"]
 
     with open(out_md, "w", encoding="utf-8") as f:
-        f.write(f"# W2 Scenario Comparison ({args.ts})\n\n")
+        f.write(f"# {args.tag_prefix.upper()} Scenario Comparison ({args.ts})\n\n")
         f.write("## Section 4.1 TES energy contribution\n\n")
         f.write(df_out[energy_cols].to_markdown(index=False, floatfmt=".4f"))
         f.write("\n\n## Section 4.2 PV self-consumption comparison\n\n")

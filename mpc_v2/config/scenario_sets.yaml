@@ -10,6 +10,17 @@ scenario_sets:
     - tariff_low
     - tariff_base
     - tariff_high
+  thesis_chiller_tes:
+    - chiller_no_tes_base
+    - chiller_rbc_base
+    - chiller_tes_mpc_base
+    - chiller_tes_pv_x2
+    - chiller_tes_pv_x3
+    - chiller_tes_tariff_high
+    - chiller_tes_demand_mid
+    - chiller_tes_demand_high
+    - chiller_tes_hot
+    - chiller_tes_mild
 
 scenarios:
   baseline_no_tes:
@@ -62,3 +73,75 @@ scenarios:
     pv_error_sigma: 0.0
     tariff_multiplier: 1.25
     outdoor_offset_c: 0.0
+  chiller_no_tes_base:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 1.0
+    demand_charge_multiplier: 1.0
+  chiller_rbc_base:
+    controller_type: rbc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 1.0
+    demand_charge_multiplier: 1.0
+  chiller_tes_mpc_base:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 1.0
+    demand_charge_multiplier: 1.0
+  chiller_tes_pv_x2:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 2.0
+    demand_charge_multiplier: 1.0
+  chiller_tes_pv_x3:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 3.0
+    demand_charge_multiplier: 1.0
+  chiller_tes_tariff_high:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.5
+    outdoor_offset_c: 0.0
+    pv_scale: 1.0
+    demand_charge_multiplier: 1.0
+  chiller_tes_demand_mid:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 1.0
+    demand_charge_multiplier: 1.0
+    demand_charge_currency_per_kw_day: 0.15
+  chiller_tes_demand_high:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 1.0
+    demand_charge_multiplier: 1.0
+    demand_charge_currency_per_kw_day: 0.45
+  chiller_tes_hot:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 4.0
+    pv_scale: 1.0
+    demand_charge_multiplier: 1.0
+  chiller_tes_mild:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: -4.0
+    pv_scale: 1.0
+    demand_charge_multiplier: 1.0

@@ -1,4 +1,4 @@
-from mpc_v2.core.facility_model import FacilityModel, FacilityParams
+from mpc_v2.core.facility_model import ChillerPlantModel, ChillerPlantParams, FacilityModel, FacilityParams
 from mpc_v2.core.io_schemas import load_yaml
 from mpc_v2.core.room_model import RoomModel, RoomParams
 
@@ -33,3 +33,12 @@ def test_grid_pv_balance_splits_positive_and_negative_net_load():
     assert facility == 1000.0
     assert grid == 0.0
     assert spill == 200.0
+
+
+def test_chiller_plant_dispatch_uses_mode_affine_power():
+    cfg = load_yaml("mpc_v2/config/base.yaml")
+    model = ChillerPlantModel(ChillerPlantParams.from_config(cfg["chiller"]))
+    q_effective, mode_index, plant_power = model.dispatch(5000.0, wet_bulb_c=25.0)
+    assert q_effective >= 5000.0
+    assert mode_index >= 0
+    assert plant_power > 0.0

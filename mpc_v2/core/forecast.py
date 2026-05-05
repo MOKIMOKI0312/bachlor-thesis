@@ -84,12 +84,14 @@ class ForecastBuilder:
         outdoor_amplitude_c: float,
         outdoor_offset_c: float,
         tariff_multiplier: float,
+        pv_scale: float = 1.0,
+        wet_bulb_depression_c: float = 4.0,
     ) -> ForecastBundle:
         if horizon_steps <= 0:
             raise ValueError("horizon_steps must be positive")
         now = parse_timestamp(now_ts)
         timestamps = [now + timedelta(minutes=15 * i) for i in range(horizon_steps)]
-        pv_actual = _take_cyclic(self.pv_15min, timestamps)
+        pv_actual = _take_cyclic(self.pv_15min, timestamps) * float(pv_scale)
         pv_forecast = apply_pv_forecast_error(pv_actual, sigma=pv_error_sigma, seed=seed)
         price = _take_cyclic(self.price_15min, timestamps) * float(tariff_multiplier)
         hours = np.array([ts.hour + ts.minute / 60.0 for ts in timestamps], dtype=float)
@@ -103,6 +105,7 @@ class ForecastBuilder:
             [self.facility_model.base_facility_kw(float(it), float(temp)) for it, temp in zip(it_load, outdoor)]
         )
         base_cooling = np.array([self.room_model.base_cooling_kw_th(float(it)) for it in it_load])
+        wet_bulb = outdoor - float(wet_bulb_depression_c)
         bundle = ForecastBundle(
             timestamps=timestamps,
             outdoor_temp_forecast_c=outdoor.tolist(),
@@ -111,6 +114,7 @@ class ForecastBuilder:
             price_forecast=price.tolist(),
             base_facility_kw=base_facility.tolist(),
             base_cooling_kw_th=base_cooling.tolist(),
+            wet_bulb_forecast_c=wet_bulb.tolist(),
         )
         bundle.validate(horizon_steps=horizon_steps, dt_hours=self.dt_hours)
         return bundle
@@ -123,6 +127,8 @@ class ForecastBuilder:
         outdoor_amplitude_c: float,
         outdoor_offset_c: float,
         tariff_multiplier: float,
+        pv_scale: float = 1.0,
+        wet_bulb_depression_c: float = 4.0,
     ) -> ForecastBundle:
         """Return the one-step actual disturbance bundle without forecast error."""
 
@@ -136,6 +142,8 @@ class ForecastBuilder:
             outdoor_amplitude_c=outdoor_amplitude_c,
             outdoor_offset_c=outdoor_offset_c,
             tariff_multiplier=tariff_multiplier,
+            pv_scale=pv_scale,
+            wet_bulb_depression_c=wet_bulb_depression_c,
         )
 
 

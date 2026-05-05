@@ -38,6 +38,13 @@ def run_validation_matrix(
             controller_mode=str(scenario.get("controller_type", "mpc")),
             tariff_multiplier=float(scenario.get("tariff_multiplier", 1.0)),
             outdoor_offset_c=float(scenario.get("outdoor_offset_c", 0.0)),
+            pv_scale=float(scenario.get("pv_scale", 1.0)),
+            demand_charge_rate=(
+                float(scenario["demand_charge_currency_per_kw_day"])
+                if "demand_charge_currency_per_kw_day" in scenario
+                else None
+            ),
+            demand_charge_multiplier=float(scenario.get("demand_charge_multiplier", 1.0)),
         )
         summary = json.loads((run_dir / "episode_summary.json").read_text(encoding="utf-8"))
         summary["run_dir"] = str(run_dir)

@@ -26,32 +26,58 @@ class MPCState:
     room_temp_c: float
     prev_q_ch_tes_kw_th: float = 0.0
     prev_q_dis_tes_kw_th: float = 0.0
+    prev_u_ch: float = 0.0
+    prev_u_dis: float = 0.0
+    prev_mode_index: int = -1
 
     def validate(self) -> None:
         _require_finite("soc", self.soc)
         _require_finite("room_temp_c", self.room_temp_c)
         _require_finite("prev_q_ch_tes_kw_th", self.prev_q_ch_tes_kw_th)
         _require_finite("prev_q_dis_tes_kw_th", self.prev_q_dis_tes_kw_th)
+        _require_finite("prev_u_ch", self.prev_u_ch)
+        _require_finite("prev_u_dis", self.prev_u_dis)
         if not 0.0 <= self.soc <= 1.0:
             raise SchemaValidationError(f"soc must be in [0, 1], got {self.soc}")
         if self.prev_q_ch_tes_kw_th < -1e-9 or self.prev_q_dis_tes_kw_th < -1e-9:
             raise SchemaValidationError("previous TES actions must be non-negative")
+        if not 0.0 <= self.prev_u_ch <= 1.0 or not 0.0 <= self.prev_u_dis <= 1.0:
+            raise SchemaValidationError("previous valve positions must be in [0, 1]")
+        if self.prev_mode_index < -1:
+            raise SchemaValidationError("prev_mode_index must be -1 or a non-negative mode index")
 
 
 @dataclass(frozen=True)
 class MPCAction:
-    """The only closed-loop physical control outputs."""
+    """First-step physical controls returned by the receding-horizon solve."""
 
     q_ch_tes_kw_th: float
     q_dis_tes_kw_th: float
+    q_chiller_kw_th: float = 0.0
+    q_load_kw_th: float = 0.0
+    plant_power_kw: float = 0.0
+    u_ch: float = 0.0
+    u_dis: float = 0.0
+    mode_index: int = -1
 
     def validate(self) -> None:
         _require_finite("q_ch_tes_kw_th", self.q_ch_tes_kw_th)
         _require_finite("q_dis_tes_kw_th", self.q_dis_tes_kw_th)
-        if self.q_ch_tes_kw_th < -1e-9 or self.q_dis_tes_kw_th < -1e-9:
-            raise SchemaValidationError("TES charge/discharge actions must be non-negative")
+        _require_finite("q_chiller_kw_th", self.q_chiller_kw_th)
+        _require_finite("q_load_kw_th", self.q_load_kw_th)
+        _require_finite("plant_power_kw", self.plant_power_kw)
+        _require_finite("u_ch", self.u_ch)
+        _require_finite("u_dis", self.u_dis)
+        if min(self.q_ch_tes_kw_th, self.q_dis_tes_kw_th, self.q_chiller_kw_th, self.q_load_kw_th) < -1e-9:
+            raise SchemaValidationError("cooling actions must be non-negative")
         if self.q_ch_tes_kw_th > 1e-6 and self.q_dis_tes_kw_th > 1e-6:
             raise SchemaValidationError("TES cannot charge and discharge simultaneously")
+        if not 0.0 <= self.u_ch <= 1.0 or not 0.0 <= self.u_dis <= 1.0:
+            raise SchemaValidationError("valve positions must be in [0, 1]")
+        if self.u_ch + self.u_dis > 1.0 + 1e-7:
+            raise SchemaValidationError("TES charge and discharge valves cannot both be open")
+        if self.mode_index < -1:
+            raise SchemaValidationError("mode_index must be -1 or a non-negative mode index")
 
 
 @dataclass(frozen=True)
@@ -65,6 +91,7 @@ class ForecastBundle:
     price_forecast: list[float]
     base_facility_kw: list[float]
     base_cooling_kw_th: list[float]
+    wet_bulb_forecast_c: list[float] | None = None
 
     def validate(self, horizon_steps: int, dt_hours: float) -> None:
         if horizon_steps <= 0:
@@ -80,6 +107,8 @@ class ForecastBundle:
             "base_facility_kw": len(self.base_facility_kw),
             "base_cooling_kw_th": len(self.base_cooling_kw_th),
         }
+        if self.wet_bulb_forecast_c is not None:
+            lengths["wet_bulb_forecast_c"] = len(self.wet_bulb_forecast_c)
         bad = {name: n for name, n in lengths.items() if n != horizon_steps}
         if bad:
             raise SchemaValidationError(f"forecast length mismatch: {bad}; expected {horizon_steps}")
@@ -89,8 +118,15 @@ class ForecastBundle:
             values = getattr(self, field_name)
             for i, value in enumerate(values):
                 _require_finite(f"{field_name}[{i}]", float(value))
-                if field_name != "outdoor_temp_forecast_c" and float(value) < -1e-9:
+                if field_name not in {"outdoor_temp_forecast_c", "wet_bulb_forecast_c"} and float(value) < -1e-9:
                     raise SchemaValidationError(f"{field_name}[{i}] must be non-negative")
+
+    def wet_bulb_or_default(self, default_depression_c: float = 4.0) -> list[float]:
+        """Return wet-bulb values, using a dry-bulb-minus-depression proxy if absent."""
+
+        if self.wet_bulb_forecast_c is not None:
+            return self.wet_bulb_forecast_c
+        return [float(v) - float(default_depression_c) for v in self.outdoor_temp_forecast_c]
 
 
 def load_yaml(path: str | Path) -> dict[str, Any]:

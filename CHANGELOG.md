@@ -194,3 +194,128 @@ Conclusion boundary:
 - 增加 rule-based TES baseline。
 - 扩展到 7 天或典型周仿真。
 - 生成论文用图表和表格。
+
+## v0.2.0-chiller-tes-mpc-v1 - 2026-05-05
+
+### Git
+
+- Commit: pending
+- Branch: `codex/55TES-MPC`
+- 状态：待提交；当前版本结果已冻结到本地 `results/`。
+
+### Scope
+
+本版本将 `mpc_v2` 从 TES-only 代理模型升级为冷机 + TES 联合 MILP-MPC：
+
+```text
+mode-based chiller plant
++ chilled-water TES
++ room-temperature proxy
++ PV/grid cold-station balance
++ no-TES / RBC / MPC controllers
++ thesis_chiller_tes validation matrix
+```
+
+### Code Changes
+
+- `mpc_v2/core/` 新增冷机 mode 仿射功率模型、阀门开度代理、需求峰值变量、低 PLR 惩罚和 chiller+TES MILP 冷量平衡。
+- `mpc_v2/scripts/run_closed_loop.py` 支持 `no_tes`、`rbc`、`mpc` 三类控制器，并输出 chiller、mode、valve、plant power 和 cold-station metrics。
+- `mpc_v2/config/scenario_sets.yaml` 新增 `thesis_chiller_tes` 场景矩阵。
+- `tests/` 扩展到 chiller dispatch、valve bounds、mode one-hot、no-TES chiller solve、RBC smoke 和新场景矩阵。
+- 更新 `README.md`、论文草稿和实施计划状态。
+
+### Validation
+
+Final test command:
+
+```powershell
+python -m pytest -q
+```
+
+Result:
+
+```text
+16 passed
+```
+
+Smoke commands:
+
+```powershell
+python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case-id smoke_chiller_no_tes --controller-mode no_tes --steps 96 --output-root runs/chiller_tes_v1_final_smoke
+python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case-id smoke_chiller_rbc --controller-mode rbc --steps 96 --output-root runs/chiller_tes_v1_final_smoke
+python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case-id smoke_chiller_tes_mpc --controller-mode mpc --steps 96 --output-root runs/chiller_tes_v1_final_smoke
+```
+
+Validation matrix command:
+
+```powershell
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set thesis_chiller_tes --steps 96 --output-dir runs/chiller_tes_v1_final_validation
+```
+
+### 运行结果位置
+
+- Frozen result directory: `results/chiller_tes_mpc_v1_20260505/`
+- Smoke outputs:
+  - `results/chiller_tes_mpc_v1_20260505/smoke/smoke_chiller_no_tes/`
+  - `results/chiller_tes_mpc_v1_20260505/smoke/smoke_chiller_rbc/`
+  - `results/chiller_tes_mpc_v1_20260505/smoke/smoke_chiller_tes_mpc/`
+- Validation matrix outputs:
+  - `results/chiller_tes_mpc_v1_20260505/final_validation/`
+- Result summary:
+  - `results/chiller_tes_mpc_v1_20260505/summary.md`
+
+### 运行结果简述
+
+Smoke run duration:
+
+```text
+96 steps * 0.25 h = 24 h
+```
+
+MPC prediction horizon:
+
+```text
+192 steps * 0.25 h = 48 h
+```
+
+Key no-TES vs RBC vs MPC smoke results:
+
+| Metric | no-TES | RBC | MPC |
+|---|---:|---:|---:|
+| Total cost | 4073.02 | 3973.24 | 3627.88 |
+| Grid import kWh | 49648.43 | 33907.68 | 47442.19 |
+| Peak grid kW | 3090.00 | 3090.00 | 3090.00 |
+| PV spill kWh | 342.96 | 1742.03 | 342.96 |
+| Cold-station energy kWh | 69649.07 | 52509.26 | 67442.83 |
+| Facility energy kWh | 501649.07 | 484509.26 | 499442.83 |
+| Temp violation degree-hours | 0.00 | 0.00 | 0.00 |
+| TES charge kWh_th | 0.00 | 8054.70 | 7458.63 |
+| TES discharge kWh_th | 0.00 | 12395.65 | 0.00 |
+| TES equivalent cycles | 0.00 | 0.69 | 0.00 |
+| Fallback count | 0 | 0 | 0 |
+
+Conclusion boundary:
+
+- Chiller+TES MPC implementation objective was reached: the MILP now contains explicit chiller load, mode binaries, plant power, valve variables, TES dynamics, room-temperature constraints, and cold-station PV/grid balance.
+- Cost objective was reached in the nominal smoke case: MPC total cost fell by about 10.93% versus fair no-TES.
+- Cold-station energy objective was partially reached: MPC cold-station energy fell by about 3.17% versus fair no-TES.
+- Peak shaving was not reached: peak grid demand remained about 3090 kW.
+- PV spill improvement was not reached in the nominal smoke case: MPC and no-TES both spilled 342.96 kWh.
+- TES use was only partially reached: MPC charged TES in the nominal case but did not discharge it; the hot validation case did show discharge of 5067.20 kWh_th but had one fallback and 0.19 degree-hours of temperature violation.
+
+### Thesis Impact
+
+- `thesis_draft.tex` 已同步更新，加入 chiller+TES v1.0 的实际结果和局限性。
+- `references.bib` 未更新，因为本版本未新增正式引用。
+- 当前结果可用于论文说明：
+  - 冷机 + TES MILP-MPC 闭环已可复现运行；
+  - 相比公平 no-TES baseline，nominal MPC 降低成本和冷站能耗；
+  - 当前代理模型尚不能支持 nominal case 下“TES 高价放冷、削峰、提高 PV 消纳”的强结论。
+
+### Known Limitations
+
+- 当前仍是 synthetic/replay closed loop，不是 EnergyPlus co-simulation。
+- 湿球温度使用 `outdoor_temp_c - 4.0` 代理。
+- 冷机 mode 参数采用 Kim 型量级初始化，未由南京实测冷站数据辨识。
+- Nominal MPC 仍存在 SOC hoarding：会充 TES，但不在 24 h nominal smoke 内放冷。
+- Demand charge 场景尚未形成 peak reduction。

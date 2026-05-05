@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mpc_v2.core.facility_model import FacilityParams
+from mpc_v2.core.facility_model import ChillerPlantParams, EconomicsParams, FacilityParams, ValveParams
 from mpc_v2.core.io_schemas import MPCAction, MPCState, load_yaml
 from mpc_v2.core.mpc_problem_milp import EconomicMPCProblem, MPCSolution, ObjectiveWeights, SolverConfig
 from mpc_v2.core.room_model import RoomParams
@@ -25,6 +25,9 @@ class EconomicTESMPCController:
             tes=TESParams.from_config(config["tes"]),
             room=RoomParams.from_config(config["room"]),
             facility=FacilityParams.from_config(config["facility"]),
+            chiller=ChillerPlantParams.from_config(config["chiller"]),
+            valve=ValveParams.from_config(config.get("valve", {})),
+            economics=EconomicsParams.from_config(config.get("economics", {})),
             weights=ObjectiveWeights.from_config(config["objective"]),
             solver=SolverConfig.from_config(config["solver"]),
             temp_min_c=float(config["temperature"]["min_c"]),
@@ -37,14 +40,13 @@ class EconomicTESMPCController:
     def from_yaml(cls, path: str | Path) -> "EconomicTESMPCController":
         return cls.from_config(load_yaml(path))
 
-    def solve(self, state: MPCState, forecast) -> MPCSolution:
-        solution = self.problem.solve(state, forecast)
+    def solve(self, state: MPCState, forecast, tes_available: bool = True) -> MPCSolution:
+        solution = self.problem.solve(state, forecast, tes_available=tes_available)
         self.previous_solution = solution
         return solution
 
-    def compute_action(self, state: MPCState, forecast) -> tuple[MPCAction, MPCSolution]:
-        solution = self.solve(state, forecast)
-        q_ch, q_dis = solution.first_action()
-        action = MPCAction(q_ch_tes_kw_th=q_ch, q_dis_tes_kw_th=q_dis)
+    def compute_action(self, state: MPCState, forecast, tes_available: bool = True) -> tuple[MPCAction, MPCSolution]:
+        solution = self.solve(state, forecast, tes_available=tes_available)
+        action = solution.first_action()
         action.validate()
         return action, solution

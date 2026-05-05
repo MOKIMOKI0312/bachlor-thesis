@@ -199,7 +199,7 @@ Conclusion boundary:
 
 ### Git
 
-- Commit: pending
+- Implementation commit: `2a75e93e feat(mpc): add chiller tes mpc v1`
 - Branch: `codex/55TES-MPC`
 - 状态：待提交；当前版本结果已冻结到本地 `results/`。
 

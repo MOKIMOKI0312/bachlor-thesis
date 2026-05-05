@@ -1,0 +1,64 @@
+scenario_sets:
+  thesis_core:
+    - baseline_no_tes
+    - tes_mpc_perfect
+    - tes_mpc_pv_g05
+    - tes_mpc_pv_g10
+    - tes_mpc_pv_g20
+    - hot_week
+    - mild_week
+    - tariff_low
+    - tariff_base
+    - tariff_high
+
+scenarios:
+  baseline_no_tes:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+  tes_mpc_perfect:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+  tes_mpc_pv_g05:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+  tes_mpc_pv_g10:
+    controller_type: mpc
+    pv_error_sigma: 0.10
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+  tes_mpc_pv_g20:
+    controller_type: mpc
+    pv_error_sigma: 0.20
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+  hot_week:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 4.0
+  mild_week:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: -4.0
+  tariff_low:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 0.75
+    outdoor_offset_c: 0.0
+  tariff_base:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+  tariff_high:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.25
+    outdoor_offset_c: 0.0

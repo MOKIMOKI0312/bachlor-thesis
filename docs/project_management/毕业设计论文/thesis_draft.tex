@@ -1,0 +1,886 @@
+\documentclass[UTF8,a4paper,12pt]{ctexrep}
+
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{siunitx}
+\usepackage[numbers,sort&compress]{natbib}
+
+\geometry{left=3cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue
+}
+
+\sisetup{
+  detect-all=true,
+  per-mode=symbol
+}
+
+\title{面向数据中心冷却系统的 TES-PV-TOU MILP-MPC 控制方法研究}
+\author{作者姓名}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+数据中心具有连续运行、热负荷密度高和冷却可靠性要求高等特点，冷却系统运行策略直接影响数据中心的能耗、运行成本和温度安全。随着分布式光伏和分时电价信号的引入，数据中心冷却系统不再只是被动维持机房温度，而是需要在未来负荷、天气、可再生能源出力和电价变化下进行动态优化调度。蓄冷系统能够在时间上解耦制冷功率和冷量需求，为削峰填谷、提高光伏消纳和降低运行成本提供了物理基础。
+
+本文面向南京数据中心冷却场景，构建包含冷水蓄冷系统、光伏出力、分时电价和机房温度约束的控制导向模型，并设计基于混合整数线性规划的模型预测控制方法。该方法在滚动预测时域内优化 TES 充放冷功率、电网购电功率和 PV 弃电功率，同时显式考虑 TES SOC 约束、充放冷互斥约束、温度安全约束和终端状态要求。实验设计采用 no-TES baseline、rule-based TES 和 MILP-MPC 对比，并通过 PV 预测误差、气象条件和电价价差敏感性场景分析控制策略的经济性、鲁棒性和适用边界。本文当前草稿保留结果填入位置，最终数值结论需以后续闭环仿真实验为准。
+
+\textbf{关键词：} 数据中心冷却；蓄冷系统；光伏消纳；分时电价；模型预测控制；混合整数线性规划
+\end{abstract}
+
+\chapter*{Abstract}
+Data centers operate continuously and require reliable cooling to maintain safe server-room temperatures. With the integration of photovoltaic generation and time-of-use electricity tariffs, the cooling system becomes a dynamic dispatch problem rather than a simple temperature-regulation problem. Thermal energy storage can decouple cooling production from cooling demand over time, which creates opportunities for peak shaving, renewable-energy utilization, and operating-cost reduction.
+
+This thesis develops a control-oriented framework for a data-center cooling system with chilled-water thermal energy storage, photovoltaic generation, and time-of-use electricity prices. A mixed-integer linear model predictive controller is formulated to optimize TES charging and discharging, grid import, and PV curtailment over a receding horizon while enforcing temperature, SOC, and mode-switching constraints. The experimental design compares the proposed MILP-MPC controller with a no-TES baseline and a rule-based TES strategy, and evaluates robustness under PV forecast errors, weather conditions, and tariff-spread sensitivity. Numerical results are intentionally left as placeholders in this draft and should be filled only after reproducible closed-loop simulations are completed.
+
+\textbf{Keywords:} data center cooling; thermal energy storage; photovoltaic self-consumption; time-of-use tariff; model predictive control; mixed-integer linear programming
+
+\tableofcontents
+
+\chapter{绪论}
+
+\section{研究背景}
+
+数据中心是数字基础设施的重要组成部分，其 IT 设备通常需要全年连续运行。服务器、存储和网络设备产生的热量需要由冷却系统及时移除，否则机房温度升高会影响设备可靠性甚至造成运行风险。因此，数据中心冷却系统不仅承担能耗管理任务，也承担安全约束管理任务。
+
+与普通办公建筑空调相比，数据中心冷却负荷更加稳定，温度约束更加刚性，运行中断代价更高。冷却系统的运行策略如果只追求短时温度控制，可能忽略未来电价、光伏出力和蓄冷状态变化；如果只追求经济性，又可能造成温度或设备约束风险。因此，该问题天然适合被表述为带约束的动态优化控制问题。
+
+近年来，分布式光伏和分时电价逐渐进入数据中心能源管理场景。光伏出力具有明显的日内波动和预测误差，分时电价则引导用户将可转移负荷从高价时段转移到低价时段。对于冷却系统而言，冷水蓄冷系统可以把低价或高光伏时段产生的冷量存储起来，在高价或光伏不足时段释放，从而使冷却能耗具有一定的时间可调性。
+
+\section{数据中心冷却系统能耗问题}
+
+数据中心总能耗通常由 IT 负荷、冷却系统、供配电损耗和辅助设备能耗构成。PUE 是评价数据中心能源效率的常见指标，其基本定义为总设施功率与 IT 功率之比：
+
+\begin{equation}
+  PUE_k = \frac{P_{facility,k}}{P_{IT,k}}.
+\end{equation}
+
+当 IT 负荷给定时，降低冷却功率和辅助设备功率可以降低 PUE。然而，在包含 TES、PV 和 TOU 电价的系统中，单纯降低某一时刻的冷却功率并不一定等价于降低总运行成本。系统可能在低价时段增加制冷功率为 TES 充冷，在高价时段降低电网购电功率。因而，论文需要同时评价运行成本、PV 消纳、温度约束和 TES 行为，而不能只评价单点能效。
+
+\section{蓄冷系统、光伏与分时电价的调度价值}
+
+TES 的核心价值在于冷量的时间转移。对于冷水蓄冷系统，充冷过程通常对应冷机额外运行并提升 TES SOC；放冷过程则利用已储存冷量满足部分冷却需求，降低当前冷机或电网用电压力。在 TOU 电价下，TES 可用于低价充冷、高价放冷；在 PV 场景下，TES 还可吸收白天富余光伏，减少弃光。
+
+但 TES 并非在所有条件下都一定带来经济收益。充放冷效率损失、冷机 COP、PV 规模、TOU 价差、温度约束、终端 SOC 要求和 TES 容量功率配置都会影响最终收益。因此，本研究不预设“有 TES 必然省钱”，而是通过闭环仿真分析 TES-MPC 在不同条件下的行为和边界。
+
+\section{传统规则控制的局限性}
+
+传统蓄冷控制通常基于固定规则，例如夜间低价充冷、白天高价放冷、SOC 低于阈值后停止放冷、机房温度接近上限时增强制冷。这类规则易于实现，但难以同时处理未来 PV 出力、电价、天气、IT 负荷、SOC 约束、温度约束和 PV 弃电问题。
+
+MPC 的优势在于利用未来预测，在滚动时域内优化控制动作，并显式处理系统约束。对于数据中心冷却系统，这种约束可解释性尤其重要，因为温度安全和设备运行边界不能依赖大量试错来学习。已有研究已将 MPC 用于大型冷站和 TES 调度\citep{ma2009tesMpc,ma2010buildingCoolingMpc,kim2022mpcTesPv}，也有研究讨论数据中心冷却 MPC 与冷水蓄冷控制\citep{lazic2018datacenterMpc,zhu2024hybridCoolingStorage,zhao2024multiChillerMpc}。本文在此基础上将 TES、PV、TOU 电价和温度约束统一到一个面向数据中心场景的控制框架中。
+
+\section{本文研究目标与研究内容}
+
+本文的研究目标是：面向南京数据中心冷却系统，建立包含 TES、PV、TOU 电价和机房温度约束的控制导向模型，设计基于 MILP 的 MPC 控制器，并通过多场景闭环仿真评估该方法在运行成本、PV 消纳、PUE、温度约束和鲁棒性方面的表现。
+
+本文研究内容包括：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item 建立数据中心冷却蓄冷系统边界，定义外部输入、状态变量、控制变量和评价指标。
+  \item 构建 TES SOC 动态模型、机房温度代理模型、PV-grid 功率平衡模型和运行成本模型。
+  \item 将 TES 充放冷互斥、SOC 限制、温度限制和 PV 弃电纳入 MILP-MPC 优化问题。
+  \item 设计 no-TES baseline、rule-based TES 和 MILP-MPC 对比实验。
+  \item 通过 PV 预测误差、hot/mild week 和 tariff sensitivity 场景分析方法的鲁棒性和适用边界。
+\end{enumerate}
+
+\section{本文主要贡献}
+
+本文的主要贡献预期包括：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item 建立了面向数据中心冷却系统的 TES-PV-TOU 控制导向模型，明确了系统边界、关键状态和外部输入。
+  \item 构建了考虑温度约束、SOC 约束、PV 弃电和分时电价的 MILP-MPC 控制器。
+  \item 通过 baseline 对比和多场景闭环仿真，分析了 TES-MPC 控制策略的经济性、鲁棒性和适用边界。
+\end{enumerate}
+
+\section{论文结构安排}
+
+第 1 章介绍研究背景、问题动机和本文贡献。第 2 章综述数据中心冷却、TES 技术和 MPC 控制相关研究。第 3 章建立数据中心冷却蓄冷系统的控制导向模型。第 4 章给出 MILP-MPC 控制方法。第 5 章设计实验场景和评价指标。第 6 章用于填入后续闭环仿真结果并开展讨论。第 7 章总结研究结论、局限性和后续工作。
+
+\chapter{文献综述}
+
+\section{数据中心冷却系统与能耗评价}
+
+数据中心冷却系统的首要目标是维持设备运行所需的温度和湿度环境。与舒适性空调相比，数据中心冷却更强调连续性、可靠性和故障容忍能力。数据中心能耗评价常使用 PUE、冷却系统能耗占比、峰值功率、温度越界次数等指标。近年来，综述研究也开始从优化控制、评价指标和工程可实施性角度系统总结数据中心冷却控制方法\citep{chang2024datacenterCoolingReview}。
+
+在论文写作中，本节应重点说明数据中心冷却不是普通建筑空调问题。它具备高负荷密度、连续运行和安全约束强的特点，因此控制策略需要同时关注经济性和约束可行性。
+
+\section{数据中心蓄冷技术研究现状}
+
+数据中心 TES 技术包括冷水蓄冷、冰蓄冷和相变材料蓄冷等形式。相关综述指出，TES 可用于缓解冷量供需在时间、温度或空间上的不匹配，并可为数据中心提供削峰填谷、备用冷源和可再生能源消纳能力\citep{liu2020tesDatacenterReview}。
+
+本文聚焦冷水蓄冷系统。该选择的原因是冷水蓄冷更容易与冷站系统和控制导向模型衔接，且可以用 SOC 动态、最大充放冷功率和效率损失等变量形成相对清晰的优化模型。其他 TES 技术在绪论和综述中简要说明即可，不应分散主线。
+
+\section{建筑冷站系统中的模型预测控制}
+
+建筑冷站和大型校园冷却系统中的 TES-MPC 研究为本文提供了直接方法基础。Ma 等研究了带冷水蓄冷罐的建筑冷却系统 MPC，证明控制导向模型与滚动优化可以用于冷站运行调度\citep{ma2009tesMpc,ma2010buildingCoolingMpc}。Kim 等进一步在大型冷站中将 TES、PV 和电网减碳目标结合，以 MILP-MPC 形式开展现场示范和 baseline 对比\citep{kim2022mpcTesPv}。
+
+这些研究的共同特点是：建立简化但可解释的系统模型，显式考虑设备约束和储能状态，并通过 baseline comparison 评价 MPC 的实际增量。本文采用类似叙事逻辑，但将应用对象明确为数据中心冷却系统。
+
+\section{数据中心冷却系统中的模型预测控制}
+
+数据中心冷却 MPC 已被用于服务器机房温度、气流和冷站能耗控制。Lazic 等指出，真实物理系统中的强化学习部署会受到 unexpected events、limited data 和 expensive failures 等问题影响，因此采用 data-driven model-based/MPC 思路控制数据中心冷却\citep{lazic2018datacenterMpc}。Zhao 等研究了考虑整系统节能的数据中心多冷机 MPC\citep{zhao2024multiChillerMpc}。Zhu 等提出了数据中心冷水蓄冷混合冷却系统的先进控制策略，并使用 MILP 优化不同冷却模式\citep{zhu2024hybridCoolingStorage}。
+
+这些文献说明数据中心冷却系统具备用 MPC 进行动态控制的研究基础。本文不采用 DRL 作为主线，是因为数据中心冷却具有强安全约束和高试错成本；MPC 在可解释性、约束处理和工程验证方面更适合当前毕业设计目标。
+
+\section{蓄冷、光伏与分时电价协同调度研究}
+
+TES、PV 和 TOU 电价的协同调度本质上是将能源供给、储能状态和用电价格统一到一个动态优化问题中。PV 出力高时，系统可选择增加充冷以吸收本地可再生能源；电价高时，系统可利用 TES 放冷减少电网购电；预测窗口内若未来高温或高价时段将出现，控制器应提前保留或补充 SOC。
+
+已有大型冷站研究已将 PV 和 TES 纳入 MPC 框架\citep{kim2022mpcTesPv}。但在数据中心场景下，还需要更突出温度安全、IT 负荷连续性和 PUE 指标。本文的定位是将大型冷站 TES-PV-MPC 的建模和验证逻辑迁移到数据中心冷却蓄冷场景，并围绕可复现闭环仿真展开。
+
+\section{文献总结与本文研究定位}
+
+综上，已有研究分别覆盖了数据中心冷却控制、数据中心 TES 技术、建筑冷站 TES-MPC，以及 PV/电价下的冷站优化。但是，针对数据中心冷却系统，将 TES、PV、TOU 电价、机房温度约束和 SOC 约束统一到一个可复现实验框架中，并通过多场景闭环仿真分析经济性和适用边界，仍有进一步展开空间。
+
+本文的研究定位不是提出全新的优化算法，而是建立一个边界清楚、公式完整、实验可复现的 TES-PV-TOU MILP-MPC 控制框架，并用该框架解释数据中心冷却蓄冷调度的机制和边界。
+
+\chapter{数据中心冷却蓄冷系统建模}
+
+\section{系统边界与总体结构}
+
+本文研究对象为数据中心冷却蓄冷系统的经济型预测控制。系统包括 IT 负荷、机房温度、冷却系统、冷水 TES、PV、电网和 TOU 电价。外部扰动包括 IT 负荷、室外温度、PV 出力和电价；控制器通过 TES 充放冷和购电决策影响系统运行。
+
+系统结构可以抽象为：
+
+\begin{center}
+\begin{tabular}{c}
+Outdoor Temperature, IT Load, PV, TOU Price \\
+$\downarrow$ \\
+Cooling Demand and Energy Dispatch \\
+$\downarrow$ \\
+Chiller / TES / Grid Interaction \\
+$\downarrow$ \\
+Room Temperature, SOC, Cost, PV Utilization
+\end{tabular}
+\end{center}
+
+当前仓库中的 \texttt{Nanjing-DataCenter-TES-EnergyPlus} 已提供南京 EnergyPlus 最小模型包、天气文件、TOU 电价输入和 PV 输入。本文控制模型在论文中采用控制导向代理形式；后续可进一步与 EnergyPlus 高保真模型闭环耦合。
+
+\section{外部输入变量}
+
+\begin{table}[htbp]
+  \centering
+  \caption{外部输入变量}
+  \begin{tabular}{llll}
+    \toprule
+    符号 & 含义 & 单位 & 说明 \\
+    \midrule
+    $P_{IT,k}$ & IT 负荷 & kW & 数据中心计算负荷 \\
+    $T_{out,k}$ & 室外温度 & \si{\degreeCelsius} & 天气扰动 \\
+    $P_{PV,k}$ & 光伏出力 & kW & 本地 PV 预测 \\
+    $c_k$ & 分时电价 & CNY/kWh 或 USD/MWh & 经济调度信号 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+这些变量不由控制器直接改变，而是作为 MPC 预测窗口内的已知或预测输入。实际实验中，PV 预测误差可以通过对 $P_{PV,k}$ 添加扰动构造。
+
+\section{控制变量与状态变量}
+
+\begin{table}[htbp]
+  \centering
+  \caption{状态变量、控制变量和辅助变量}
+  \begin{tabular}{llll}
+    \toprule
+    类型 & 符号 & 含义 & 单位 \\
+    \midrule
+    状态变量 & $SOC_k$ & TES 荷冷状态 & - \\
+    状态变量 & $T_k$ & 机房温度 & \si{\degreeCelsius} \\
+    控制变量 & $q_{ch,k}$ & TES 充冷功率 & kW \\
+    控制变量 & $q_{dis,k}$ & TES 放冷功率 & kW \\
+    控制变量 & $P_{grid,k}$ & 电网购电功率 & kW \\
+    控制变量 & $P_{spill,k}$ & PV 弃电功率 & kW \\
+    二进制变量 & $z_{ch,k}$ & 充冷模式 & - \\
+    二进制变量 & $z_{dis,k}$ & 放冷模式 & - \\
+    松弛变量 & $s_{T,k}$ & 温度约束松弛 & \si{\degreeCelsius} \\
+    松弛变量 & $s_{SOC,k}$ & SOC 约束松弛 & - \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{TES 蓄冷系统模型}
+
+令 $E_{TES}$ 表示 TES 有效蓄冷容量，$\Delta t$ 表示控制步长，$\eta_{ch}$ 和 $\eta_{dis}$ 分别表示充冷和放冷效率，$\lambda$ 表示自损耗系数。TES SOC 动态为：
+
+\begin{equation}
+  SOC_{k+1}
+  =
+  (1-\lambda \Delta t)SOC_k
+  + \frac{\eta_{ch} q_{ch,k}\Delta t}{E_{TES}}
+  - \frac{q_{dis,k}\Delta t}{\eta_{dis}E_{TES}}.
+  \label{eq:soc}
+\end{equation}
+
+SOC 需要满足安全范围：
+
+\begin{equation}
+  SOC_{\min} - s_{SOC,k} \leq SOC_k \leq SOC_{\max} + s_{SOC,k}, \quad s_{SOC,k}\geq 0.
+\end{equation}
+
+充放冷功率限制为：
+
+\begin{align}
+  0 \leq q_{ch,k} &\leq q_{ch}^{max}, \\
+  0 \leq q_{dis,k} &\leq q_{dis}^{max}.
+\end{align}
+
+为避免同一时刻同时充冷和放冷，引入二进制变量：
+
+\begin{align}
+  q_{ch,k} &\leq z_{ch,k}q_{ch}^{max}, \\
+  q_{dis,k} &\leq z_{dis,k}q_{dis}^{max}, \\
+  z_{ch,k}+z_{dis,k} &\leq 1, \\
+  z_{ch,k},z_{dis,k} &\in \{0,1\}.
+\end{align}
+
+\section{机房温度代理模型}
+
+为了使 MPC 问题能够高频滚动求解，本文采用控制导向温度代理模型描述机房温度动态：
+
+\begin{equation}
+  T_{k+1}
+  =
+  aT_k
+  + bT_{out,k}
+  + cP_{IT,k}
+  - d(q_{base,k}+q_{dis,k}).
+  \label{eq:temp}
+\end{equation}
+
+其中 $a$ 描述机房温度惯性，$b$ 描述室外温度影响，$c$ 描述 IT 负荷发热影响，$d$ 描述冷却量对机房温度的抑制作用，$q_{base,k}$ 表示基础冷却量。温度约束写为：
+
+\begin{align}
+  T_k &\leq T_{\max}+s_{T,k}, \\
+  T_k &\geq T_{\min}-s_{T,k}, \\
+  s_{T,k} &\geq 0.
+\end{align}
+
+温度松弛变量只用于避免优化问题不可行，并在目标函数中给予高权重惩罚。最终结果分析中应报告温度越界次数和越界 degree-hours。
+
+\section{光伏-电网-冷却系统功率平衡模型}
+
+系统电功率平衡可写为：
+
+\begin{equation}
+  P_{grid,k} - P_{spill,k}
+  =
+  P_{facility,k}
+  + P_{TES,ch,k}
+  - P_{TES,dis,k}
+  - P_{PV,k}.
+  \label{eq:power_balance}
+\end{equation}
+
+其中 $P_{facility,k}$ 为基础设施用电，$P_{TES,ch,k}$ 表示 TES 充冷导致的额外电耗，$P_{TES,dis,k}$ 表示 TES 放冷对即时冷却电耗的替代，$P_{PV,k}$ 为 PV 出力。电网购电和 PV 弃电满足：
+
+\begin{equation}
+  P_{grid,k}\geq 0,\quad P_{spill,k}\geq 0.
+\end{equation}
+
+该模型将温度控制问题扩展为能源调度问题，使 MPC 可以在 PV 消纳和电价成本之间进行权衡。
+
+\section{运行成本与 PUE 计算模型}
+
+运行成本定义为：
+
+\begin{equation}
+  J_{cost}=\sum_{k} c_k P_{grid,k}\Delta t.
+\end{equation}
+
+PUE 可按总设施功率和 IT 功率计算：
+
+\begin{equation}
+  PUE_k=\frac{P_{IT,k}+P_{cooling,k}+P_{aux,k}}{P_{IT,k}}.
+\end{equation}
+
+最终实验结果不应只报告总成本，还应报告 PV 弃电、PV 自消纳率、PUE、温度越界、SOC 行为和求解器性能。
+
+\section{模型假设与参数设置}
+
+\begin{table}[htbp]
+  \centering
+  \caption{主要参数设置草案}
+  \begin{tabular}{lll}
+    \toprule
+    参数 & 数值或目标设置 & 含义 \\
+    \midrule
+    $\Delta t$ & 0.25 h & 15 min 控制步长 \\
+    $N$ & 192 & 48 h 预测窗口 \\
+    $E_{TES}$ & 18000 kWh & TES 有效蓄冷容量 \\
+    $q_{ch}^{max}$ & 4500 kW & 最大充冷功率 \\
+    $q_{dis}^{max}$ & 4500 kW & 最大放冷功率 \\
+    $T_{\min},T_{\max}$ & 18--27 \si{\degreeCelsius} & 机房温度约束 \\
+    Solver & HiGHS & MILP 求解器目标 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+上述参数已与本地 \texttt{mpc\_v2/config/base.yaml} 的默认配置对齐。当前本地可验证代码包括南京 EnergyPlus 最小模型包，以及顶层 \texttt{mpc\_v2} 中的确定性 MILP-MPC 闭环验证包。
+
+\chapter{基于 MILP-MPC 的控制方法设计}
+
+\section{MPC 控制思想}
+
+MPC 在每个控制时刻执行以下步骤：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item 获取当前状态 $SOC_k$ 和 $T_k$。
+  \item 生成未来 $N$ 步的 PV、电价、室外温度和 IT 负荷预测。
+  \item 求解未来 $N$ 步的 MILP 优化问题。
+  \item 只执行第一步控制动作。
+  \item 更新系统状态并进入下一控制时刻。
+\end{enumerate}
+
+这种滚动优化机制使控制器可以随着预测更新不断修正策略。即使远期 PV 或天气预测存在误差，下一时刻的重新求解也可以部分修正前一步决策。
+
+\section{预测时域与滚动优化机制}
+
+本文计划采用 15 min 控制步长和 48 h 预测时域，对应 $N=192$。该设置能够覆盖完整昼夜周期和次日 PV/电价变化，使控制器可以提前为高价、高温或低 PV 时段保留 TES SOC。
+
+实际实现时，应记录每次求解的状态、预测输入、第一步动作、目标函数值、求解状态和求解时间，保证结果可复现。
+
+\section{优化变量定义}
+
+在预测窗口 $\mathcal{K}=\{0,\ldots,N-1\}$ 内，主要优化变量包括：
+
+\begin{equation}
+  \mathbf{u}
+  =
+  \{q_{ch,k},q_{dis,k},P_{grid,k},P_{spill,k},z_{ch,k},z_{dis,k},s_{T,k},s_{SOC,k}\}_{k=0}^{N-1}.
+\end{equation}
+
+状态变量 $SOC_k$ 和 $T_k$ 通过动态方程在预测窗口内递推。二进制变量 $z_{ch,k}$ 和 $z_{dis,k}$ 使问题成为 MILP。
+
+\section{目标函数设计}
+
+MPC 目标函数可写为：
+
+\begin{align}
+  \min \sum_{k=0}^{N-1}
+  \Big[
+    c_k P_{grid,k}\Delta t
+    + \alpha P_{spill,k}\Delta t
+    + \beta(q_{ch,k}+q_{dis,k})\Delta t
+    + \rho_T s_{T,k}
+    + \rho_{SOC}s_{SOC,k}
+    + \rho_{\Delta u} r_{\Delta u,k}
+  \Big]
+  + \rho_f s_f.
+  \label{eq:objective}
+\end{align}
+
+其中第一项最小化购电成本；第二项惩罚 PV 弃电；第三项避免 TES 过度循环；第四、五项惩罚温度和 SOC 约束松弛；第六项减少控制动作频繁切换；最后一项用于约束终端 SOC 或终端偏差。
+
+\begin{table}[htbp]
+  \centering
+  \caption{目标函数各项解释}
+  \begin{tabular}{lll}
+    \toprule
+    项 & 作用 & 说明 \\
+    \midrule
+    $c_kP_{grid,k}\Delta t$ & 购电成本 & 经济性主目标 \\
+    $\alpha P_{spill,k}\Delta t$ & PV 弃电惩罚 & 提高 PV 消纳 \\
+    $\beta(q_{ch,k}+q_{dis,k})\Delta t$ & TES 循环惩罚 & 避免无意义充放冷 \\
+    $\rho_T s_{T,k}$ & 温度松弛惩罚 & 保证机房安全 \\
+    $\rho_{SOC}s_{SOC,k}$ & SOC 松弛惩罚 & 保证 TES 安全范围 \\
+    $\rho_{\Delta u} r_{\Delta u,k}$ & 动作变化惩罚 & 减少频繁切换 \\
+    $\rho_f s_f$ & 终端惩罚 & 避免预测窗口末端透支 TES \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{系统约束条件}
+
+\begin{longtable}{lll}
+  \caption{MPC 约束条件汇总} \\
+  \toprule
+  约束类型 & 数学形式 & 物理意义 \\
+  \midrule
+  \endfirsthead
+  \toprule
+  约束类型 & 数学形式 & 物理意义 \\
+  \midrule
+  \endhead
+  SOC 动态 & 式 \eqref{eq:soc} & 描述 TES 能量变化 \\
+  SOC 范围 & $SOC_{\min}\leq SOC_k\leq SOC_{\max}$ & TES 安全运行范围 \\
+  充冷限制 & $0\leq q_{ch,k}\leq q_{ch}^{max}$ & 设备能力限制 \\
+  放冷限制 & $0\leq q_{dis,k}\leq q_{dis}^{max}$ & 设备能力限制 \\
+  充放互斥 & $z_{ch,k}+z_{dis,k}\leq 1$ & 避免同时充放冷 \\
+  温度动态 & 式 \eqref{eq:temp} & 描述机房热动态 \\
+  温度范围 & $T_{\min}\leq T_k\leq T_{\max}$ & 保证机房安全 \\
+  功率平衡 & 式 \eqref{eq:power_balance} & 保证电功率平衡 \\
+  非负约束 & $P_{grid,k},P_{spill,k}\geq 0$ & 物理可行性 \\
+  \bottomrule
+\end{longtable}
+
+\section{混合整数线性规划表述}
+
+由于 TES 不能同时充冷和放冷，本文引入二进制变量表示充放冷模式。结合线性 SOC 动态、线性温度代理模型、线性功率平衡和分段可线性化的动作变化惩罚，整个优化问题可以表述为 MILP。该形式便于使用 HiGHS 等开源求解器，并能够提供明确的求解状态，例如 optimal、time limit 或 infeasible。
+
+\section{闭环控制流程}
+
+闭环仿真应保存以下信息：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item 当前时间戳、状态和预测输入。
+  \item MILP 求解状态、目标函数值和求解时间。
+  \item 第一时刻控制动作。
+  \item 更新后的 SOC、温度、购电功率和 PV 弃电。
+  \item 每个场景的汇总指标。
+\end{enumerate}
+
+这样可以保证论文结果可追溯，也便于定位某一场景下的异常行为。
+
+\section{求解器与软件实现}
+
+控制层已在顶层 \texttt{mpc\_v2} 目录中使用 Python 实现，MILP 求解器为 SciPy/HiGHS。输入包括南京 PV、TOU 电价、合成室外温度和 IT 负荷时间序列；输出包括逐时刻控制动作、状态轨迹、求解日志和指标汇总。当前实现是合成/回放闭环验证，不是 EnergyPlus 深度 co-simulation。
+
+\chapter{实验设计与评价指标}
+
+\section{实验平台与代码结构}
+
+当前可验证模型位于 \texttt{Nanjing-DataCenter-TES-EnergyPlus}，其包含南京 EnergyPlus 模型、EPW 天气、TOU 电价和 PV 输入。确定性 MPC 控制层位于仓库顶层 \texttt{mpc\_v2}，采用如下结构：
+
+\begin{verbatim}
+mpc_v2/
+  config/
+    base.yaml
+    scenario_sets.yaml
+  core/
+    tes_model.py
+    room_model.py
+    facility_model.py
+    mpc_problem_milp.py
+    controller.py
+    forecast.py
+    metrics.py
+  scripts/
+    run_closed_loop.py
+    run_validation_matrix.py
+\end{verbatim}
+
+配套测试位于仓库顶层 \texttt{tests/}。该控制层复用 \texttt{Nanjing-DataCenter-TES-EnergyPlus/inputs} 中的 PV 和 TOU CSV，不恢复旧 RL 训练目录，也不引入新的 EnergyPlus 深度耦合。
+
+\section{输入数据与参数设置}
+
+输入数据包括南京 EPW 天气、江苏/南京 TOU 电价、南京 PV 预测和 IT 负荷假设。当前 EnergyPlus 模型已验证 15 min timestep；控制层也应使用 15 min 步长以保持一致。
+
+\begin{table}[htbp]
+  \centering
+  \caption{实验参数草案}
+  \begin{tabular}{lll}
+    \toprule
+    参数 & 数值 & 含义 \\
+    \midrule
+    控制步长 & 0.25 h & 15 min \\
+    预测时域 & 48 h & MPC horizon \\
+    预测步数 & 192 & 每次优化步数 \\
+    TES 容量 & 18000 kWh & 有效蓄冷容量 \\
+    最大充冷功率 & 4500 kW & TES charging limit \\
+    最大放冷功率 & 4500 kW & TES discharging limit \\
+    温度范围 & 18--27 \si{\degreeCelsius} & 机房约束 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Baseline 控制策略}
+
+本文至少设置 no-TES baseline，并建议增加 rule-based TES：
+
+\begin{table}[htbp]
+  \centering
+  \caption{控制策略对比}
+  \begin{tabular}{lll}
+    \toprule
+    控制方法 & 说明 & 用途 \\
+    \midrule
+    no-TES & 不使用蓄冷 & 基础对照 \\
+    rule-based TES & 按固定低价/高价时段充放冷 & 简单规则对照 \\
+    MILP-MPC & 根据预测信息滚动优化 & 本文方法 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+rule-based TES 的意义是证明 MPC 不只是比没有 TES 更好，而是要与工程中容易实现的简单规则进行比较。
+
+\section{MILP-MPC 控制器设置}
+
+MPC 控制器每 15 min 求解一次 48 h MILP 问题，只执行第一步动作。求解器状态和求解时间必须记录。若求解失败，应采用保守 fallback，例如停止 TES 放冷并满足温度安全约束，同时记录 infeasible 或 solver failure 次数。
+
+\section{场景矩阵设计}
+
+\begin{table}[htbp]
+  \centering
+  \caption{实验场景矩阵}
+  \begin{tabular}{lll}
+    \toprule
+    场景 & 目的 & 结果关注点 \\
+    \midrule
+    nominal & 基本控制行为 & SOC、充放冷、温度、PV/grid \\
+    baseline\_no\_tes & 无 TES 对照 & 成本和 PUE 基线 \\
+    rule\_based\_tes & 规则控制对照 & MPC 增量 \\
+    pv\_error\_5 & 轻微预测误差 & 鲁棒性 \\
+    pv\_error\_10 & 中等预测误差 & PV spill 和成本变化 \\
+    pv\_error\_20 & 较强预测误差 & 鲁棒性边界 \\
+    hot\_week & 高温天气 & 温度约束和 TES 透支风险 \\
+    mild\_week & 温和天气 & TES 利用率 \\
+    tariff\_low & 低电价价差 & TES 经济性下限 \\
+    tariff\_base & 基准电价 & 标准对比 \\
+    tariff\_high & 高电价价差 & TES 经济性上限 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{评价指标}
+
+\begin{table}[htbp]
+  \centering
+  \caption{评价指标定义}
+  \begin{tabular}{lll}
+    \toprule
+    类别 & 指标 & 说明 \\
+    \midrule
+    经济性 & total electricity cost & 总购电成本 \\
+    经济性 & cost saving ratio & 相对 baseline 节省率 \\
+    经济性 & grid import & 电网购电量 \\
+    经济性 & peak grid demand & 峰值购电功率 \\
+    PV 利用 & PV self-consumption ratio & PV 自消纳比例 \\
+    PV 利用 & PV load coverage ratio & PV 对负荷覆盖比例 \\
+    PV 利用 & PV spill & PV 弃电量 \\
+    温度安全 & violation count & 温度越界次数 \\
+    温度安全 & violation degree-hours & 温度越界程度 \\
+    TES 行为 & equivalent cycles & TES 等效循环次数 \\
+    求解性能 & average solve time & 平均求解时间 \\
+    求解性能 & optimal solve rate & 最优求解率 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{可复现性说明}
+
+每次实验应保存配置文件、输入数据版本、随机种子、求解器版本、运行命令和结果摘要。论文中的所有表格和图都应能从保存的结果文件重新生成。对于尚未完成的实验，正文只能保留占位，不应写入未经验证的数值结论。
+
+\chapter{结果分析与讨论}
+
+本章为结果填入模板。所有表格中的“待实验填入”均需在闭环仿真实验完成后替换为真实结果。替换时必须保留对应配置、运行日志和结果文件，确保论文结论可追溯。
+
+\section{Nominal case 下的 MPC 调度行为}
+
+Nominal case 首先用于检查 MPC 是否产生合理行为，而不是直接证明经济收益。应绘制 SOC、充冷功率、放冷功率、TOU 电价、PV 出力、grid import、PV spill 和 room temperature 曲线。
+
+分析时需要回答：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item 控制器是否在低价或高 PV 时段倾向于充冷？
+  \item 控制器是否在高价时段或 PV 不足时段倾向于放冷？
+  \item SOC 是否保持在规划范围内？
+  \item 机房温度是否满足约束？
+  \item 控制动作是否出现过度频繁切换？
+\end{enumerate}
+
+\section{与 no-TES baseline 的对比}
+
+\begin{table}[htbp]
+  \centering
+  \caption{no-TES baseline 与 MILP-MPC 对比结果占位}
+  \begin{tabular}{lll}
+    \toprule
+    指标 & no-TES & MILP-MPC \\
+    \midrule
+    Total cost & 待实验填入 & 待实验填入 \\
+    Grid import & 待实验填入 & 待实验填入 \\
+    Peak grid demand & 待实验填入 & 待实验填入 \\
+    PV spill & 待实验填入 & 待实验填入 \\
+    Avg PUE & 待实验填入 & 待实验填入 \\
+    Temp violation degree-hours & 待实验填入 & 待实验填入 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+该对比用于判断 TES 与 MPC 是否能相对无 TES 系统带来成本、PV 消纳或峰值功率改善。如果结果没有明显改善，应从 TOU 价差、TES 效率损失、PV 规模和终端 SOC 约束等方面解释原因。
+
+\section{与 rule-based TES 的对比}
+
+\begin{table}[htbp]
+  \centering
+  \caption{控制策略主要结果对比占位}
+  \begin{tabular}{llll}
+    \toprule
+    指标 & no-TES & rule-based TES & MILP-MPC \\
+    \midrule
+    Total cost & 待实验填入 & 待实验填入 & 待实验填入 \\
+    PV spill & 待实验填入 & 待实验填入 & 待实验填入 \\
+    Avg PUE & 待实验填入 & 待实验填入 & 待实验填入 \\
+    Temp violation degree-hours & 待实验填入 & 待实验填入 & 待实验填入 \\
+    TES cycles & - & 待实验填入 & 待实验填入 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+若 rule-based TES 在某些成本指标上接近或优于 MPC，并不意味着 MPC 失败。需要进一步检查温度约束、SOC 末端状态、PV 弃电、求解窗口下的保守性和规则是否隐含使用了未来信息。
+
+\section{PV 预测误差鲁棒性分析}
+
+PV error 场景用于检验 MPC 对可再生能源预测误差的敏感性。建议绘制 forecast error level 与 cost、PV spill、temperature violation、SOC violation 的关系。
+
+\begin{table}[htbp]
+  \centering
+  \caption{PV 预测误差鲁棒性结果占位}
+  \begin{tabular}{llll}
+    \toprule
+    场景 & Cost & PV spill & Temp violation \\
+    \midrule
+    PV error 5\% & 待实验填入 & 待实验填入 & 待实验填入 \\
+    PV error 10\% & 待实验填入 & 待实验填入 & 待实验填入 \\
+    PV error 20\% & 待实验填入 & 待实验填入 & 待实验填入 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+预期分析重点不是误差越大结果必然越差，而是说明温度安全是否仍能保持、PV 消纳是否下降、TES 是否因预测偏差出现不必要充放冷。
+
+\section{气象条件敏感性分析}
+
+hot week 和 mild week 场景用于分析天气条件对 TES-MPC 的影响。高温周可能导致冷却负荷上升、TES 更快被消耗、温度约束更紧；温和周可能导致 TES 利用率下降，成本收益更有限。
+
+\begin{table}[htbp]
+  \centering
+  \caption{天气敏感性结果占位}
+  \begin{tabular}{llll}
+    \toprule
+    场景 & Total cost & TES cycles & Temp violation \\
+    \midrule
+    hot week & 待实验填入 & 待实验填入 & 待实验填入 \\
+    mild week & 待实验填入 & 待实验填入 & 待实验填入 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{分时电价敏感性分析}
+
+TES 经济性高度依赖电价价差。低价差下，充放冷效率损失可能抵消套利收益；高价差下，TES 更可能体现削峰填谷价值。
+
+\begin{table}[htbp]
+  \centering
+  \caption{电价敏感性结果占位}
+  \begin{tabular}{llll}
+    \toprule
+    Tariff case & Cost saving & TES cycles & Peak grid reduction \\
+    \midrule
+    tariff low & 待实验填入 & 待实验填入 & 待实验填入 \\
+    tariff base & 待实验填入 & 待实验填入 & 待实验填入 \\
+    tariff high & 待实验填入 & 待实验填入 & 待实验填入 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+这一节应作为论文适用边界分析的重点。如果只有高价差场景才有明显收益，需要明确说明 TES-MPC 的经济价值依赖电价结构。
+
+\section{温度约束与 SOC 约束分析}
+
+温度和 SOC 约束决定控制策略是否工程可接受。结果分析应报告最大温度、p95 温度、温度越界次数、SOC 最小值、SOC 最大值和 SOC 越界次数。若出现松弛变量非零，需要说明对应时段的外部扰动和求解器状态。
+
+\section{求解性能分析}
+
+MPC 需要在每个控制步反复求解 MILP，因此求解性能是工程可行性的重要指标。应报告平均求解时间、p95 求解时间、最优求解率、time limit 次数和 infeasible 次数。
+
+\section{经济收益受限原因与适用边界讨论}
+
+如果实验显示成本节省有限，可能原因包括：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item PV 规模相对数据中心负荷过小，能够转移的可再生电力有限。
+  \item TOU 电价价差不足，无法覆盖 TES 充放冷效率损失。
+  \item TES 容量或功率与冷却负荷不匹配。
+  \item 温度约束和终端 SOC 约束限制了自由调度空间。
+  \item 冷机 COP 或温度代理模型过于简化。
+\end{enumerate}
+
+这一节应将负结果转化为工程边界分析。本文方法的价值不仅在于给出某个单一节能数值，也在于提供一个可解释框架，用于判断什么条件下 TES-MPC 值得部署。
+
+\chapter{结论与展望}
+
+\section{主要研究结论}
+
+本文建立了面向数据中心冷却系统的 TES-PV-TOU 控制导向模型，并构建了基于 MILP 的 MPC 控制器草案。该控制器能够在滚动预测时域内优化 TES 充放冷、购电功率和 PV 消纳，同时考虑机房温度约束与 TES SOC 约束。
+
+待闭环仿真实验完成后，本节应根据真实结果总结以下问题：MPC 是否产生合理调度行为，是否相对 no-TES baseline 和 rule-based TES 改善成本或 PV 消纳，温度约束是否保持安全，PV 预测误差和电价价差如何影响结果。
+
+\section{本文不足}
+
+当前研究仍存在以下不足：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item 控制导向温度模型相比完整 EnergyPlus 模型更简化，物理细节有限。
+  \item 冷机 COP、部分负荷效率和辅助设备能耗模型仍需进一步校准。
+  \item PV、天气和负荷预测误差目前采用场景扰动方式，尚未建立概率预测模型。
+  \item 当前实验仍以仿真为主，缺少真实数据中心运行数据验证。
+\end{enumerate}
+
+\section{后续工作展望}
+
+后续可从以下方向扩展：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item 将 MPC 控制层与 EnergyPlus 模型闭环耦合，提升物理保真度。
+  \item 引入更真实的冷机 COP 和部分负荷模型。
+  \item 使用 stochastic MPC 或 robust MPC 处理预测不确定性。
+  \item 联合考虑电池、动态碳强度信号和需求响应。
+  \item 在更长时间尺度和更多天气年份上评估 TES-MPC 的适用边界。
+\end{enumerate}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\appendix
+
+\chapter{主要模型参数}
+
+\begin{table}[htbp]
+  \centering
+  \caption{主要模型参数汇总}
+  \begin{tabular}{lll}
+    \toprule
+    参数 & 数值或占位 & 说明 \\
+    \midrule
+    $\Delta t$ & 0.25 h & 控制步长 \\
+    $N$ & 192 & 预测步数 \\
+    $E_{TES}$ & 18000 kWh & TES 容量 \\
+    $q_{ch}^{max}$ & 4500 kW & 最大充冷功率 \\
+    $q_{dis}^{max}$ & 4500 kW & 最大放冷功率 \\
+    $\eta_{ch}$ & 待配置填入 & 充冷效率 \\
+    $\eta_{dis}$ & 待配置填入 & 放冷效率 \\
+    $\lambda$ & 待配置填入 & TES 自损耗系数 \\
+    $T_{\min}$ & 18 \si{\degreeCelsius} & 温度下限 \\
+    $T_{\max}$ & 27 \si{\degreeCelsius} & 温度上限 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\chapter{MPC 优化问题完整形式}
+
+MPC 完整形式可概括为：
+
+\begin{align}
+  \min_{\mathbf{u}} \quad
+  & \sum_{k=0}^{N-1}
+  \Big[
+    c_k P_{grid,k}\Delta t
+    + \alpha P_{spill,k}\Delta t
+    + \beta(q_{ch,k}+q_{dis,k})\Delta t
+    + \rho_T s_{T,k}
+    + \rho_{SOC}s_{SOC,k}
+    + \rho_{\Delta u} r_{\Delta u,k}
+  \Big] + \rho_f s_f \\
+  \text{s.t.}\quad
+  & SOC_{k+1}
+  =
+  (1-\lambda \Delta t)SOC_k
+  + \frac{\eta_{ch} q_{ch,k}\Delta t}{E_{TES}}
+  - \frac{q_{dis,k}\Delta t}{\eta_{dis}E_{TES}}, \\
+  & T_{k+1}
+  =
+  aT_k
+  + bT_{out,k}
+  + cP_{IT,k}
+  - d(q_{base,k}+q_{dis,k}), \\
+  & P_{grid,k} - P_{spill,k}
+  =
+  P_{facility,k}
+  + P_{TES,ch,k}
+  - P_{TES,dis,k}
+  - P_{PV,k}, \\
+  & SOC_{\min}-s_{SOC,k} \leq SOC_k \leq SOC_{\max}+s_{SOC,k}, \\
+  & T_{\min}-s_{T,k} \leq T_k \leq T_{\max}+s_{T,k}, \\
+  & 0 \leq q_{ch,k} \leq z_{ch,k}q_{ch}^{max}, \\
+  & 0 \leq q_{dis,k} \leq z_{dis,k}q_{dis}^{max}, \\
+  & z_{ch,k}+z_{dis,k}\leq 1, \\
+  & P_{grid,k}\geq 0,\quad P_{spill,k}\geq 0, \\
+  & s_{T,k}\geq 0,\quad s_{SOC,k}\geq 0, \\
+  & z_{ch,k},z_{dis,k}\in\{0,1\}.
+\end{align}
+
+\chapter{实验场景配置}
+
+本附录用于记录最终 \texttt{scenario\_sets.yaml} 或等价配置。当前占位如下：
+
+\begin{verbatim}
+nominal:
+  description: base weather, base PV, base tariff
+baseline_no_tes:
+  tes_enabled: false
+rule_based_tes:
+  controller: rule_based
+pv_error_5:
+  pv_forecast_error: 0.05
+pv_error_10:
+  pv_forecast_error: 0.10
+pv_error_20:
+  pv_forecast_error: 0.20
+hot_week:
+  weather_slice: hot_week
+mild_week:
+  weather_slice: mild_week
+tariff_low:
+  tariff_spread: low
+tariff_base:
+  tariff_spread: base
+tariff_high:
+  tariff_spread: high
+\end{verbatim}
+
+\chapter{代码结构与运行命令}
+
+当前 EnergyPlus 最小模型运行命令示例：
+
+\begin{verbatim}
+cd Nanjing-DataCenter-TES-EnergyPlus
+.\run_energyplus_nanjing.ps1 -EnergyPlusExe "C:\Path\To\energyplus.exe"
+\end{verbatim}
+
+后续控制层运行命令建议：
+
+\begin{verbatim}
+python -m controller.scripts.run_closed_loop --config config/base.yaml
+python -m controller.scripts.run_scenario_matrix --config config/scenario_sets.yaml
+python -m controller.scripts.make_plots --results results/
+python -m controller.scripts.make_report_tables --results results/
+\end{verbatim}
+
+\chapter{补充实验图表清单}
+
+最终论文建议至少准备：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item 数据中心冷却-TES-PV-电网系统结构图。
+  \item MPC 滚动优化流程图。
+  \item nominal case 下 SOC、充冷、放冷曲线。
+  \item nominal case 下 PV、grid import、PV spill 曲线。
+  \item 机房温度轨迹与温度约束。
+  \item no-TES、rule-based TES、MPC 成本对比。
+  \item PV 预测误差对成本、PV spill、温度 violation 的影响。
+  \item hot week 与 mild week 结果对比。
+  \item 不同电价价差下 TES-MPC 经济性对比。
+\end{enumerate}
+
+\chapter{旧技术路线说明}
+
+项目前期曾考虑基于强化学习的数据中心冷却控制路线。但数据中心冷却系统具有强安全约束、真实系统试错成本高、训练稳定性要求高等特点。结合毕业设计周期和可验证性要求，本文将主线调整为基于模型的 MILP-MPC 控制方法。旧 DRL、Sinergym 和失败实验不进入正文主线，仅作为方法选择背景保留。
+
+\end{document}

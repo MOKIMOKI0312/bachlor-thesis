@@ -3,6 +3,7 @@ __pycache__/
 *.pkl
 runs/train/*/episode-*/
 runs/eval/*/
+runs/
 *.log
 tmp/
 Eplus-env-*/

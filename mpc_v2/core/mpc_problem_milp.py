@@ -28,6 +28,7 @@ class ObjectiveWeights:
     w_plr: float = 0.0
     w_start: float = 0.0
     w_demand: float = 1.0
+    w_peak_slack: float = 50000.0
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "ObjectiveWeights":
@@ -73,6 +74,7 @@ class MPCSolution:
     delta_off: np.ndarray
     u_ch: np.ndarray
     u_dis: np.ndarray
+    u_signed: np.ndarray
     soc: np.ndarray
     room_temp_c: np.ndarray
     grid_import_kw: np.ndarray
@@ -84,9 +86,13 @@ class MPCSolution:
     s_soc_high: np.ndarray
     du_ch: np.ndarray
     du_dis: np.ndarray
+    du_signed: np.ndarray
     xi_low_plr: np.ndarray
+    s_peak: np.ndarray
     s_terminal_low: float
     s_terminal_high: float
+    q_ch_max_kw_th: float
+    q_dis_max_kw_th: float
 
     def first_action(self) -> MPCAction:
         q_ch = _clean_power(self.q_ch_tes_kw_th[0])
@@ -95,15 +101,19 @@ class MPCSolution:
         q_load = _clean_power(self.q_load_kw_th[0])
         plant_power = _clean_power(self.plant_power_kw[0])
         mode_index = self.mode_index_at(0)
+        u_ch = _clean_fraction(q_ch / self.q_ch_max_kw_th)
+        u_dis = _clean_fraction(q_dis / self.q_dis_max_kw_th)
         return MPCAction(
             q_ch_tes_kw_th=q_ch,
             q_dis_tes_kw_th=q_dis,
             q_chiller_kw_th=q_chiller,
             q_load_kw_th=q_load,
             plant_power_kw=plant_power,
-            u_ch=float(max(0.0, self.u_ch[0])),
-            u_dis=float(max(0.0, self.u_dis[0])),
+            u_ch=u_ch,
+            u_dis=u_dis,
             mode_index=mode_index,
+            q_ch_max_kw_th=self.q_ch_max_kw_th,
+            q_dis_max_kw_th=self.q_dis_max_kw_th,
         )
 
     def mode_index_at(self, step: int) -> int:
@@ -181,8 +191,11 @@ class EconomicMPCProblem:
         ub[idx.u_dis] = self.valve.u_max if tes_available else 0.0
         lb[idx.u_ch] = self.valve.u_min if tes_available else 0.0
         lb[idx.u_dis] = self.valve.u_min if tes_available else 0.0
+        lb[idx.u_signed] = -self.valve.u_max if tes_available else 0.0
+        ub[idx.u_signed] = self.valve.u_max if tes_available else 0.0
         ub[idx.du_ch] = self.valve.du_max_per_step
         ub[idx.du_dis] = self.valve.du_max_per_step
+        ub[idx.du_signed] = self.valve.du_signed_max_per_step
         lb[idx.soc] = self.tes.soc_physical_min
         ub[idx.soc] = self.tes.soc_physical_max
         lb[idx.temp] = -100.0
@@ -205,11 +218,11 @@ class EconomicMPCProblem:
         c[idx.s_soc_high] = self.weights.w_soc
         c[idx.du_ch] = self.weights.w_valve
         c[idx.du_dis] = self.weights.w_valve
+        c[idx.du_signed] = self.weights.w_valve
         c[idx.xi_low_plr] = self.weights.w_plr
         c[idx.delta_on] = self.weights.w_start
-        c[idx.peak_grid] = (
-            self.weights.w_demand * self.economics.demand_charge_currency_per_kw_day
-        )
+        c[idx.peak_grid] = self.weights.w_demand * self.economics.demand_charge_rate * self.economics.demand_charge_multiplier(n * self.dt_hours)
+        c[idx.s_peak] = self.weights.w_peak_slack
         c[idx.s_terminal_low] = self.weights.w_terminal
         c[idx.s_terminal_high] = self.weights.w_terminal
 
@@ -333,9 +346,16 @@ class EconomicMPCProblem:
                 plant_coefs[int(idx.z_mode[m, t])] = plant_coefs.get(int(idx.z_mode[m, t]), 0.0) - intercept
             rows.append((plant_coefs, 0.0, 0.0))
 
-            rows.append(({int(idx.q_ch[t]): 1.0, int(idx.u_ch[t]): -self.tes.q_ch_max_kw_th}, -np.inf, 0.0))
-            rows.append(({int(idx.q_dis[t]): 1.0, int(idx.u_dis[t]): -self.tes.q_dis_max_kw_th}, -np.inf, 0.0))
+            rows.append(({int(idx.q_ch[t]): 1.0, int(idx.u_ch[t]): -self.tes.q_ch_max_kw_th}, 0.0, 0.0))
+            rows.append(({int(idx.q_dis[t]): 1.0, int(idx.u_dis[t]): -self.tes.q_dis_max_kw_th}, 0.0, 0.0))
             rows.append(({int(idx.u_ch[t]): 1.0, int(idx.u_dis[t]): 1.0}, -np.inf, 1.0))
+            rows.append(
+                (
+                    {int(idx.u_signed[t]): 1.0, int(idx.u_ch[t]): -1.0, int(idx.u_dis[t]): 1.0},
+                    0.0,
+                    0.0,
+                )
+            )
 
             rows.append(({int(idx.temp[t + 1]): 1.0, int(idx.s_t_low[t]): 1.0}, self.temp_min_c, np.inf))
             rows.append(({int(idx.temp[t + 1]): 1.0, int(idx.s_t_high[t]): -1.0}, -np.inf, self.temp_max_c))
@@ -349,22 +369,34 @@ class EconomicMPCProblem:
                         int(idx.spill[t]): -1.0,
                         int(idx.plant_power[t]): -1.0,
                     },
-                    -float(forecast.pv_forecast_kw[t]),
-                    -float(forecast.pv_forecast_kw[t]),
+                    float(forecast.it_load_forecast_kw[t]) - float(forecast.pv_forecast_kw[t]),
+                    float(forecast.it_load_forecast_kw[t]) - float(forecast.pv_forecast_kw[t]),
                 )
             )
             rows.append(({int(idx.grid[t]): 1.0, int(idx.peak_grid[0]): -1.0}, -np.inf, 0.0))
+            if self.economics.peak_cap_kw is not None:
+                rows.append(
+                    (
+                        {int(idx.grid[t]): 1.0, int(idx.s_peak[t]): -1.0},
+                        -np.inf,
+                        float(self.economics.peak_cap_kw),
+                    )
+                )
 
             if t == 0:
                 prev_u_ch_terms: dict[int, float] = {}
                 prev_u_dis_terms: dict[int, float] = {}
+                prev_u_signed_terms: dict[int, float] = {}
                 prev_u_ch = state.prev_u_ch
                 prev_u_dis = state.prev_u_dis
+                prev_u_signed = state.prev_u_signed
             else:
                 prev_u_ch_terms = {int(idx.u_ch[t - 1]): -1.0}
                 prev_u_dis_terms = {int(idx.u_dis[t - 1]): -1.0}
+                prev_u_signed_terms = {int(idx.u_signed[t - 1]): -1.0}
                 prev_u_ch = 0.0
                 prev_u_dis = 0.0
+                prev_u_signed = 0.0
             rows.append(({int(idx.u_ch[t]): 1.0, int(idx.du_ch[t]): -1.0, **prev_u_ch_terms}, -np.inf, prev_u_ch))
             rows.append(
                 (
@@ -383,6 +415,24 @@ class EconomicMPCProblem:
                     },
                     -np.inf,
                     -prev_u_dis,
+                )
+            )
+            rows.append(
+                (
+                    {int(idx.u_signed[t]): 1.0, int(idx.du_signed[t]): -1.0, **prev_u_signed_terms},
+                    -np.inf,
+                    prev_u_signed,
+                )
+            )
+            rows.append(
+                (
+                    {
+                        int(idx.u_signed[t]): -1.0,
+                        int(idx.du_signed[t]): -1.0,
+                        **{k: -v for k, v in prev_u_signed_terms.items()},
+                    },
+                    -np.inf,
+                    -prev_u_signed,
                 )
             )
 
@@ -435,6 +485,7 @@ class EconomicMPCProblem:
             delta_off=x[idx.delta_off],
             u_ch=x[idx.u_ch],
             u_dis=x[idx.u_dis],
+            u_signed=x[idx.u_signed],
             soc=x[idx.soc],
             room_temp_c=x[idx.temp],
             grid_import_kw=x[idx.grid],
@@ -446,9 +497,13 @@ class EconomicMPCProblem:
             s_soc_high=x[idx.s_soc_high],
             du_ch=x[idx.du_ch],
             du_dis=x[idx.du_dis],
+            du_signed=x[idx.du_signed],
             xi_low_plr=x[idx.xi_low_plr],
+            s_peak=x[idx.s_peak],
             s_terminal_low=float(x[idx.s_terminal_low][0]),
             s_terminal_high=float(x[idx.s_terminal_high][0]),
+            q_ch_max_kw_th=self.tes.q_ch_max_kw_th,
+            q_dis_max_kw_th=self.tes.q_dis_max_kw_th,
         )
 
 
@@ -470,6 +525,7 @@ class _Index:
         self.delta_off = np.arange(cursor, cursor + m * n).reshape(m, n); cursor += m * n
         self.u_ch = np.arange(cursor, cursor + n); cursor += n
         self.u_dis = np.arange(cursor, cursor + n); cursor += n
+        self.u_signed = np.arange(cursor, cursor + n); cursor += n
         self.soc = np.arange(cursor, cursor + n + 1); cursor += n + 1
         self.temp = np.arange(cursor, cursor + n + 1); cursor += n + 1
         self.grid = np.arange(cursor, cursor + n); cursor += n
@@ -481,7 +537,9 @@ class _Index:
         self.s_soc_high = np.arange(cursor, cursor + n); cursor += n
         self.du_ch = np.arange(cursor, cursor + n); cursor += n
         self.du_dis = np.arange(cursor, cursor + n); cursor += n
+        self.du_signed = np.arange(cursor, cursor + n); cursor += n
         self.xi_low_plr = np.arange(cursor, cursor + n); cursor += n
+        self.s_peak = np.arange(cursor, cursor + n); cursor += n
         self.s_terminal_low = np.arange(cursor, cursor + 1); cursor += 1
         self.s_terminal_high = np.arange(cursor, cursor + 1); cursor += 1
         self.total = cursor
@@ -500,3 +558,8 @@ def _status_name(status_code: int) -> str:
 def _clean_power(value: float) -> float:
     value = float(max(0.0, value))
     return 0.0 if value < 1e-6 else value
+
+
+def _clean_fraction(value: float) -> float:
+    value = min(1.0, max(0.0, float(value)))
+    return 0.0 if value < 1e-9 else value

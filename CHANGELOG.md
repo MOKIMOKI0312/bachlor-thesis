@@ -184,6 +184,65 @@ Conclusion boundary:
 - Result summary: `results/mpc_v2_20260505/summary.md`
 - Review archive: `exports/mpc_v2_code_results_review_20260505.zip`
 
+## v0.2.2-chiller-tes-attribution - 2026-05-06
+
+### Git
+
+- Commit: not committed yet
+- Branch: `codex/55TES-MPC`
+
+### Changed Scope
+
+- 新增 `mpc_no_tes` baseline，用同一 MILP、温度约束、冷机 mode、TOU/PV/grid 目标运行，但禁用 TES 充放冷并保持 SOC 不变。
+- 主 PV/grid 口径改为全设施 behind-the-meter：`grid = max(0, IT + cold station - PV)`；冷站侧 proxy cost/grid/PV 指标保留为辅助归因指标。
+- 默认 MPC horizon 改为 48 steps，即 12 h receding horizon；192-step / 48 h horizon 只作为 slow/manual 扩展。
+- 新增 `attribution_core` 结果矩阵：direct no-TES、MPC no-TES、RBC TES、MPC TES、SOC-neutral attempt。
+- 更新 README 和论文草稿事实口径。
+
+### Validation
+
+```powershell
+pytest -q
+git diff --check
+```
+
+结果：
+
+```text
+23 passed
+git diff --check passed with line-ending warnings only
+```
+
+### 运行结果位置
+
+- `results/chiller_tes_mpc_attribution_20260505/`
+- 核心文件：
+  - `summary.md`
+  - `attribution_matrix.csv`
+  - `README_REVIEW.md`
+  - 每个 case 的 `monitor.csv`、`solver_log.csv`、`episode_summary.json`、`config_effective.yaml`
+
+### 运行结果简述
+
+- 5 个 7-day case 均为 672 steps、12 h horizon，且均满足 fallback=0、温度 degree-hour=0、物理一致性违约=0、signed-valve 违约=0。
+- 全设施侧主成本下，`mpc_no_tes` 相比 direct no-TES 降本约 4.56%，说明价格感知冷机调度、热惯性和 mode 优化解释了主要收益。
+- `mpc_tes` 相比 `mpc_no_tes` 额外降本约 0.09%，这才是当前结果中 TES 的增量经济贡献。
+- `mpc_tes` 出现 TES 双向行为：充冷约 21676.87 kWh_th，放冷约 22821.69 kWh_th，放冷加权电价高于充冷加权电价。
+- nominal 全设施侧 PV spill 为 0，因为 IT 负荷显著大于 6 MWp PV；当前不能声称 TES 显著提高 PV 消纳。
+- `mpc_tes_soc_neutral` 是库存中性尝试，但 final SOC 仍为 0.15，未达到 `abs(final SOC - initial SOC) <= 0.03`，说明当前滚动 horizon 终端惩罚不能保证 episode-end SOC neutral。
+
+### Thesis Impact
+
+- `thesis_draft.tex` 已同步更新：新增 `mpc_no_tes` attribution baseline、全设施 PV/grid 口径、12 h horizon、TES 增量贡献和 SOC-neutral 未达标边界。
+- `references.bib` 未更新，因为未新增或删除文献引用。
+- 论文中不能写 TES 单独带来 direct baseline 到 MPC 的全部降本；应写冷机经济 MPC 与 TES 的共同贡献，并用 `mpc_tes - mpc_no_tes` 表示 TES 增量贡献。
+
+### Known Limitations
+
+- SOC-neutral 仍未实现，需要 episode-end terminal constraint 或截断末端 horizon 才能严格闭合库存。
+- nominal 全设施 PV spill 为 0，不能用于证明 TES 吸收 PV surplus。
+- 48 h prediction horizon 未作为最终候选运行，只保留为慢速扩展。
+
 ## Unreleased
 
 后续版本建议优先处理：

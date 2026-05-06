@@ -71,10 +71,12 @@ class RoomModel:
     ) -> float:
         """Advance the room proxy by one time step."""
 
+        has_total = q_cooling_total_kw_th is not None
+        has_components = base_cooling_kw_th is not None or q_dis_tes_kw_th is not None
+        if has_total and has_components:
+            raise ValueError("pass either q_cooling_total_kw_th or base/q_dis components, not both")
         if q_cooling_total_kw_th is None:
             q_cooling_total_kw_th = float(base_cooling_kw_th or 0.0) + float(q_dis_tes_kw_th or 0.0)
-        elif q_dis_tes_kw_th is not None and base_cooling_kw_th is None:
-            q_cooling_total_kw_th = float(q_cooling_total_kw_th) + float(q_dis_tes_kw_th)
         if it_load_kw < 0 or q_cooling_total_kw_th < -1e-9:
             raise ValueError("it_load_kw and q_cooling_total_kw_th must be non-negative")
         temp_a, temp_out_gain, heat_gain, cooling_gain = self.coefficients()

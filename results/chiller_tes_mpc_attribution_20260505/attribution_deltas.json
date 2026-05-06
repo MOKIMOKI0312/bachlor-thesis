@@ -1,0 +1,9 @@
+{
+  "direct_to_mpc_no_tes_cost_delta": -13846.169948189752,
+  "direct_to_mpc_no_tes_cost_pct": -4.56137288815709,
+  "mpc_tes_incremental_cost_delta_vs_mpc_no_tes": -258.9310670407722,
+  "mpc_tes_incremental_cost_pct_vs_mpc_no_tes": -0.08937702542094207,
+  "soc_neutral_cost_delta_vs_inventory_using_mpc": -47.44852708163671,
+  "soc_neutral_cost_pct_vs_inventory_using_mpc": -0.016392787310537487,
+  "soc_neutral_abs_soc_error": 0.35
+}

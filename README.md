@@ -52,14 +52,27 @@ From the repository root:
 
 ```powershell
 python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case-id smoke_chiller_no_tes --controller-mode no_tes --steps 96 --output-root runs/chiller_tes_v1_smoke
+python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case-id smoke_chiller_mpc_no_tes --controller-mode mpc_no_tes --steps 96 --output-root runs/chiller_tes_v1_smoke
 python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case-id smoke_chiller_rbc --controller-mode rbc --steps 96 --output-root runs/chiller_tes_v1_smoke
 python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case-id smoke_chiller_tes_mpc --controller-mode mpc --steps 96 --output-root runs/chiller_tes_v1_smoke
-python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set thesis_chiller_tes --steps 96 --output-dir runs/chiller_tes_v1_validation
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set attribution_core --output-dir runs/attribution
 python -m pytest -q
 ```
 
-Frozen chiller+TES v1.0 results are under:
+The current candidate horizon is 48 steps, i.e. 12 h at 15 min resolution. A
+192-step / 48 h horizon is retained only as a slow manual extension.
+
+Main PV/grid accounting is whole-facility behind-the-meter:
 
 ```text
-results/chiller_tes_mpc_v1_20260505/
+grid_import_kw - pv_spill_kw = it_load_kw + cold_station_power_kw - pv_actual_kw
+```
+
+Cold-station-only proxy cost/grid/PV metrics are still reported for attribution
+against older results, but they are not the primary cost boundary.
+
+Frozen attribution results are under:
+
+```text
+results/chiller_tes_mpc_attribution_20260505/
 ```

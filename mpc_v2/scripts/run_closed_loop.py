@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 import pandas as pd
+import yaml
 
 from mpc_v2.core.controller import EconomicTESMPCController
 from mpc_v2.core.facility_model import (
@@ -19,10 +24,11 @@ from mpc_v2.core.facility_model import (
     FacilityModel,
     FacilityParams,
     ValveParams,
+    grid_and_spill_from_load_kw,
     grid_and_spill_from_plant_kw,
 )
 from mpc_v2.core.forecast import ForecastBuilder
-from mpc_v2.core.io_schemas import MPCAction, MPCState, load_yaml, parse_timestamp
+from mpc_v2.core.io_schemas import MPCAction, MPCState, SchemaValidationError, load_yaml, parse_timestamp
 from mpc_v2.core.metrics import compute_episode_metrics
 from mpc_v2.core.room_model import RoomModel, RoomParams
 from mpc_v2.core.tes_model import TESModel, TESParams
@@ -40,20 +46,44 @@ def run_closed_loop(
     outdoor_offset_c: float = 0.0,
     pv_scale: float | None = None,
     demand_charge_rate: float | None = None,
+    demand_charge_basis: str | None = None,
     demand_charge_multiplier: float = 1.0,
+    horizon_steps_override: int | None = None,
+    w_terminal: float | None = None,
+    w_spill: float | None = None,
+    w_cycle: float | None = None,
+    soc_target: float | None = None,
+    peak_cap_kw: float | None = None,
 ) -> Path:
     """Run closed-loop validation and write monitor/solver/summary outputs."""
 
     cfg = load_yaml(config_path)
     cfg.setdefault("economics", {})
+    if "demand_charge_rate" not in cfg["economics"] and "demand_charge_currency_per_kw_day" in cfg["economics"]:
+        cfg["economics"]["demand_charge_rate"] = cfg["economics"].pop("demand_charge_currency_per_kw_day")
+    cfg["economics"].setdefault("demand_charge_basis", "per_day_proxy")
     if demand_charge_rate is None:
-        cfg["economics"]["demand_charge_currency_per_kw_day"] = (
-            float(cfg["economics"].get("demand_charge_currency_per_kw_day", 0.0)) * float(demand_charge_multiplier)
+        cfg["economics"]["demand_charge_rate"] = (
+            float(cfg["economics"].get("demand_charge_rate", 0.0)) * float(demand_charge_multiplier)
         )
     else:
-        cfg["economics"]["demand_charge_currency_per_kw_day"] = float(demand_charge_rate)
+        cfg["economics"]["demand_charge_rate"] = float(demand_charge_rate)
+    if demand_charge_basis is not None:
+        cfg["economics"]["demand_charge_basis"] = str(demand_charge_basis)
     if pv_scale is not None:
         cfg["economics"]["pv_scale"] = float(pv_scale)
+    if peak_cap_kw is not None:
+        cfg["economics"]["peak_cap_kw"] = float(peak_cap_kw)
+    if horizon_steps_override is not None:
+        cfg["time"]["horizon_steps"] = int(horizon_steps_override)
+    if w_terminal is not None:
+        cfg["objective"]["w_terminal"] = float(w_terminal)
+    if w_spill is not None:
+        cfg["objective"]["w_spill"] = float(w_spill)
+    if w_cycle is not None:
+        cfg["objective"]["w_cycle"] = float(w_cycle)
+    if soc_target is not None:
+        cfg["tes"]["soc_target"] = float(soc_target)
 
     dt_hours = float(cfg["time"]["dt_hours"])
     horizon_steps = int(cfg["time"]["horizon_steps"])
@@ -65,6 +95,18 @@ def run_closed_loop(
         run_dir = root / f"{case_id}_{suffix:02d}"
         suffix += 1
     run_dir.mkdir(parents=True, exist_ok=False)
+    _write_effective_config(
+        run_dir=run_dir,
+        cfg=cfg,
+        config_path=config_path,
+        case_id=case_id,
+        controller_mode=controller_mode,
+        closed_loop_steps=n_steps,
+        pv_error_sigma=pv_error_sigma,
+        seed=seed,
+        tariff_multiplier=tariff_multiplier,
+        outdoor_offset_c=outdoor_offset_c,
+    )
 
     tes_params = TESParams.from_config(cfg["tes"])
     room_params = RoomParams.from_config(cfg["room"])
@@ -94,12 +136,14 @@ def run_closed_loop(
     seed_value = int(seed if seed is not None else synthetic.get("seed", 7))
 
     soc = tes_params.initial_soc
+    initial_soc = soc
     room_temp_c = room_params.initial_room_temp_c
     prev_q_ch = 0.0
     prev_q_dis = 0.0
     prev_u_ch = 0.0
     prev_u_dis = 0.0
     prev_mode_index = -1
+    episode_peak_grid_so_far = 0.0
     monitor_rows: list[dict[str, Any]] = []
     solver_rows: list[dict[str, Any]] = []
 
@@ -136,10 +180,12 @@ def run_closed_loop(
         predicted_room_temp = room_temp_c
         predicted_soc = soc
         predicted_peak_grid = 0.0
+        solver_error = None
         action: MPCAction
         solution = None
 
-        if controller_mode in {"mpc", "no_tes"}:
+        is_mpc_mode = controller_mode in {"mpc", "mpc_no_tes"}
+        if is_mpc_mode:
             try:
                 state = MPCState(
                     soc=soc,
@@ -169,11 +215,26 @@ def run_closed_loop(
                     wet_bulb_c=float(actual.wet_bulb_or_default()[0]),
                     it_load_kw=float(actual.it_load_forecast_kw[0]),
                     temp_target_c=float(cfg["temperature"]["max_c"]) - 0.5,
+                    valve_params=valve_params,
+                    prev_u_ch=prev_u_ch,
+                    prev_u_dis=prev_u_dis,
+                    tes_params=tes_params,
                 )
                 solve_status = "fallback"
                 fallback_used = True
                 objective_value = 0.0
                 solver_error = str(exc)
+        elif controller_mode == "no_tes":
+            action = _no_tes_action(
+                room_model=room_model,
+                chiller_model=chiller_model,
+                room_temp_c=room_temp_c,
+                outdoor_temp_c=float(actual.outdoor_temp_forecast_c[0]),
+                wet_bulb_c=float(actual.wet_bulb_or_default()[0]),
+                it_load_kw=float(actual.it_load_forecast_kw[0]),
+                temp_target_c=float(cfg["temperature"]["max_c"]) - 0.5,
+                tes_params=tes_params,
+            )
         elif controller_mode == "rbc":
             action = _rbc_action(
                 forecast=forecast,
@@ -191,12 +252,49 @@ def run_closed_loop(
         else:
             raise ValueError(f"unsupported controller_mode: {controller_mode}")
 
+        try:
+            action.validate()
+        except SchemaValidationError as exc:
+            if not is_mpc_mode:
+                raise
+            action = _fallback_action(
+                room_model=room_model,
+                chiller_model=chiller_model,
+                room_temp_c=room_temp_c,
+                outdoor_temp_c=float(actual.outdoor_temp_forecast_c[0]),
+                wet_bulb_c=float(actual.wet_bulb_or_default()[0]),
+                it_load_kw=float(actual.it_load_forecast_kw[0]),
+                temp_target_c=float(cfg["temperature"]["max_c"]) - 0.5,
+                valve_params=valve_params,
+                prev_u_ch=prev_u_ch,
+                prev_u_dis=prev_u_dis,
+                tes_params=tes_params,
+            )
+            action.validate()
+            solve_status = "fallback"
+            fallback_used = True
+            objective_value = 0.0
+            solver_error = f"action validation failed: {exc}"
+
         actual_pv = float(actual.pv_forecast_kw[0])
-        grid_import_kw, pv_spill_kw = grid_and_spill_from_plant_kw(action.plant_power_kw, actual_pv)
         actual_it = float(actual.it_load_forecast_kw[0])
         facility_power_kw = actual_it + action.plant_power_kw
+        grid_import_kw, pv_spill_kw = grid_and_spill_from_load_kw(facility_power_kw, actual_pv)
+        cold_station_proxy_grid_kw, cold_station_proxy_spill_kw = grid_and_spill_from_plant_kw(
+            action.plant_power_kw,
+            actual_pv,
+        )
+        episode_peak_grid_so_far = max(episode_peak_grid_so_far, grid_import_kw)
         pue = facility_power_kw / max(1e-9, actual_it)
         mode_flags = _mode_flags(action.mode_index, len(chiller_params.modes))
+        mode_min, mode_max = _mode_bounds(action.mode_index, chiller_params)
+        mode_specific_plr = action.q_chiller_kw_th / mode_max if mode_max > 1e-9 else 0.0
+        instant_chiller_cop = action.q_chiller_kw_th / action.plant_power_kw if action.plant_power_kw > 1e-9 else 0.0
+        u_signed = action.u_signed
+        prev_u_signed = prev_u_ch - prev_u_dis
+        signed_du = abs(u_signed - prev_u_signed)
+        peak_cap = economics_params.peak_cap_kw
+        peak_slack_kw = max(0.0, grid_import_kw - peak_cap) if peak_cap is not None else 0.0
         monitor_row = {
             "timestamp": now.isoformat(sep=" "),
             "step": step,
@@ -208,7 +306,9 @@ def run_closed_loop(
             "pv_actual_kw": actual_pv,
             "pv_forecast_kw": float(forecast.pv_forecast_kw[0]),
             "price_currency_per_mwh": float(actual.price_forecast[0]),
-            "demand_charge_rate": economics_params.demand_charge_currency_per_kw_day,
+            "demand_charge_rate": economics_params.demand_charge_rate,
+            "demand_charge_basis": economics_params.demand_charge_basis,
+            "peak_cap_kw": peak_cap,
             "base_facility_kw": float(actual.base_facility_kw[0]),
             "base_cooling_kw_th": float(actual.base_cooling_kw_th[0]),
             "q_chiller_kw_th": action.q_chiller_kw_th,
@@ -217,14 +317,25 @@ def run_closed_loop(
             "q_dis_tes_kw_th": action.q_dis_tes_kw_th,
             "u_ch": action.u_ch,
             "u_dis": action.u_dis,
+            "u_signed": u_signed,
             "du_ch": abs(action.u_ch - prev_u_ch),
             "du_dis": abs(action.u_dis - prev_u_dis),
+            "signed_du": signed_du,
+            "du_signed_max": valve_params.du_signed_max_per_step,
             "mode_index": action.mode_index,
+            "selected_mode_q_min_kw_th": mode_min,
+            "selected_mode_q_max_kw_th": mode_max,
+            "mode_specific_plr": mode_specific_plr,
+            "instant_chiller_cop": instant_chiller_cop,
             "plant_power_kw": action.plant_power_kw,
             "cold_station_power_kw": action.plant_power_kw,
             "grid_import_kw": grid_import_kw,
             "pv_spill_kw": pv_spill_kw,
-            "peak_grid_kw": max(predicted_peak_grid, grid_import_kw),
+            "cold_station_proxy_grid_import_kw": cold_station_proxy_grid_kw,
+            "cold_station_proxy_pv_spill_kw": cold_station_proxy_spill_kw,
+            "episode_peak_grid_so_far_kw": episode_peak_grid_so_far,
+            "predicted_peak_grid_kw": predicted_peak_grid,
+            "peak_slack_kw": peak_slack_kw,
             "room_temp_c": room_temp_c,
             "predicted_room_temp_c": predicted_room_temp,
             "soc": soc,
@@ -243,13 +354,14 @@ def run_closed_loop(
             "solve_time_s": solve_time_s,
             "mip_gap": mip_gap,
             "mode_index": action.mode_index,
-            "peak_grid_kw": monitor_row["peak_grid_kw"],
+            "predicted_peak_grid_kw": predicted_peak_grid,
+            "episode_peak_grid_so_far_kw": episode_peak_grid_so_far,
         }
-        if fallback_used:
+        if fallback_used and solver_error is not None:
             solver_row["solver_error"] = solver_error
         solver_rows.append(solver_row)
 
-        if controller_mode == "no_tes":
+        if controller_mode in {"no_tes", "mpc_no_tes"}:
             next_soc = soc
         else:
             next_soc = tes_model.next_soc(soc, action.q_ch_tes_kw_th, action.q_dis_tes_kw_th)
@@ -280,7 +392,10 @@ def run_closed_loop(
         temp_max_c=float(cfg["temperature"]["max_c"]),
         soc_physical_min=tes_params.soc_physical_min,
         soc_physical_max=tes_params.soc_physical_max,
+        soc_planning_max=tes_params.soc_planning_max,
         tes_capacity_kwh_th=tes_params.capacity_kwh_th,
+        initial_soc=initial_soc,
+        final_soc_after_last_update=soc,
     )
     (run_dir / "episode_summary.json").write_text(json.dumps(asdict(summary), indent=2), encoding="utf-8")
     return run_dir
@@ -294,19 +409,45 @@ def _fallback_action(
     wet_bulb_c: float,
     it_load_kw: float,
     temp_target_c: float,
+    valve_params: ValveParams,
+    prev_u_ch: float,
+    prev_u_dis: float,
+    tes_params: TESParams,
 ) -> MPCAction:
     q_load = room_model.required_cooling_kw_th(room_temp_c, outdoor_temp_c, it_load_kw, temp_target_c)
-    q_chiller, mode_index, plant_power = chiller_model.dispatch(q_load, wet_bulb_c)
-    q_load = q_chiller
-    return MPCAction(
-        q_ch_tes_kw_th=0.0,
-        q_dis_tes_kw_th=0.0,
-        q_chiller_kw_th=q_chiller,
-        q_load_kw_th=q_load,
-        plant_power_kw=plant_power,
+    u_signed = _ramp_signed(prev_u_ch - prev_u_dis, 0.0, valve_params.du_signed_max_per_step)
+    return _dispatch_chiller_supply(
+        chiller_model=chiller_model,
+        wet_bulb_c=wet_bulb_c,
+        q_required_load_kw_th=q_load,
+        q_ch_target_kw_th=0.0,
+        q_dis_kw_th=0.0,
+        u_ch=max(0.0, u_signed),
+        u_dis=max(0.0, -u_signed),
+        tes_params=tes_params,
+    )
+
+
+def _no_tes_action(
+    room_model: RoomModel,
+    chiller_model: ChillerPlantModel,
+    room_temp_c: float,
+    outdoor_temp_c: float,
+    wet_bulb_c: float,
+    it_load_kw: float,
+    temp_target_c: float,
+    tes_params: TESParams,
+) -> MPCAction:
+    q_load = room_model.required_cooling_kw_th(room_temp_c, outdoor_temp_c, it_load_kw, temp_target_c)
+    return _dispatch_chiller_supply(
+        chiller_model=chiller_model,
+        wet_bulb_c=wet_bulb_c,
+        q_required_load_kw_th=q_load,
+        q_ch_target_kw_th=0.0,
+        q_dis_kw_th=0.0,
         u_ch=0.0,
         u_dis=0.0,
-        mode_index=mode_index,
+        tes_params=tes_params,
     )
 
 
@@ -331,44 +472,38 @@ def _rbc_action(
     it_load = float(forecast.it_load_forecast_kw[0])
     q_required = room_model.required_cooling_kw_th(room_temp_c, outdoor, it_load, temp_target_c)
 
-    q_dis = 0.0
-    if high_price and soc > tes_params.soc_planning_min + 1e-6:
-        soc_available_kw = (soc - tes_params.soc_planning_min) * tes_params.eta_dis * tes_params.capacity_kwh_th / dt_hours
-        q_dis = min(tes_params.q_dis_max_kw_th, soc_available_kw, q_required)
-
+    ch_margin = tes_params.eta_ch * tes_params.q_ch_max_kw_th * valve_params.du_signed_max_per_step * dt_hours / tes_params.capacity_kwh_th
+    dis_margin = (
+        tes_params.q_dis_max_kw_th
+        * valve_params.du_signed_max_per_step
+        * dt_hours
+        / (tes_params.eta_dis * tes_params.capacity_kwh_th)
+    )
+    target_signed = 0.0
+    if low_price and soc < tes_params.soc_planning_max - ch_margin:
+        target_signed = valve_params.du_signed_max_per_step
+    elif high_price and soc > tes_params.soc_planning_min + dis_margin and q_required > 1e-9:
+        target_signed = -valve_params.du_signed_max_per_step
+    prev_signed = prev_u_ch - prev_u_dis
+    u_signed = _ramp_signed(prev_signed, target_signed, valve_params.du_signed_max_per_step)
+    u_ch = max(0.0, u_signed)
+    u_dis = max(0.0, -u_signed)
+    soc_available_kw = (soc - tes_params.soc_physical_min) * tes_params.eta_dis * tes_params.capacity_kwh_th / dt_hours
+    soc_headroom_kw = (tes_params.soc_physical_max - soc) * tes_params.capacity_kwh_th / (
+        tes_params.eta_ch * dt_hours
+    )
+    q_ch = min(u_ch * tes_params.q_ch_max_kw_th, max(0.0, soc_headroom_kw))
+    q_dis = min(u_dis * tes_params.q_dis_max_kw_th, max(0.0, soc_available_kw))
     q_load = max(0.0, q_required - q_dis)
-    q_ch = 0.0
-    if low_price and soc < tes_params.soc_planning_max - 1e-6:
-        soc_headroom_kw = (tes_params.soc_planning_max - soc) * tes_params.capacity_kwh_th / (
-            tes_params.eta_ch * dt_hours
-        )
-        q_ch = min(tes_params.q_ch_max_kw_th, soc_headroom_kw)
-
-    target_u_ch = q_ch / max(1e-9, tes_params.q_ch_max_kw_th)
-    target_u_dis = q_dis / max(1e-9, tes_params.q_dis_max_kw_th)
-    u_ch = _ramp(prev_u_ch, target_u_ch, valve_params.du_max_per_step)
-    u_dis = _ramp(prev_u_dis, target_u_dis, valve_params.du_max_per_step)
-    if u_ch + u_dis > 1.0:
-        if high_price:
-            u_ch = 0.0
-        else:
-            u_dis = 0.0
-    q_ch = min(q_ch, u_ch * tes_params.q_ch_max_kw_th)
-    q_dis = min(q_dis, u_dis * tes_params.q_dis_max_kw_th)
-    q_load = max(0.0, q_required - q_dis)
-    q_chiller_req = q_load + q_ch
-    q_chiller, mode_index, plant_power = chiller_model.dispatch(q_chiller_req, wet_bulb)
-    if q_chiller > q_load + q_ch + 1e-6:
-        q_load += q_chiller - q_load - q_ch
-    return MPCAction(
-        q_ch_tes_kw_th=q_ch,
-        q_dis_tes_kw_th=q_dis,
-        q_chiller_kw_th=q_chiller,
-        q_load_kw_th=q_load,
-        plant_power_kw=plant_power,
+    return _dispatch_chiller_supply(
+        chiller_model=chiller_model,
+        wet_bulb_c=wet_bulb,
+        q_required_load_kw_th=q_load,
+        q_ch_target_kw_th=q_ch,
+        q_dis_kw_th=q_dis,
         u_ch=u_ch,
         u_dis=u_dis,
-        mode_index=mode_index,
+        tes_params=tes_params,
     )
 
 
@@ -378,8 +513,98 @@ def _ramp(previous: float, target: float, step_limit: float) -> float:
     return min(previous + step_limit, max(previous - step_limit, target))
 
 
+def _ramp_signed(previous: float, target: float, step_limit: float) -> float:
+    target = min(1.0, max(-1.0, float(target)))
+    previous = min(1.0, max(-1.0, float(previous)))
+    return min(previous + step_limit, max(previous - step_limit, target))
+
+
+def _dispatch_chiller_supply(
+    chiller_model: ChillerPlantModel,
+    wet_bulb_c: float,
+    q_required_load_kw_th: float,
+    q_ch_target_kw_th: float,
+    q_dis_kw_th: float,
+    u_ch: float,
+    u_dis: float,
+    tes_params: TESParams,
+) -> MPCAction:
+    q_required_load = max(0.0, float(q_required_load_kw_th))
+    q_ch_target = max(0.0, float(q_ch_target_kw_th))
+    q_chiller_req = q_required_load + q_ch_target
+    q_chiller_actual, mode_index, plant_power = chiller_model.dispatch(q_chiller_req, wet_bulb_c)
+
+    if q_chiller_actual < q_chiller_req - 1e-6:
+        q_load_actual = min(q_required_load, q_chiller_actual)
+        remaining = max(0.0, q_chiller_actual - q_load_actual)
+        q_ch_actual = min(q_ch_target, remaining)
+    else:
+        q_load_actual = q_required_load
+        q_ch_actual = q_ch_target
+
+    q_dis_actual = max(0.0, float(q_dis_kw_th))
+    u_ch = q_ch_actual / max(1e-9, tes_params.q_ch_max_kw_th)
+    u_dis = q_dis_actual / max(1e-9, tes_params.q_dis_max_kw_th)
+
+    action = MPCAction(
+        q_ch_tes_kw_th=q_ch_actual,
+        q_dis_tes_kw_th=q_dis_actual,
+        q_chiller_kw_th=q_chiller_actual,
+        q_load_kw_th=q_load_actual,
+        plant_power_kw=plant_power,
+        u_ch=max(0.0, min(1.0, float(u_ch))),
+        u_dis=max(0.0, min(1.0, float(u_dis))),
+        mode_index=mode_index,
+        q_ch_max_kw_th=tes_params.q_ch_max_kw_th,
+        q_dis_max_kw_th=tes_params.q_dis_max_kw_th,
+    )
+    action.validate()
+    return action
+
+
 def _mode_flags(mode_index: int, n_modes: int) -> dict[str, int]:
     return {f"z_mode_{i}": 1 if i == mode_index else 0 for i in range(n_modes)}
+
+
+def _mode_bounds(mode_index: int, chiller_params: ChillerPlantParams) -> tuple[float, float]:
+    if mode_index < 0:
+        return 0.0, 0.0
+    mode = chiller_params.modes[mode_index]
+    return mode.q_min_kw_th, mode.q_max_kw_th
+
+
+def _write_effective_config(
+    run_dir: Path,
+    cfg: dict[str, Any],
+    config_path: str | Path,
+    case_id: str,
+    controller_mode: str,
+    closed_loop_steps: int,
+    pv_error_sigma: float,
+    seed: int | None,
+    tariff_multiplier: float,
+    outdoor_offset_c: float,
+) -> None:
+    snapshot = dict(cfg)
+    snapshot["effective_run"] = {
+        "config_path": str(config_path),
+        "case_id": case_id,
+        "controller_mode": controller_mode,
+        "closed_loop_steps": int(closed_loop_steps),
+        "horizon_steps": int(cfg["time"]["horizon_steps"]),
+        "pv_error_sigma": float(pv_error_sigma),
+        "seed": seed,
+        "tariff_multiplier": float(tariff_multiplier),
+        "outdoor_offset_c": float(outdoor_offset_c),
+        "pv_scale": float(cfg.get("economics", {}).get("pv_scale", 1.0)),
+        "demand_charge_rate": float(cfg.get("economics", {}).get("demand_charge_rate", 0.0)),
+        "demand_charge_basis": str(cfg.get("economics", {}).get("demand_charge_basis", "per_day_proxy")),
+        "peak_cap_kw": cfg.get("economics", {}).get("peak_cap_kw"),
+        "w_terminal": float(cfg.get("objective", {}).get("w_terminal", 0.0)),
+        "w_spill": float(cfg.get("objective", {}).get("w_spill", 0.0)),
+        "w_cycle": float(cfg.get("objective", {}).get("w_cycle", 0.0)),
+    }
+    (run_dir / "config_effective.yaml").write_text(yaml.safe_dump(snapshot, sort_keys=False), encoding="utf-8")
 
 
 def main() -> None:
@@ -390,12 +615,19 @@ def main() -> None:
     parser.add_argument("--output-root", default=None)
     parser.add_argument("--pv-error-sigma", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--controller-mode", default="mpc", choices=["mpc", "no_tes", "rbc"])
+    parser.add_argument("--controller-mode", default="mpc", choices=["mpc", "mpc_no_tes", "no_tes", "rbc"])
     parser.add_argument("--tariff-multiplier", type=float, default=1.0)
     parser.add_argument("--outdoor-offset-c", type=float, default=0.0)
     parser.add_argument("--pv-scale", type=float, default=None)
     parser.add_argument("--demand-charge-rate", type=float, default=None)
+    parser.add_argument("--demand-charge-basis", default=None, choices=["per_day_proxy", "per_episode"])
     parser.add_argument("--demand-charge-multiplier", type=float, default=1.0)
+    parser.add_argument("--horizon-steps", type=int, default=None)
+    parser.add_argument("--w-terminal", type=float, default=None)
+    parser.add_argument("--w-spill", type=float, default=None)
+    parser.add_argument("--w-cycle", type=float, default=None)
+    parser.add_argument("--soc-target", type=float, default=None)
+    parser.add_argument("--peak-cap-kw", type=float, default=None)
     args = parser.parse_args()
     run_dir = run_closed_loop(
         config_path=args.config,
@@ -409,7 +641,14 @@ def main() -> None:
         outdoor_offset_c=args.outdoor_offset_c,
         pv_scale=args.pv_scale,
         demand_charge_rate=args.demand_charge_rate,
+        demand_charge_basis=args.demand_charge_basis,
         demand_charge_multiplier=args.demand_charge_multiplier,
+        horizon_steps_override=args.horizon_steps,
+        w_terminal=args.w_terminal,
+        w_spill=args.w_spill,
+        w_cycle=args.w_cycle,
+        soc_target=args.soc_target,
+        peak_cap_kw=args.peak_cap_kw,
     )
     print(run_dir)
 

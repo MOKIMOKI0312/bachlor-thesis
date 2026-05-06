@@ -14,6 +14,10 @@ scenario_sets:
     - chiller_no_tes_base
     - chiller_rbc_base
     - chiller_tes_mpc_base
+    - chiller_tes_hot_day
+    - chiller_tes_mild_day
+    - chiller_tes_hot_week
+    - chiller_tes_mild_week
     - chiller_tes_pv_x2
     - chiller_tes_pv_x3
     - chiller_tes_tariff_high
@@ -21,6 +25,42 @@ scenario_sets:
     - chiller_tes_demand_high
     - chiller_tes_hot
     - chiller_tes_mild
+  fixcheck_smoke:
+    - fixcheck_no_tes
+    - fixcheck_rbc
+    - fixcheck_mpc
+  peak_cap_scenarios:
+    - peak_cap_none
+    - peak_cap_3000
+    - peak_cap_2800
+    - peak_cap_2600
+  reviewfix_7day:
+    - reviewfix_7day_no_tes
+    - reviewfix_7day_rbc
+    - reviewfix_7day_mpc
+  reviewfix_pv_contribution:
+    - pv3_no_tes
+    - pv3_rbc
+    - pv3_mpc
+    - pv5_no_tes
+    - pv5_rbc
+    - pv5_mpc
+  reviewfix_peak_contribution:
+    - peak3000_no_tes
+    - peak3000_rbc
+    - peak3000_mpc
+    - peak2800_no_tes
+    - peak2800_rbc
+    - peak2800_mpc
+    - peak2600_no_tes
+    - peak2600_rbc
+    - peak2600_mpc
+  attribution_core:
+    - attribution_7day_no_tes_direct
+    - attribution_7day_mpc_no_tes
+    - attribution_7day_rbc_tes
+    - attribution_7day_mpc_tes
+    - attribution_7day_mpc_tes_soc_neutral
 
 scenarios:
   baseline_no_tes:
@@ -53,11 +93,25 @@ scenarios:
     pv_error_sigma: 0.05
     tariff_multiplier: 1.0
     outdoor_offset_c: 4.0
+    closed_loop_steps: 672
   mild_week:
     controller_type: mpc
     pv_error_sigma: 0.05
     tariff_multiplier: 1.0
     outdoor_offset_c: -4.0
+    closed_loop_steps: 672
+  hot_day:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 4.0
+    closed_loop_steps: 96
+  mild_day:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: -4.0
+    closed_loop_steps: 96
   tariff_low:
     controller_type: mpc
     pv_error_sigma: 0.0
@@ -122,7 +176,8 @@ scenarios:
     outdoor_offset_c: 0.0
     pv_scale: 1.0
     demand_charge_multiplier: 1.0
-    demand_charge_currency_per_kw_day: 0.15
+    demand_charge_rate: 0.15
+    demand_charge_basis: per_day_proxy
   chiller_tes_demand_high:
     controller_type: mpc
     pv_error_sigma: 0.0
@@ -130,7 +185,8 @@ scenarios:
     outdoor_offset_c: 0.0
     pv_scale: 1.0
     demand_charge_multiplier: 1.0
-    demand_charge_currency_per_kw_day: 0.45
+    demand_charge_rate: 0.45
+    demand_charge_basis: per_day_proxy
   chiller_tes_hot:
     controller_type: mpc
     pv_error_sigma: 0.05
@@ -145,3 +201,243 @@ scenarios:
     outdoor_offset_c: -4.0
     pv_scale: 1.0
     demand_charge_multiplier: 1.0
+  chiller_tes_hot_day:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 4.0
+    pv_scale: 1.0
+    closed_loop_steps: 96
+  chiller_tes_mild_day:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: -4.0
+    pv_scale: 1.0
+    closed_loop_steps: 96
+  chiller_tes_hot_week:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 4.0
+    pv_scale: 1.0
+    closed_loop_steps: 672
+  chiller_tes_mild_week:
+    controller_type: mpc
+    pv_error_sigma: 0.05
+    tariff_multiplier: 1.0
+    outdoor_offset_c: -4.0
+    pv_scale: 1.0
+    closed_loop_steps: 672
+  fixcheck_no_tes:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 1.0
+    closed_loop_steps: 96
+  fixcheck_rbc:
+    controller_type: rbc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 1.0
+    closed_loop_steps: 96
+  fixcheck_mpc:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    tariff_multiplier: 1.0
+    outdoor_offset_c: 0.0
+    pv_scale: 1.0
+    closed_loop_steps: 96
+  peak_cap_none:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    peak_cap_kw:
+    closed_loop_steps: 96
+  peak_cap_3000:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    peak_cap_kw: 3000
+    closed_loop_steps: 96
+  peak_cap_2800:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    peak_cap_kw: 2800
+    closed_loop_steps: 96
+  peak_cap_2600:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    peak_cap_kw: 2600
+    closed_loop_steps: 96
+  reviewfix_7day_no_tes:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    closed_loop_steps: 672
+    horizon_steps: 48
+  reviewfix_7day_rbc:
+    controller_type: rbc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 672
+    horizon_steps: 48
+  reviewfix_7day_mpc:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 672
+    horizon_steps: 48
+  pv3_no_tes:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    pv_scale: 3
+  pv3_rbc:
+    controller_type: rbc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    pv_scale: 3
+  pv3_mpc:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    pv_scale: 3
+    w_spill: 1.0
+  pv5_no_tes:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    pv_scale: 5
+  pv5_rbc:
+    controller_type: rbc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    pv_scale: 5
+  pv5_mpc:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    pv_scale: 5
+    w_spill: 1.0
+  peak3000_no_tes:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    peak_cap_kw: 3000
+  peak3000_rbc:
+    controller_type: rbc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    peak_cap_kw: 3000
+  peak3000_mpc:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    peak_cap_kw: 3000
+  peak2800_no_tes:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    peak_cap_kw: 2800
+  peak2800_rbc:
+    controller_type: rbc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    peak_cap_kw: 2800
+  peak2800_mpc:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    peak_cap_kw: 2800
+  peak2600_no_tes:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    peak_cap_kw: 2600
+  peak2600_rbc:
+    controller_type: rbc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    peak_cap_kw: 2600
+  peak2600_mpc:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 96
+    horizon_steps: 48
+    peak_cap_kw: 2600
+  attribution_7day_no_tes_direct:
+    controller_type: no_tes
+    pv_error_sigma: 0.0
+    closed_loop_steps: 672
+    horizon_steps: 48
+  attribution_7day_mpc_no_tes:
+    controller_type: mpc_no_tes
+    pv_error_sigma: 0.0
+    closed_loop_steps: 672
+    horizon_steps: 48
+  attribution_7day_rbc_tes:
+    controller_type: rbc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 672
+    horizon_steps: 48
+  attribution_7day_mpc_tes:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 672
+    horizon_steps: 48
+  attribution_7day_mpc_tes_soc_neutral:
+    controller_type: mpc
+    pv_error_sigma: 0.0
+    closed_loop_steps: 672
+    horizon_steps: 48
+    soc_target: 0.50
+    w_terminal: 50000
+
+sensitivity_sets:
+  terminal_soc:
+    case_prefix: terminal_soc
+    base:
+      controller_type: mpc
+      pv_error_sigma: 0.0
+      tariff_multiplier: 1.0
+      outdoor_offset_c: 0.0
+      pv_scale: 1.0
+    matrix:
+      closed_loop_steps: [96, 288, 672]
+      horizon_steps: [96, 144, 192]
+      w_terminal: [50000, 10000, 1000, 100]
+      soc_target: [0.50, 0.40, 0.30]
+      w_cycle: [0.001, 0.005, 0.01]
+  pv_priority:
+    case_prefix: pv_priority
+    base:
+      controller_type: mpc
+      pv_error_sigma: 0.05
+      tariff_multiplier: 1.0
+      outdoor_offset_c: 0.0
+      closed_loop_steps: 96
+      horizon_steps: 96
+    matrix:
+      pv_scale: [1, 2, 3, 5]
+      w_spill: [0.02, 0.2, 1.0, 5.0]
+  peak_cap:
+    case_prefix: peak_cap
+    base:
+      controller_type: mpc
+      pv_error_sigma: 0.0
+      closed_loop_steps: 96
+      horizon_steps: 96
+    matrix:
+      peak_cap_kw: ["", 3000, 2800, 2600]

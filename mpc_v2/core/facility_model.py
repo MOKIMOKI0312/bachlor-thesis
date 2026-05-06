@@ -115,13 +115,16 @@ class ValveParams:
     u_min: float = 0.0
     u_max: float = 1.0
     du_max_per_step: float = 0.10
+    du_signed_max_per_step: float = 0.10
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "ValveParams":
+        du_max = float(config.get("du_max_per_step", 0.10))
         params = cls(
             u_min=float(config.get("u_min", 0.0)),
             u_max=float(config.get("u_max", 1.0)),
-            du_max_per_step=float(config.get("du_max_per_step", 0.10)),
+            du_max_per_step=du_max,
+            du_signed_max_per_step=float(config.get("du_signed_max_per_step", du_max)),
         )
         params.validate()
         return params
@@ -131,30 +134,49 @@ class ValveParams:
             raise ValueError("valve u_min/u_max must be within [0, 1]")
         if not 0 < self.du_max_per_step <= 1:
             raise ValueError("valve du_max_per_step must be in (0, 1]")
+        if not 0 < self.du_signed_max_per_step <= 2:
+            raise ValueError("valve du_signed_max_per_step must be in (0, 2]")
 
 
 @dataclass(frozen=True)
 class EconomicsParams:
     """Economic terms outside the time-varying energy price."""
 
-    demand_charge_currency_per_kw_day: float = 0.0
+    demand_charge_rate: float = 0.0
+    demand_charge_basis: str = "per_day_proxy"
     pv_scale: float = 1.0
+    peak_cap_kw: float | None = None
 
     @classmethod
     def from_config(cls, config: dict[str, Any] | None) -> "EconomicsParams":
         config = config or {}
+        legacy_rate = config.get("demand_charge_currency_per_kw_day", 0.0)
+        peak_cap = config.get("peak_cap_kw", None)
         params = cls(
-            demand_charge_currency_per_kw_day=float(config.get("demand_charge_currency_per_kw_day", 0.0)),
+            demand_charge_rate=float(config.get("demand_charge_rate", legacy_rate)),
+            demand_charge_basis=str(config.get("demand_charge_basis", "per_day_proxy")),
             pv_scale=float(config.get("pv_scale", 1.0)),
+            peak_cap_kw=None if peak_cap in (None, "") else float(peak_cap),
         )
         params.validate()
         return params
 
     def validate(self) -> None:
-        if self.demand_charge_currency_per_kw_day < 0:
+        if self.demand_charge_rate < 0:
             raise ValueError("demand charge must be non-negative")
+        if self.demand_charge_basis not in {"per_day_proxy", "per_episode"}:
+            raise ValueError("demand_charge_basis must be per_day_proxy or per_episode")
         if self.pv_scale < 0:
             raise ValueError("pv_scale must be non-negative")
+        if self.peak_cap_kw is not None and self.peak_cap_kw < 0:
+            raise ValueError("peak_cap_kw must be non-negative when provided")
+
+    def demand_charge_multiplier(self, duration_hours: float) -> float:
+        """Return the multiplier applied to peak kW for this demand charge basis."""
+
+        if self.demand_charge_basis == "per_episode":
+            return 1.0
+        return max(0.0, float(duration_hours)) / 24.0
 
 
 class FacilityModel:
@@ -238,8 +260,14 @@ class ChillerPlantModel:
         return effective_q, mode_index, power
 
 
-def grid_and_spill_from_plant_kw(plant_power_kw: float, pv_kw: float) -> tuple[float, float]:
-    """Split cold-station net load into grid import and PV spill."""
+def grid_and_spill_from_load_kw(load_kw: float, pv_kw: float) -> tuple[float, float]:
+    """Split any non-negative electric load into grid import and PV spill."""
 
-    net_load_kw = max(0.0, float(plant_power_kw)) - max(0.0, float(pv_kw))
+    net_load_kw = max(0.0, float(load_kw)) - max(0.0, float(pv_kw))
     return max(0.0, net_load_kw), max(0.0, -net_load_kw)
+
+
+def grid_and_spill_from_plant_kw(plant_power_kw: float, pv_kw: float) -> tuple[float, float]:
+    """Split cold-station proxy net load into grid import and PV spill."""
+
+    return grid_and_spill_from_load_kw(plant_power_kw, pv_kw)

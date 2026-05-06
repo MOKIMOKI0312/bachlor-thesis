@@ -1,0 +1,6 @@
+# Keep exports local by default.
+*
+
+# Track only the local rules that explain this directory.
+!.gitignore
+!AGENTS.md

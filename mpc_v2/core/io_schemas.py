@@ -30,6 +30,10 @@ class MPCState:
     prev_u_dis: float = 0.0
     prev_mode_index: int = -1
 
+    @property
+    def prev_u_signed(self) -> float:
+        return float(self.prev_u_ch) - float(self.prev_u_dis)
+
     def validate(self) -> None:
         _require_finite("soc", self.soc)
         _require_finite("room_temp_c", self.room_temp_c)
@@ -43,6 +47,8 @@ class MPCState:
             raise SchemaValidationError("previous TES actions must be non-negative")
         if not 0.0 <= self.prev_u_ch <= 1.0 or not 0.0 <= self.prev_u_dis <= 1.0:
             raise SchemaValidationError("previous valve positions must be in [0, 1]")
+        if self.prev_u_ch + self.prev_u_dis > 1.0 + 1e-7:
+            raise SchemaValidationError("previous charge and discharge valves cannot both be open")
         if self.prev_mode_index < -1:
             raise SchemaValidationError("prev_mode_index must be -1 or a non-negative mode index")
 
@@ -59,6 +65,12 @@ class MPCAction:
     u_ch: float = 0.0
     u_dis: float = 0.0
     mode_index: int = -1
+    q_ch_max_kw_th: float = 4500.0
+    q_dis_max_kw_th: float = 4500.0
+
+    @property
+    def u_signed(self) -> float:
+        return float(self.u_ch) - float(self.u_dis)
 
     def validate(self) -> None:
         _require_finite("q_ch_tes_kw_th", self.q_ch_tes_kw_th)
@@ -68,16 +80,33 @@ class MPCAction:
         _require_finite("plant_power_kw", self.plant_power_kw)
         _require_finite("u_ch", self.u_ch)
         _require_finite("u_dis", self.u_dis)
+        _require_finite("q_ch_max_kw_th", self.q_ch_max_kw_th)
+        _require_finite("q_dis_max_kw_th", self.q_dis_max_kw_th)
         if min(self.q_ch_tes_kw_th, self.q_dis_tes_kw_th, self.q_chiller_kw_th, self.q_load_kw_th) < -1e-9:
             raise SchemaValidationError("cooling actions must be non-negative")
+        if self.q_ch_max_kw_th <= 0 or self.q_dis_max_kw_th <= 0:
+            raise SchemaValidationError("TES action normalization limits must be positive")
+        if self.q_ch_tes_kw_th > self.q_ch_max_kw_th + 1e-6:
+            raise SchemaValidationError("TES charge thermal flow exceeds normalization limit")
+        if self.q_dis_tes_kw_th > self.q_dis_max_kw_th + 1e-6:
+            raise SchemaValidationError("TES discharge thermal flow exceeds normalization limit")
         if self.q_ch_tes_kw_th > 1e-6 and self.q_dis_tes_kw_th > 1e-6:
             raise SchemaValidationError("TES cannot charge and discharge simultaneously")
         if not 0.0 <= self.u_ch <= 1.0 or not 0.0 <= self.u_dis <= 1.0:
             raise SchemaValidationError("valve positions must be in [0, 1]")
         if self.u_ch + self.u_dis > 1.0 + 1e-7:
             raise SchemaValidationError("TES charge and discharge valves cannot both be open")
+        expected_u_ch = self.q_ch_tes_kw_th / self.q_ch_max_kw_th
+        expected_u_dis = self.q_dis_tes_kw_th / self.q_dis_max_kw_th
+        if abs(self.u_ch - expected_u_ch) > 1e-6 or abs(self.u_dis - expected_u_dis) > 1e-6:
+            raise SchemaValidationError("signed valve commands must match normalized TES thermal flow")
         if self.mode_index < -1:
             raise SchemaValidationError("mode_index must be -1 or a non-negative mode index")
+        if self.q_load_kw_th + self.q_ch_tes_kw_th > self.q_chiller_kw_th + 1e-6:
+            raise SchemaValidationError("chiller output must cover load cooling plus TES charging")
+        if self.mode_index == -1:
+            if self.q_chiller_kw_th > 1e-6 or self.q_load_kw_th > 1e-6 or self.q_ch_tes_kw_th > 1e-6:
+                raise SchemaValidationError("off chiller mode requires zero chiller, load, and TES charge cooling")
 
 
 @dataclass(frozen=True)

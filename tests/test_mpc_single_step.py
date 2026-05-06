@@ -46,8 +46,21 @@ def test_milp_single_solve_respects_first_action_bounds():
     assert solution.mode_binary[:, 0].sum() <= 1.0 + 1e-7
     assert 0.0 <= solution.u_ch[0] <= 1.0
     assert 0.0 <= solution.u_dis[0] <= 1.0
+    assert -1.0 <= solution.u_signed[0] <= 1.0
+    assert abs(solution.u_signed[0] - (solution.u_ch[0] - solution.u_dis[0])) <= 1e-7
+    assert abs(solution.u_ch[0] - q_ch / cfg["tes"]["q_ch_max_kw_th"]) <= 1e-7
+    assert abs(solution.u_dis[0] - q_dis / cfg["tes"]["q_dis_max_kw_th"]) <= 1e-7
+    assert abs(
+        solution.grid_import_kw[0]
+        - max(0.0, forecast.it_load_forecast_kw[0] + solution.plant_power_kw[0] - forecast.pv_forecast_kw[0])
+    ) <= 1e-5
+    assert abs(
+        solution.pv_spill_kw[0]
+        - max(0.0, forecast.pv_forecast_kw[0] - forecast.it_load_forecast_kw[0] - solution.plant_power_kw[0])
+    ) <= 1e-5
     assert solution.du_ch[0] <= cfg["valve"]["du_max_per_step"] + 1e-7
     assert solution.du_dis[0] <= cfg["valve"]["du_max_per_step"] + 1e-7
+    assert solution.du_signed[0] <= cfg["valve"]["du_signed_max_per_step"] + 1e-7
     assert solution.soc.min() >= cfg["tes"]["soc_physical_min"] - 1e-7
     assert solution.soc.max() <= cfg["tes"]["soc_physical_max"] + 1e-7
 
@@ -81,4 +94,7 @@ def test_no_tes_single_solve_uses_chiller_when_temperature_is_high():
     )
     assert solution.q_ch_tes_kw_th[0] == 0.0
     assert solution.q_dis_tes_kw_th[0] == 0.0
+    assert solution.u_ch[0] == 0.0
+    assert solution.u_dis[0] == 0.0
+    assert solution.u_signed[0] == 0.0
     assert solution.q_chiller_kw_th[0] > 0.0

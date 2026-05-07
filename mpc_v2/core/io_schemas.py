@@ -121,6 +121,17 @@ class ForecastBundle:
     base_facility_kw: list[float]
     base_cooling_kw_th: list[float]
     wet_bulb_forecast_c: list[float] | None = None
+    price_float_forecast: list[float] | None = None
+    price_nonfloat_forecast: list[float] | None = None
+    tou_stage: list[str] | None = None
+    cp_flag: list[int] | None = None
+    dr_flag: list[int] | None = None
+    dr_notice_type: list[str] | None = None
+    dr_req_kw: list[float] | None = None
+    dr_baseline_kw: list[float] | None = None
+    dynamic_peak_cap_kw: list[float] | None = None
+    dr_event_id: list[str] | None = None
+    dr_compensation_cny_per_kwh: list[float] | None = None
 
     def validate(self, horizon_steps: int, dt_hours: float) -> None:
         if horizon_steps <= 0:
@@ -138,16 +149,34 @@ class ForecastBundle:
         }
         if self.wet_bulb_forecast_c is not None:
             lengths["wet_bulb_forecast_c"] = len(self.wet_bulb_forecast_c)
+        for optional_name in [
+            "price_float_forecast",
+            "price_nonfloat_forecast",
+            "tou_stage",
+            "cp_flag",
+            "dr_flag",
+            "dr_notice_type",
+            "dr_req_kw",
+            "dr_baseline_kw",
+            "dynamic_peak_cap_kw",
+            "dr_event_id",
+            "dr_compensation_cny_per_kwh",
+        ]:
+            if getattr(self, optional_name) is not None:
+                lengths[optional_name] = len(getattr(self, optional_name))
         bad = {name: n for name, n in lengths.items() if n != horizon_steps}
         if bad:
             raise SchemaValidationError(f"forecast length mismatch: {bad}; expected {horizon_steps}")
         for field_name in lengths:
-            if field_name == "timestamps":
+            if field_name in {"timestamps", "tou_stage", "dr_notice_type", "dr_event_id"}:
                 continue
             values = getattr(self, field_name)
             for i, value in enumerate(values):
                 _require_finite(f"{field_name}[{i}]", float(value))
-                if field_name not in {"outdoor_temp_forecast_c", "wet_bulb_forecast_c"} and float(value) < -1e-9:
+                if field_name == "dynamic_peak_cap_kw":
+                    if float(value) < -1.0 - 1e-9:
+                        raise SchemaValidationError(f"{field_name}[{i}] must be -1 or non-negative")
+                elif field_name not in {"outdoor_temp_forecast_c", "wet_bulb_forecast_c"} and float(value) < -1e-9:
                     raise SchemaValidationError(f"{field_name}[{i}] must be non-negative")
 
     def wet_bulb_or_default(self, default_depression_c: float = 4.0) -> list[float]:

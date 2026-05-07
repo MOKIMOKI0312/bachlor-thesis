@@ -8,9 +8,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from mpc_v2.core.dr_service import DRService
 from mpc_v2.core.facility_model import FacilityModel
 from mpc_v2.core.io_schemas import ForecastBundle, SchemaValidationError, parse_timestamp
 from mpc_v2.core.room_model import RoomModel
+from mpc_v2.core.tariff_service import TariffService
 
 
 def load_hourly_csv(path: str | Path, value_column: str) -> pd.Series:
@@ -64,14 +66,18 @@ class ForecastBuilder:
         facility_model: FacilityModel,
         room_model: RoomModel,
         dt_hours: float,
+        tariff_config: dict | None = None,
+        dr_config: dict | None = None,
     ):
         if abs(dt_hours - 0.25) > 1e-9:
             raise ValueError(f"ForecastBuilder currently expects 15-minute steps, got {dt_hours}")
         self.dt_hours = float(dt_hours)
         self.facility_model = facility_model
         self.room_model = room_model
+        self.dr_service = DRService(dr_config)
         self.pv_15min = resample_hourly_to_15min(load_hourly_csv(pv_csv, "power_kw"))
         self.price_15min = resample_hourly_to_15min(load_hourly_csv(price_csv, "price_usd_per_mwh"))
+        self.tariff_service = TariffService(tariff_config, reference_price_mean=float(self.price_15min.mean()))
 
     def build(
         self,
@@ -93,7 +99,9 @@ class ForecastBuilder:
         timestamps = [now + timedelta(minutes=15 * i) for i in range(horizon_steps)]
         pv_actual = _take_cyclic(self.pv_15min, timestamps) * float(pv_scale)
         pv_forecast = apply_pv_forecast_error(pv_actual, sigma=pv_error_sigma, seed=seed)
-        price = _take_cyclic(self.price_15min, timestamps) * float(tariff_multiplier)
+        base_price = _take_cyclic(self.price_15min, timestamps)
+        tariff = self.tariff_service.apply(timestamps, base_price, multiplier=tariff_multiplier)
+        price = np.asarray(tariff.price_total, dtype=float)
         hours = np.array([ts.hour + ts.minute / 60.0 for ts in timestamps], dtype=float)
         outdoor = (
             float(outdoor_base_c)
@@ -106,6 +114,8 @@ class ForecastBuilder:
         )
         base_cooling = np.array([self.room_model.base_cooling_kw_th(float(it)) for it in it_load])
         wet_bulb = outdoor - float(wet_bulb_depression_c)
+        estimated_baseline_grid = np.maximum(0.0, base_facility - pv_actual)
+        dr = self.dr_service.build(timestamps, estimated_baseline_grid)
         bundle = ForecastBundle(
             timestamps=timestamps,
             outdoor_temp_forecast_c=outdoor.tolist(),
@@ -115,6 +125,17 @@ class ForecastBuilder:
             base_facility_kw=base_facility.tolist(),
             base_cooling_kw_th=base_cooling.tolist(),
             wet_bulb_forecast_c=wet_bulb.tolist(),
+            price_float_forecast=tariff.price_float,
+            price_nonfloat_forecast=tariff.price_nonfloat,
+            tou_stage=tariff.tou_stage,
+            cp_flag=tariff.cp_flag,
+            dr_flag=dr.dr_flag,
+            dr_notice_type=dr.dr_notice_type,
+            dr_req_kw=dr.dr_req_kw,
+            dr_baseline_kw=dr.dr_baseline_kw,
+            dynamic_peak_cap_kw=dr.dynamic_peak_cap_kw,
+            dr_event_id=dr.dr_event_id,
+            dr_compensation_cny_per_kwh=dr.dr_compensation_cny_per_kwh,
         )
         bundle.validate(horizon_steps=horizon_steps, dt_hours=self.dt_hours)
         return bundle

@@ -65,8 +65,35 @@ def test_mpc_no_tes_closed_loop_keeps_tes_disabled(tmp_path):
     assert summary["fallback_count"] == 0
 
 
+def test_dr_closed_loop_writes_event_log(tmp_path):
+    run_dir = run_closed_loop(
+        config_path="mpc_v2/config/base.yaml",
+        case_id="pytest_dr",
+        steps=4,
+        output_root=tmp_path,
+        controller_mode="mpc",
+        horizon_steps_override=8,
+        dr_enabled=True,
+        dr_event_type="realtime",
+        dr_reduction_frac=0.10,
+        dr_start_hour=0.0,
+        dr_duration_hours=1.0,
+        dr_baseline_kw=20000.0,
+        dr_compensation_cny_per_kwh=4.8,
+    )
+    _assert_required_run_outputs(run_dir, 4)
+    events = pd.read_csv(run_dir / "events.csv")
+    summary = json.loads((run_dir / "episode_summary.json").read_text(encoding="utf-8"))
+    assert len(events) == 1
+    assert events["requested_reduction_kwh"].iloc[0] > 0.0
+    assert summary["dr_event_count"] == 1
+
+
 def _assert_required_run_outputs(run_dir, expected_steps):
     assert (run_dir / "config_effective.yaml").exists()
+    assert (run_dir / "timeseries.csv").exists()
+    assert (run_dir / "events.csv").exists()
+    assert (run_dir / "summary.csv").exists()
     monitor = pd.read_csv(run_dir / "monitor.csv")
     solver = pd.read_csv(run_dir / "solver_log.csv")
     summary = json.loads((run_dir / "episode_summary.json").read_text(encoding="utf-8"))
@@ -93,6 +120,16 @@ def _assert_required_run_outputs(run_dir, expected_steps):
         "cold_station_proxy_grid_import_kw",
         "cold_station_proxy_pv_spill_kw",
         "peak_slack_kw",
+        "price_total_cny_mwh",
+        "price_float_cny_mwh",
+        "price_nonfloat_cny_mwh",
+        "tou_stage",
+        "cp_flag",
+        "dr_flag",
+        "dr_notice_type",
+        "dr_req_kw",
+        "dr_baseline_kw",
+        "dr_event_id",
     ]:
         assert name in monitor.columns
     expected_grid = (monitor["it_load_kw"] + monitor["plant_power_kw"] - monitor["pv_actual_kw"]).clip(lower=0.0)
@@ -147,6 +184,11 @@ def _assert_required_run_outputs(run_dir, expected_steps):
         "signed_valve_violation_count",
         "physical_consistency_violation_count",
         "max_chiller_supply_deficit_kw_th",
+        "dr_event_count",
+        "dr_requested_reduction_kwh",
+        "dr_served_reduction_kwh",
+        "dr_response_rate_avg",
+        "dr_revenue_cny",
         "optimal_rate",
         "feasible_rate",
         "fallback_count",

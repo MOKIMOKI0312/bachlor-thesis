@@ -61,6 +61,36 @@ scenario_sets:
     - attribution_7day_rbc_tes
     - attribution_7day_mpc_tes
     - attribution_7day_mpc_tes_soc_neutral
+  china_tou_screening_smoke:
+    - tou_bj_g0_cp0_hot_mpc_no_tes
+    - tou_bj_g0_cp0_hot_mpc_tes
+    - tou_bj_g1_cp20_hot_mpc_no_tes
+    - tou_bj_g1_cp20_hot_mpc_tes
+    - tou_bj_g2_cp20_mild_mpc_no_tes
+    - tou_bj_g2_cp20_mild_mpc_tes
+  china_tou_full_compare:
+    - tou_flat_hot_direct_no_tes
+    - tou_flat_hot_mpc_no_tes
+    - tou_flat_hot_rbc_tes
+    - tou_flat_hot_mpc_tes
+    - tou_base_cp20_hot_direct_no_tes
+    - tou_base_cp20_hot_mpc_no_tes
+    - tou_base_cp20_hot_rbc_tes
+    - tou_base_cp20_hot_mpc_tes
+  china_dr_peakcap_core:
+    - peakcap_097_hot_mpc_no_tes
+    - peakcap_097_hot_mpc_tes
+    - peakcap_095_hot_mpc_no_tes
+    - peakcap_095_hot_mpc_tes
+    - dr_dayahead_10_hot_mpc_no_tes
+    - dr_dayahead_10_hot_mpc_tes
+    - dr_realtime_10_hot_mpc_no_tes
+    - dr_realtime_10_hot_mpc_tes
+  china_robustness_core:
+    - robust_soc20_h6_mpc_tes
+    - robust_soc50_h12_mpc_tes
+    - robust_soc80_h24_mpc_tes
+    - robust_forecast_g10_mpc_tes
 
 scenarios:
   baseline_no_tes:
@@ -404,6 +434,247 @@ scenarios:
     horizon_steps: 48
     soc_target: 0.50
     w_terminal: 50000
+  tou_bj_g0_cp0_hot_mpc_no_tes:
+    controller_type: mpc_no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 0.0
+    cp_uplift: 0.0
+    float_share: 0.8
+  tou_bj_g0_cp0_hot_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 0.0
+    cp_uplift: 0.0
+    float_share: 0.8
+  tou_bj_g1_cp20_hot_mpc_no_tes:
+    controller_type: mpc_no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  tou_bj_g1_cp20_hot_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  tou_bj_g2_cp20_mild_mpc_no_tes:
+    controller_type: mpc_no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: -4.0
+    tariff_template: beijing
+    tariff_gamma: 2.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  tou_bj_g2_cp20_mild_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: -4.0
+    tariff_template: beijing
+    tariff_gamma: 2.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  tou_flat_hot_direct_no_tes:
+    controller_type: no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 0.0
+    cp_uplift: 0.0
+    float_share: 0.8
+  tou_flat_hot_mpc_no_tes:
+    controller_type: mpc_no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 0.0
+    cp_uplift: 0.0
+    float_share: 0.8
+  tou_flat_hot_rbc_tes:
+    controller_type: rbc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 0.0
+    cp_uplift: 0.0
+    float_share: 0.8
+  tou_flat_hot_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 0.0
+    cp_uplift: 0.0
+    float_share: 0.8
+  tou_base_cp20_hot_direct_no_tes:
+    controller_type: no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  tou_base_cp20_hot_mpc_no_tes:
+    controller_type: mpc_no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  tou_base_cp20_hot_rbc_tes:
+    controller_type: rbc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  tou_base_cp20_hot_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  peakcap_097_hot_mpc_no_tes:
+    controller_type: mpc_no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    peak_cap_ratio: 0.97
+    peak_cap_reference_kw: 19000
+  peakcap_097_hot_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    peak_cap_ratio: 0.97
+    peak_cap_reference_kw: 19000
+  peakcap_095_hot_mpc_no_tes:
+    controller_type: mpc_no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    peak_cap_ratio: 0.95
+    peak_cap_reference_kw: 19000
+  peakcap_095_hot_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    peak_cap_ratio: 0.95
+    peak_cap_reference_kw: 19000
+  dr_dayahead_10_hot_mpc_no_tes:
+    controller_type: mpc_no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    dr_enabled: true
+    dr_event_type: day_ahead
+    dr_reduction_frac: 0.10
+    dr_start_hour: 18.0
+    dr_duration_hours: 2.0
+    dr_baseline_kw: 19000
+    dr_compensation_cny_per_kwh: 3.0
+  dr_dayahead_10_hot_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    dr_enabled: true
+    dr_event_type: day_ahead
+    dr_reduction_frac: 0.10
+    dr_start_hour: 18.0
+    dr_duration_hours: 2.0
+    dr_baseline_kw: 19000
+    dr_compensation_cny_per_kwh: 3.0
+  dr_realtime_10_hot_mpc_no_tes:
+    controller_type: mpc_no_tes
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    dr_enabled: true
+    dr_event_type: realtime
+    dr_reduction_frac: 0.10
+    dr_start_hour: 18.0
+    dr_duration_hours: 0.5
+    dr_baseline_kw: 19000
+    dr_compensation_cny_per_kwh: 4.8
+  dr_realtime_10_hot_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    outdoor_offset_c: 4.0
+    dr_enabled: true
+    dr_event_type: realtime
+    dr_reduction_frac: 0.10
+    dr_start_hour: 18.0
+    dr_duration_hours: 0.5
+    dr_baseline_kw: 19000
+    dr_compensation_cny_per_kwh: 4.8
+  robust_soc20_h6_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 24
+    initial_soc: 0.20
+    soc_target: 0.20
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  robust_soc50_h12_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    initial_soc: 0.50
+    soc_target: 0.50
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  robust_soc80_h24_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 96
+    initial_soc: 0.80
+    soc_target: 0.80
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
+  robust_forecast_g10_mpc_tes:
+    controller_type: mpc
+    closed_loop_steps: 96
+    horizon_steps: 48
+    pv_error_sigma: 0.10
+    tariff_template: beijing
+    tariff_gamma: 1.0
+    cp_uplift: 0.2
+    float_share: 0.8
 
 sensitivity_sets:
   terminal_soc:

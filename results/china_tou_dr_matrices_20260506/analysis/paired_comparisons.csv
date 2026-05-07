@@ -1,0 +1,2 @@
+metric,baseline,candidate,n_pairs,mean_difference,median_difference,ci_low,ci_high
+total_cost,mpc_no_tes,mpc,61,518.8135862030684,152.73606317164376,313.8372806826875,737.3830323030513

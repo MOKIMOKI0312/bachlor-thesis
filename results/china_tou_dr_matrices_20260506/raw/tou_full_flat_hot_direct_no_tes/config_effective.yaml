@@ -1,0 +1,127 @@
+time:
+  dt_hours: 0.25
+  horizon_steps: 48
+  default_closed_loop_steps: 96
+paths:
+  pv_csv: Nanjing-DataCenter-TES-EnergyPlus/inputs/CHN_Nanjing_PV_6MWp_hourly.csv
+  price_csv: Nanjing-DataCenter-TES-EnergyPlus/inputs/Jiangsu_TOU_2025_hourly.csv
+  output_root: runs/mpc_v2
+temperature:
+  min_c: 23.5
+  max_c: 27.0
+tes:
+  capacity_kwh_th: 18000.0
+  eta_ch: 0.94
+  eta_dis: 0.92
+  lambda_loss_per_h: 0.002
+  q_ch_max_kw_th: 4500.0
+  q_dis_max_kw_th: 4500.0
+  initial_soc: 0.5
+  soc_physical_min: 0.05
+  soc_physical_max: 0.95
+  soc_planning_min: 0.15
+  soc_planning_max: 0.85
+  soc_target: 0.3
+room:
+  initial_room_temp_c: 24.0
+  thermal_time_constant_h: 8.0
+  outdoor_gain_fraction: 0.18
+  it_heat_gain_c_per_mwh: 0.02
+  cooling_gain_c_per_mwh: 0.03
+  alpha_it_to_cooling: 0.12
+facility:
+  base_pue: 1.18
+  outdoor_temp_coeff_per_c: 0.004
+  reference_outdoor_c: 25.0
+  cop_charge: 5.2
+  cop_discharge_equiv: 5.0
+chiller:
+  modes:
+  - q_min_kw_th: 4330.0
+    q_max_kw_th: 8000.0
+    a_kw_per_kwth: 0.126
+    c0_kw: 118.0
+    c1_kw_per_c: 0.0
+    min_on_steps: 2
+    min_off_steps: 2
+  - q_min_kw_th: 8000.0
+    q_max_kw_th: 14000.0
+    a_kw_per_kwth: 0.127
+    c0_kw: 191.0
+    c1_kw_per_c: 6.0
+    min_on_steps: 2
+    min_off_steps: 2
+  - q_min_kw_th: 14000.0
+    q_max_kw_th: 22000.0
+    a_kw_per_kwth: 0.126
+    c0_kw: 318.0
+    c1_kw_per_c: 0.0
+    min_on_steps: 2
+    min_off_steps: 2
+  plr_pref: 0.75
+valve:
+  u_min: 0.0
+  u_max: 1.0
+  du_max_per_step: 0.1
+  du_signed_max_per_step: 0.1
+economics:
+  demand_charge_rate: 0.0
+  demand_charge_basis: per_day_proxy
+  pv_scale: 1.0
+  peak_cap_kw: null
+tariff:
+  template: beijing
+  gamma: 0.0
+  cp_uplift: 0.0
+  float_share: 0.8
+dr:
+  enabled: false
+  event_id: dr_event
+  event_type: day_ahead
+  start_hour: 18.0
+  duration_hours: 2.0
+  reduction_frac: 0.1
+  baseline_kw: null
+  compensation_cny_per_kwh: 0.0
+  response_threshold: 0.5
+  episode_start_timestamp: '2025-07-01 00:00:00'
+objective:
+  w_spill: 0.02
+  w_cycle: 0.001
+  w_temp: 50000.0
+  w_soc: 500.0
+  w_switch: 0.0005
+  w_valve: 0.05
+  w_plr: 0.02
+  w_start: 5.0
+  w_demand: 1.0
+  w_peak_slack: 50000.0
+  w_terminal: 100.0
+solver:
+  name: highs
+  time_limit_s: 30.0
+  mip_rel_gap: 0.005
+synthetic:
+  start_timestamp: '2025-07-01 00:00:00'
+  it_load_kw: 18000.0
+  outdoor_base_c: 29.0
+  outdoor_amplitude_c: 6.0
+  wet_bulb_depression_c: 4.0
+  seed: 7
+effective_run:
+  config_path: mpc_v2/config/base.yaml
+  case_id: tou_full_flat_hot_direct_no_tes
+  controller_mode: no_tes
+  closed_loop_steps: 2880
+  horizon_steps: 48
+  pv_error_sigma: 0.0
+  seed: null
+  tariff_multiplier: 1.0
+  outdoor_offset_c: 4.0
+  pv_scale: 1.0
+  demand_charge_rate: 0.0
+  demand_charge_basis: per_day_proxy
+  peak_cap_kw: null
+  w_terminal: 100.0
+  w_spill: 0.02
+  w_cycle: 0.001

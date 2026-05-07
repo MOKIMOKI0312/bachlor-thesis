@@ -76,6 +76,11 @@ class EpisodeSummary:
     max_chiller_supply_deficit_kw_th: float
     max_signed_valve_du: float
     tes_discharge_during_peak_cap_violation_kwh_th: float
+    dr_event_count: int
+    dr_requested_reduction_kwh: float
+    dr_served_reduction_kwh: float
+    dr_response_rate_avg: float
+    dr_revenue_cny: float
     solve_time_avg_s: float
     solve_time_p95_s: float
     optimal_rate: float
@@ -208,6 +213,7 @@ def compute_episode_metrics(
     peak_slack_max_kw = float(peak_slack.max()) if len(monitor) else 0.0
     peak_slack_step_count = int((peak_slack > 1e-7).sum()) if len(monitor) else 0
     tes_discharge_during_peak = float((monitor.loc[peak_slack > 1e-7, "q_dis_tes_kw_th"] * dt_hours).sum()) if len(monitor) else 0.0
+    dr_event_count, dr_requested, dr_served, dr_response_avg, dr_revenue = _dr_metrics(monitor, dt_hours)
 
     pv_surplus_mask = monitor["pv_spill_kw"] > 1e-7
     tes_charge_during_pv_surplus = float((monitor.loc[pv_surplus_mask, "q_ch_tes_kw_th"] * dt_hours).sum()) if len(monitor) else 0.0
@@ -283,6 +289,11 @@ def compute_episode_metrics(
         max_chiller_supply_deficit_kw_th=max_supply_deficit,
         max_signed_valve_du=max_signed_du,
         tes_discharge_during_peak_cap_violation_kwh_th=tes_discharge_during_peak,
+        dr_event_count=dr_event_count,
+        dr_requested_reduction_kwh=dr_requested,
+        dr_served_reduction_kwh=dr_served,
+        dr_response_rate_avg=dr_response_avg,
+        dr_revenue_cny=dr_revenue,
         solve_time_avg_s=float(solver_log["solve_time_s"].mean()),
         solve_time_p95_s=float(solver_log["solve_time_s"].quantile(0.95)),
         optimal_rate=_rate(status_values, {"optimal", "baseline"}),
@@ -309,3 +320,26 @@ def _rate(values: Iterable[str], accepted: set[str]) -> float:
     if not values:
         return 0.0
     return sum(1 for value in values if value in accepted) / len(values)
+
+
+def _dr_metrics(monitor: pd.DataFrame, dt_hours: float) -> tuple[int, float, float, float, float]:
+    if "dr_flag" not in monitor.columns or not bool((monitor["dr_flag"] > 0).any()):
+        return 0, 0.0, 0.0, 0.0, 0.0
+    event_frame = monitor[monitor["dr_flag"] > 0].copy()
+    requested = float((event_frame["dr_req_kw"] * dt_hours).sum()) if "dr_req_kw" in event_frame else 0.0
+    if "dr_baseline_kw" in event_frame:
+        served = float(((event_frame["dr_baseline_kw"] - event_frame["grid_import_kw"]).clip(lower=0.0) * dt_hours).sum())
+    else:
+        served = 0.0
+    event_count = int(event_frame["dr_event_id"].replace("", pd.NA).dropna().nunique()) if "dr_event_id" in event_frame else 1
+    response_avg = served / requested if requested > 1e-9 else 0.0
+    if "dr_compensation_cny_per_kwh" in event_frame:
+        compensation = float(event_frame["dr_compensation_cny_per_kwh"].max())
+    else:
+        compensation = 0.0
+    if "dr_response_threshold" in event_frame:
+        threshold = float(event_frame["dr_response_threshold"].iloc[0])
+    else:
+        threshold = 0.50
+    revenue = served * compensation if response_avg >= threshold else 0.0
+    return event_count, requested, served, response_avg, revenue

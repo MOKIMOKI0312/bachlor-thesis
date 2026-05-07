@@ -1,0 +1,1 @@
+event_id,scenario_id,event_type,event_window,baseline_energy_kwh,requested_reduction_kwh,served_reduction_kwh,response_rate,tes_event_discharge_kwh_th,event_temp_violation_dh,dr_revenue_cny

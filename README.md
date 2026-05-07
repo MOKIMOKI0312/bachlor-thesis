@@ -16,7 +16,8 @@ package.
   - `config/`: base controller configuration and scenario matrix.
   - `core/`: typed schemas, TES dynamics, room proxy, chiller plant mode model,
     PV/grid balance, MILP construction, controller wrapper, and metrics.
-  - `scripts/`: closed-loop and validation-matrix runners.
+  - `scripts/`: closed-loop, validation-matrix, China matrix generation, and
+    result-analysis runners.
 - `tests/`: unit and smoke tests for the deterministic MPC package.
 
 ## Supporting Material
@@ -56,7 +57,30 @@ python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case
 python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case-id smoke_chiller_rbc --controller-mode rbc --steps 96 --output-root runs/chiller_tes_v1_smoke
 python -m mpc_v2.scripts.run_closed_loop --config mpc_v2/config/base.yaml --case-id smoke_chiller_tes_mpc --controller-mode mpc --steps 96 --output-root runs/chiller_tes_v1_smoke
 python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set attribution_core --output-dir runs/attribution
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set china_tou_screening_smoke --output-dir runs/china_tou_screening
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set china_dr_peakcap_core --output-dir runs/china_dr_peakcap
+python -m mpc_v2.scripts.analyze_results --input-dir runs/china_tou_screening --output-dir runs/china_tou_screening/analysis
 python -m pytest -q
+```
+
+## China TOU/DR 1-Month Matrix
+
+The full China TOU/DR matrix uses the synthetic/replay `mpc_v2` controller, not
+EnergyPlus online co-simulation. Generate the frozen pilot/month YAML files and
+run the formal 30 day matrix from the repository root:
+
+```powershell
+python -m mpc_v2.scripts.generate_china_matrix --profile pilot --output mpc_v2/config/generated_china_matrix_pilot.yaml
+python -m mpc_v2.scripts.generate_china_matrix --profile month --output mpc_v2/config/generated_china_matrix_month.yaml
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenarios mpc_v2/config/generated_china_matrix_month.yaml --scenario-set china_all_full --output-dir runs/china_tou_dr_month_20260506 --max-workers 8 --resume-existing
+python -m mpc_v2.scripts.analyze_results --input-dir runs/china_tou_dr_month_20260506 --output-dir runs/china_tou_dr_month_20260506/analysis
+python -m mpc_v2.scripts.generate_result_reports --result-dir results/china_tou_dr_matrices_20260506
+```
+
+Frozen 138-run results are under:
+
+```text
+results/china_tou_dr_matrices_20260506/
 ```
 
 The current candidate horizon is 48 steps, i.e. 12 h at 15 min resolution. A
@@ -70,6 +94,11 @@ grid_import_kw - pv_spill_kw = it_load_kw + cold_station_power_kw - pv_actual_kw
 
 Cold-station-only proxy cost/grid/PV metrics are still reported for attribution
 against older results, but they are not the primary cost boundary.
+
+China TOU/DR scenario services are available in `mpc_v2/core/tariff_service.py`
+and `mpc_v2/core/dr_service.py`. Closed-loop runs now write `monitor.csv`,
+`timeseries.csv`, `events.csv`, `solver_log.csv`, `episode_summary.json`, and
+`summary.csv` per case.
 
 Frozen attribution results are under:
 

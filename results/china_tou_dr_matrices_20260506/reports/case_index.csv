@@ -1,0 +1,139 @@
+scenario_id,controller_type,category,report,total_cost,peak_grid_kw,temp_violation_degree_hours,fallback_count
+dr_day_ahead_r0p05_mpc_no_tes,mpc_no_tes,DR event,cases/dr_day_ahead_r0p05_mpc_no_tes/report.md,1303197.2320150796,21090.00000000009,0.0,0
+dr_day_ahead_r0p05_mpc_tes,mpc,DR event,cases/dr_day_ahead_r0p05_mpc_tes/report.md,1303044.495951908,21090.0,7.469580509678053e-13,0
+dr_day_ahead_r0p15_mpc_no_tes,mpc_no_tes,DR event,cases/dr_day_ahead_r0p15_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+dr_day_ahead_r0p15_mpc_tes,mpc,DR event,cases/dr_day_ahead_r0p15_mpc_tes/report.md,1303061.9052455665,21090.0,7.460698725481052e-13,0
+dr_day_ahead_r0p1_mpc_no_tes,mpc_no_tes,DR event,cases/dr_day_ahead_r0p1_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+dr_day_ahead_r0p1_mpc_tes,mpc,DR event,cases/dr_day_ahead_r0p1_mpc_tes/report.md,1303061.9052455665,21090.0,7.460698725481052e-13,0
+dr_fast_r0p05_mpc_no_tes,mpc_no_tes,DR event,cases/dr_fast_r0p05_mpc_no_tes/report.md,1303197.2320150796,21090.00000000009,0.0,0
+dr_fast_r0p05_mpc_tes,mpc,DR event,cases/dr_fast_r0p05_mpc_tes/report.md,1303044.495951908,21090.0,7.469580509678053e-13,0
+dr_fast_r0p15_mpc_no_tes,mpc_no_tes,DR event,cases/dr_fast_r0p15_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+dr_fast_r0p15_mpc_tes,mpc,DR event,cases/dr_fast_r0p15_mpc_tes/report.md,1303061.9052455665,21090.0,7.460698725481052e-13,0
+dr_fast_r0p1_mpc_no_tes,mpc_no_tes,DR event,cases/dr_fast_r0p1_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+dr_fast_r0p1_mpc_tes,mpc,DR event,cases/dr_fast_r0p1_mpc_tes/report.md,1303061.9052455665,21090.0,7.460698725481052e-13,0
+dr_realtime_r0p05_mpc_no_tes,mpc_no_tes,DR event,cases/dr_realtime_r0p05_mpc_no_tes/report.md,1303197.2320150796,21090.00000000009,0.0,0
+dr_realtime_r0p05_mpc_tes,mpc,DR event,cases/dr_realtime_r0p05_mpc_tes/report.md,1303044.495951908,21090.0,7.469580509678053e-13,0
+dr_realtime_r0p15_mpc_no_tes,mpc_no_tes,DR event,cases/dr_realtime_r0p15_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+dr_realtime_r0p15_mpc_tes,mpc,DR event,cases/dr_realtime_r0p15_mpc_tes/report.md,1303061.9052455665,21090.0,7.460698725481052e-13,0
+dr_realtime_r0p1_mpc_no_tes,mpc_no_tes,DR event,cases/dr_realtime_r0p1_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+dr_realtime_r0p1_mpc_tes,mpc,DR event,cases/dr_realtime_r0p1_mpc_tes/report.md,1303061.9052455665,21090.0,7.460698725481052e-13,0
+peakcap_r0p95_eta10_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r0p95_eta10_mpc_no_tes/report.md,1344961.8571002702,20035.50000000281,428.99850522343365,0
+peakcap_r0p95_eta10_mpc_tes,mpc,Peak-cap,cases/peakcap_r0p95_eta10_mpc_tes/report.md,1345060.5830334942,20035.50000000012,416.3371633570149,0
+peakcap_r0p95_eta20_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r0p95_eta20_mpc_no_tes/report.md,1344849.2471701032,20035.500000000684,430.66394491444265,0
+peakcap_r0p95_eta20_mpc_tes,mpc,Peak-cap,cases/peakcap_r0p95_eta20_mpc_tes/report.md,1345057.8615338926,20035.50000000021,415.57718472026505,0
+peakcap_r0p95_eta5_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r0p95_eta5_mpc_no_tes/report.md,1344903.7693992157,20035.50000002764,429.4035658906272,0
+peakcap_r0p95_eta5_mpc_tes,mpc,Peak-cap,cases/peakcap_r0p95_eta5_mpc_tes/report.md,1344939.3534396105,20035.50000000009,418.0038218529692,0
+peakcap_r0p97_eta10_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r0p97_eta10_mpc_no_tes/report.md,1328974.9705662727,20457.30000000629,0.0001618576182389,0
+peakcap_r0p97_eta10_mpc_tes,mpc,Peak-cap,cases/peakcap_r0p97_eta10_mpc_tes/report.md,1328488.2438244177,20457.3000000084,1.3322676295501878e-14,0
+peakcap_r0p97_eta20_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r0p97_eta20_mpc_no_tes/report.md,1329065.4077032804,20457.3000000025,0.000915817267538,0
+peakcap_r0p97_eta20_mpc_tes,mpc,Peak-cap,cases/peakcap_r0p97_eta20_mpc_tes/report.md,1328345.1945089176,20457.30000000106,0.0007037242271055,0
+peakcap_r0p97_eta5_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r0p97_eta5_mpc_no_tes/report.md,1328966.690275857,20457.300000002462,0.0001618576182353,0
+peakcap_r0p97_eta5_mpc_tes,mpc,Peak-cap,cases/peakcap_r0p97_eta5_mpc_tes/report.md,1328410.8136771673,20457.300000005976,6.217248937900877e-15,0
+peakcap_r0p99_eta10_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r0p99_eta10_mpc_no_tes/report.md,1307962.0423423331,20879.10000000049,0.0002202440139642,0
+peakcap_r0p99_eta10_mpc_tes,mpc,Peak-cap,cases/peakcap_r0p99_eta10_mpc_tes/report.md,1307783.1370475215,20879.100000000315,1.9539925233402758e-13,0
+peakcap_r0p99_eta20_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r0p99_eta20_mpc_no_tes/report.md,1307956.6295043947,20879.10000000194,0.0002202440139651,0
+peakcap_r0p99_eta20_mpc_tes,mpc,Peak-cap,cases/peakcap_r0p99_eta20_mpc_tes/report.md,1307748.9905251374,20879.100000000315,0.0025720746086062,0
+peakcap_r0p99_eta5_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r0p99_eta5_mpc_no_tes/report.md,1307964.1260873126,20879.1000000024,0.0002202440139598,0
+peakcap_r0p99_eta5_mpc_tes,mpc,Peak-cap,cases/peakcap_r0p99_eta5_mpc_tes/report.md,1307757.627418999,20879.100000000315,4.3520742565306136e-14,0
+peakcap_r1_eta10_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r1_eta10_mpc_no_tes/report.md,1303660.5198323852,21090.00000000025,1.0658141036401504e-14,0
+peakcap_r1_eta10_mpc_tes,mpc,Peak-cap,cases/peakcap_r1_eta10_mpc_tes/report.md,1302890.1441987902,21090.0000000001,5.568878691519785e-13,0
+peakcap_r1_eta20_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r1_eta20_mpc_no_tes/report.md,1303635.0116274063,21090.000000000546,4.440892098500626e-15,0
+peakcap_r1_eta20_mpc_tes,mpc,Peak-cap,cases/peakcap_r1_eta20_mpc_tes/report.md,1302890.1441987902,21090.000000000106,5.382361223382759e-13,0
+peakcap_r1_eta5_mpc_no_tes,mpc_no_tes,Peak-cap,cases/peakcap_r1_eta5_mpc_no_tes/report.md,1303612.7433975304,21090.000000000426,1.1546319456101628e-14,0
+peakcap_r1_eta5_mpc_tes,mpc,Peak-cap,cases/peakcap_r1_eta5_mpc_tes/report.md,1302889.7856095918,21090.00000000009,5.444533712761769e-13,0
+robust_base_cp20_h12_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_base_cp20_h12_mpc_no_tes/report.md,1303101.4322209014,21090.00000000009,0.0,0
+robust_base_cp20_h12_mpc_tes,mpc,Robustness,cases/robust_base_cp20_h12_mpc_tes/report.md,1302988.6022383643,21090.0,7.72715225139109e-13,0
+robust_base_cp20_h24_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_base_cp20_h24_mpc_no_tes/report.md,1302135.434857997,21090.00000000033,0.0,0
+robust_base_cp20_h24_mpc_tes,mpc,Robustness,cases/robust_base_cp20_h24_mpc_tes/report.md,1300663.0801031454,21090.000000000204,8.881784197001252e-16,0
+robust_base_cp20_h6_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_base_cp20_h6_mpc_no_tes/report.md,1314323.2075217422,21090.0,8.881784197001252e-16,0
+robust_base_cp20_h6_mpc_tes,mpc,Robustness,cases/robust_base_cp20_h6_mpc_tes/report.md,1311164.398999732,21090.0,9.64561763794336e-13,0
+robust_base_cp20_soc0p2_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_base_cp20_soc0p2_mpc_no_tes/report.md,1303101.4322209014,21090.00000000009,0.0,0
+robust_base_cp20_soc0p2_mpc_tes,mpc,Robustness,cases/robust_base_cp20_soc0p2_mpc_tes/report.md,1303089.7812318336,21090.0,5.409006575973764e-13,0
+robust_base_cp20_soc0p5_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_base_cp20_soc0p5_mpc_no_tes/report.md,1303101.4322209014,21090.00000000009,0.0,0
+robust_base_cp20_soc0p5_mpc_tes,mpc,Robustness,cases/robust_base_cp20_soc0p5_mpc_tes/report.md,1302462.3174966185,21090.0,4.636291350834654e-13,0
+robust_base_cp20_soc0p8_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_base_cp20_soc0p8_mpc_no_tes/report.md,1303101.4322209014,21090.00000000009,0.0,0
+robust_base_cp20_soc0p8_mpc_tes,mpc,Robustness,cases/robust_base_cp20_soc0p8_mpc_tes/report.md,1302384.7809928944,21090.0,4.636291350834654e-13,0
+robust_dr_day_ahead_10_h12_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_dr_day_ahead_10_h12_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+robust_dr_day_ahead_10_h12_mpc_tes,mpc,Robustness,cases/robust_dr_day_ahead_10_h12_mpc_tes/report.md,1303061.9052455665,21090.0,7.460698725481052e-13,0
+robust_dr_day_ahead_10_h24_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_dr_day_ahead_10_h24_mpc_no_tes/report.md,1302180.631625878,21090.00000000033,0.0,0
+robust_dr_day_ahead_10_h24_mpc_tes,mpc,Robustness,cases/robust_dr_day_ahead_10_h24_mpc_tes/report.md,1300709.5687642095,21090.000000000204,8.881784197001252e-16,1
+robust_dr_day_ahead_10_h6_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_dr_day_ahead_10_h6_mpc_no_tes/report.md,1314286.4099315945,21090.0,0.5677744244638747,0
+robust_dr_day_ahead_10_h6_mpc_tes,mpc,Robustness,cases/robust_dr_day_ahead_10_h6_mpc_tes/report.md,1311239.8610199057,21090.0,0.0946489541689681,0
+robust_dr_day_ahead_10_soc0p2_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_dr_day_ahead_10_soc0p2_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+robust_dr_day_ahead_10_soc0p2_mpc_tes,mpc,Robustness,cases/robust_dr_day_ahead_10_soc0p2_mpc_tes/report.md,1303161.7918664522,21090.0,5.222489107836736e-13,0
+robust_dr_day_ahead_10_soc0p5_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_dr_day_ahead_10_soc0p5_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+robust_dr_day_ahead_10_soc0p5_mpc_tes,mpc,Robustness,cases/robust_dr_day_ahead_10_soc0p5_mpc_tes/report.md,1302534.561343688,21090.0,4.476419235288631e-13,0
+robust_dr_day_ahead_10_soc0p8_mpc_no_tes,mpc_no_tes,Robustness,cases/robust_dr_day_ahead_10_soc0p8_mpc_no_tes/report.md,1303176.370883921,21090.00000000009,0.0,0
+robust_dr_day_ahead_10_soc0p8_mpc_tes,mpc,Robustness,cases/robust_dr_day_ahead_10_soc0p8_mpc_tes/report.md,1302457.0248399645,21090.0,4.476419235288631e-13,0
+tou_full_base_cp20_hot_direct_no_tes,no_tes,TOU full compare,cases/tou_full_base_cp20_hot_direct_no_tes/report.md,1352855.325911415,21011.25,0.0,0
+tou_full_base_cp20_hot_mpc_no_tes,mpc_no_tes,TOU full compare,cases/tou_full_base_cp20_hot_mpc_no_tes/report.md,1303101.4322209014,21090.00000000009,0.0,0
+tou_full_base_cp20_hot_mpc_tes,mpc,TOU full compare,cases/tou_full_base_cp20_hot_mpc_tes/report.md,1302988.6022383643,21090.0,7.72715225139109e-13,0
+tou_full_base_cp20_hot_rbc_tes,rbc,TOU full compare,cases/tou_full_base_cp20_hot_rbc_tes/report.md,1351195.4338734697,20954.55,0.0,0
+tou_full_base_cp20_mild_direct_no_tes,no_tes,TOU full compare,cases/tou_full_base_cp20_mild_direct_no_tes/report.md,1297234.9595623966,20255.25000000003,0.0,0
+tou_full_base_cp20_mild_mpc_no_tes,mpc_no_tes,TOU full compare,cases/tou_full_base_cp20_mild_mpc_no_tes/report.md,1243001.655898256,21090.000000000036,0.0100356619157127,0
+tou_full_base_cp20_mild_mpc_tes,mpc,TOU full compare,cases/tou_full_base_cp20_mild_mpc_tes/report.md,1240553.6651103378,21090.000000000025,4.174438572590589e-13,0
+tou_full_base_cp20_mild_rbc_tes,rbc,TOU full compare,cases/tou_full_base_cp20_mild_rbc_tes/report.md,1295921.56472874,20198.55000000003,0.0,0
+tou_full_base_hot_direct_no_tes,no_tes,TOU full compare,cases/tou_full_base_hot_direct_no_tes/report.md,1335024.4577842462,21011.25,0.0,0
+tou_full_base_hot_mpc_no_tes,mpc_no_tes,TOU full compare,cases/tou_full_base_hot_mpc_no_tes/report.md,1284743.8250342272,21090.00000000012,0.0,0
+tou_full_base_hot_mpc_tes,mpc,TOU full compare,cases/tou_full_base_hot_mpc_tes/report.md,1284890.0066353108,21090.0,0.0,0
+tou_full_base_hot_rbc_tes,rbc,TOU full compare,cases/tou_full_base_hot_rbc_tes/report.md,1333447.6970190897,20954.55,0.0,0
+tou_full_base_mild_direct_no_tes,no_tes,TOU full compare,cases/tou_full_base_mild_direct_no_tes/report.md,1280210.6558710174,20255.25000000003,0.0,0
+tou_full_base_mild_mpc_no_tes,mpc_no_tes,TOU full compare,cases/tou_full_base_mild_mpc_no_tes/report.md,1225472.450120189,21090.00000000003,0.0100356619156869,0
+tou_full_base_mild_mpc_tes,mpc,TOU full compare,cases/tou_full_base_mild_mpc_tes/report.md,1225787.5406890283,21090.000000001903,3.552713678800501e-15,0
+tou_full_base_mild_rbc_tes,rbc,TOU full compare,cases/tou_full_base_mild_rbc_tes/report.md,1278982.51158565,20198.55000000003,0.0,0
+tou_full_flat_hot_direct_no_tes,no_tes,TOU full compare,cases/tou_full_flat_hot_direct_no_tes/report.md,1289412.4439891211,21011.25,0.0,0
+tou_full_flat_hot_mpc_no_tes,mpc_no_tes,TOU full compare,cases/tou_full_flat_hot_mpc_no_tes/report.md,1276706.4982035677,21090.00000000003,0.0,0
+tou_full_flat_hot_mpc_tes,mpc,TOU full compare,cases/tou_full_flat_hot_mpc_tes/report.md,1276355.210479532,21090.0,0.0003112661489135,0
+tou_full_flat_hot_rbc_tes,rbc,TOU full compare,cases/tou_full_flat_hot_rbc_tes/report.md,1289565.121546853,20954.55,0.0,0
+tou_full_flat_mild_direct_no_tes,no_tes,TOU full compare,cases/tou_full_flat_mild_direct_no_tes/report.md,1236545.393416596,20255.25000000003,0.0,0
+tou_full_flat_mild_mpc_no_tes,mpc_no_tes,TOU full compare,cases/tou_full_flat_mild_mpc_no_tes/report.md,1222748.4177696616,21090.000000000025,5.4178883601707645e-14,0
+tou_full_flat_mild_mpc_tes,mpc,TOU full compare,cases/tou_full_flat_mild_mpc_tes/report.md,1223029.5665862898,21090.00000000003,1.4210854715202004e-14,0
+tou_full_flat_mild_rbc_tes,rbc,TOU full compare,cases/tou_full_flat_mild_rbc_tes/report.md,1237388.1699010308,20198.55000000003,0.0,0
+tou_full_highspread_cp20_hot_direct_no_tes,no_tes,TOU full compare,cases/tou_full_highspread_cp20_hot_direct_no_tes/report.md,1529616.1045755772,21011.25,0.0,0
+tou_full_highspread_cp20_hot_mpc_no_tes,mpc_no_tes,TOU full compare,cases/tou_full_highspread_cp20_hot_mpc_no_tes/report.md,1448336.7481425134,21090.00000000009,5.861977570020828e-14,0
+tou_full_highspread_cp20_hot_mpc_tes,mpc,TOU full compare,cases/tou_full_highspread_cp20_hot_mpc_tes/report.md,1447294.852194684,21090.0,7.727152251391091e-14,0
+tou_full_highspread_cp20_hot_rbc_tes,rbc,TOU full compare,cases/tou_full_highspread_cp20_hot_rbc_tes/report.md,1526650.2132754428,20954.55,0.0,0
+tou_full_highspread_cp20_mild_direct_no_tes,no_tes,TOU full compare,cases/tou_full_highspread_cp20_mild_direct_no_tes/report.md,1466686.0070250826,20255.25000000003,0.0,0
+tou_full_highspread_cp20_mild_mpc_no_tes,mpc_no_tes,TOU full compare,cases/tou_full_highspread_cp20_mild_mpc_no_tes/report.md,1373880.4540641792,21090.0,3.1974423109204515e-14,0
+tou_full_highspread_cp20_mild_mpc_tes,mpc,TOU full compare,cases/tou_full_highspread_cp20_mild_mpc_tes/report.md,1371890.2609318767,21090.0,1.3589129821411916e-13,0
+tou_full_highspread_cp20_mild_rbc_tes,rbc,TOU full compare,cases/tou_full_highspread_cp20_mild_rbc_tes/report.md,1463907.633871115,20198.55000000003,0.0,0
+tou_screen_g0_cp0_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g0_cp0_hot_mpc_no_tes/report.md,1276706.4982035677,21090.00000000003,0.0,0
+tou_screen_g0_cp0_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g0_cp0_hot_mpc_tes/report.md,1276355.210479532,21090.0,0.0003112661489135,0
+tou_screen_g0_cp0_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g0_cp0_mild_mpc_no_tes/report.md,1222748.4177696616,21090.000000000025,5.4178883601707645e-14,0
+tou_screen_g0_cp0_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g0_cp0_mild_mpc_tes/report.md,1223029.5665862898,21090.00000000003,1.4210854715202004e-14,0
+tou_screen_g0_cp0p2_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g0_cp0p2_hot_mpc_no_tes/report.md,1300661.7099745604,21090.000000000065,0.0,0
+tou_screen_g0_cp0p2_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g0_cp0p2_hot_mpc_tes/report.md,1300931.3698406904,21090.0,1.2434497875801752e-14,0
+tou_screen_g0_cp0p2_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g0_cp0p2_mild_mpc_no_tes/report.md,1246827.7203233573,21090.000000000164,0.0025806494177027,0
+tou_screen_g0_cp0p2_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g0_cp0p2_mild_mpc_tes/report.md,1247255.432239973,21090.0,8.881784197001252e-16,0
+tou_screen_g0p5_cp0_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g0p5_cp0_hot_mpc_no_tes/report.md,1280442.8654858284,21090.00000000009,0.0,0
+tou_screen_g0p5_cp0_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g0p5_cp0_hot_mpc_tes/report.md,1280532.5933626792,21090.0,0.0,0
+tou_screen_g0p5_cp0_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g0p5_cp0_mild_mpc_no_tes/report.md,1224089.129622043,21090.0,2.5757174171303632e-14,0
+tou_screen_g0p5_cp0_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g0p5_cp0_mild_mpc_tes/report.md,1224830.6801477703,21090.000000000007,0.0028268189732143,0
+tou_screen_g0p5_cp0p2_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g0p5_cp0p2_hot_mpc_no_tes/report.md,1302403.7211617748,21090.000000000106,0.0,0
+tou_screen_g0p5_cp0p2_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g0p5_cp0p2_hot_mpc_tes/report.md,1302257.407205718,21090.0,5.409006575973764e-13,0
+tou_screen_g0p5_cp0p2_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g0p5_cp0p2_mild_mpc_no_tes/report.md,1244889.2702434896,21090.0,8.881784197001252e-14,0
+tou_screen_g0p5_cp0p2_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g0p5_cp0p2_mild_mpc_tes/report.md,1243660.9666607329,21090.00000000223,8.641757101113257e-05,0
+tou_screen_g1_cp0_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g1_cp0_hot_mpc_no_tes/report.md,1284743.8250342272,21090.00000000012,0.0,0
+tou_screen_g1_cp0_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g1_cp0_hot_mpc_tes/report.md,1284890.0066353108,21090.0,0.0,0
+tou_screen_g1_cp0_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g1_cp0_mild_mpc_no_tes/report.md,1225472.450120189,21090.00000000003,0.0100356619156869,0
+tou_screen_g1_cp0_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g1_cp0_mild_mpc_tes/report.md,1225787.5406890283,21090.000000001903,3.552713678800501e-15,0
+tou_screen_g1_cp0p2_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g1_cp0p2_hot_mpc_no_tes/report.md,1303101.4322209014,21090.00000000009,0.0,0
+tou_screen_g1_cp0p2_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g1_cp0p2_hot_mpc_tes/report.md,1302988.6022383643,21090.0,7.72715225139109e-13,0
+tou_screen_g1_cp0p2_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g1_cp0p2_mild_mpc_no_tes/report.md,1243001.655898256,21090.000000000036,0.0100356619157127,0
+tou_screen_g1_cp0p2_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g1_cp0p2_mild_mpc_tes/report.md,1240553.6651103378,21090.000000000025,4.174438572590589e-13,0
+tou_screen_g1p5_cp0_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g1p5_cp0_hot_mpc_no_tes/report.md,1294741.4706545258,21090.00000000009,0.0,0
+tou_screen_g1p5_cp0_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g1p5_cp0_hot_mpc_tes/report.md,1294167.5716459686,21090.0,0.0,0
+tou_screen_g1p5_cp0_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g1p5_cp0_mild_mpc_no_tes/report.md,1228457.4329855044,21090.000000000025,5.329070518200752e-14,0
+tou_screen_g1p5_cp0_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g1p5_cp0_mild_mpc_tes/report.md,1228555.2029386722,21090.000000000266,4.973799150320701e-14,0
+tou_screen_g1p5_cp0p2_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g1p5_cp0p2_hot_mpc_no_tes/report.md,1309789.0742445246,21090.00000000009,1.0302869668521453e-13,0
+tou_screen_g1p5_cp0p2_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g1p5_cp0p2_hot_mpc_tes/report.md,1308712.6638541422,21090.0,0.0,0
+tou_screen_g1p5_cp0p2_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g1p5_cp0p2_mild_mpc_no_tes/report.md,1242352.6885782962,21090.000000000025,2.664535259100376e-15,0
+tou_screen_g1p5_cp0p2_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g1p5_cp0p2_mild_mpc_tes/report.md,1240301.852680831,21090.0,9.769962616701378e-15,0
+tou_screen_g2_cp0_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g2_cp0_hot_mpc_no_tes/report.md,1434156.9013694068,21090.00000000009,0.0,0
+tou_screen_g2_cp0_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g2_cp0_hot_mpc_tes/report.md,1433446.672942962,21090.0,1.8030021919912545e-13,0
+tou_screen_g2_cp0_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g2_cp0_mild_mpc_no_tes/report.md,1360523.7076205895,21090.0,1.900701818158268e-13,0
+tou_screen_g2_cp0_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g2_cp0_mild_mpc_tes/report.md,1360954.563385317,21090.00000000019,8.970602038971266e-14,0
+tou_screen_g2_cp0p2_hot_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g2_cp0p2_hot_mpc_no_tes/report.md,1448336.7481425134,21090.00000000009,5.861977570020828e-14,0
+tou_screen_g2_cp0p2_hot_mpc_tes,mpc,TOU screening,cases/tou_screen_g2_cp0p2_hot_mpc_tes/report.md,1447294.852194684,21090.0,7.727152251391091e-14,0
+tou_screen_g2_cp0p2_mild_mpc_no_tes,mpc_no_tes,TOU screening,cases/tou_screen_g2_cp0p2_mild_mpc_no_tes/report.md,1373880.4540641792,21090.0,3.1974423109204515e-14,0
+tou_screen_g2_cp0p2_mild_mpc_tes,mpc,TOU screening,cases/tou_screen_g2_cp0p2_mild_mpc_tes/report.md,1371890.2609318767,21090.0,1.3589129821411916e-13,0

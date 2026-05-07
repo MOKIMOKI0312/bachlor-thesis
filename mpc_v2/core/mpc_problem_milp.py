@@ -239,6 +239,11 @@ class EconomicMPCProblem:
         heat_gain = self.room.it_heat_gain_c_per_mwh * dt / 1000.0
         cooling_gain = self.room.cooling_gain_c_per_mwh * dt / 1000.0
         wet_bulb = np.asarray(forecast.wet_bulb_or_default(), dtype=float)
+        dynamic_peak_cap = (
+            np.asarray(forecast.dynamic_peak_cap_kw, dtype=float)
+            if forecast.dynamic_peak_cap_kw is not None
+            else None
+        )
 
         for t in range(n):
             rows.append(
@@ -374,7 +379,15 @@ class EconomicMPCProblem:
                 )
             )
             rows.append(({int(idx.grid[t]): 1.0, int(idx.peak_grid[0]): -1.0}, -np.inf, 0.0))
-            if self.economics.peak_cap_kw is not None:
+            if dynamic_peak_cap is not None and dynamic_peak_cap[t] >= 0.0:
+                rows.append(
+                    (
+                        {int(idx.grid[t]): 1.0, int(idx.s_peak[t]): -1.0},
+                        -np.inf,
+                        float(dynamic_peak_cap[t]),
+                    )
+                )
+            elif self.economics.peak_cap_kw is not None:
                 rows.append(
                     (
                         {int(idx.grid[t]): 1.0, int(idx.s_peak[t]): -1.0},

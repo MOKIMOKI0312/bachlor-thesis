@@ -17,6 +17,7 @@ import pandas as pd
 import yaml
 
 from mpc_v2.core.controller import EconomicTESMPCController
+from mpc_v2.core.dr_service import summarize_dr_events
 from mpc_v2.core.facility_model import (
     ChillerPlantModel,
     ChillerPlantParams,
@@ -52,8 +53,25 @@ def run_closed_loop(
     w_terminal: float | None = None,
     w_spill: float | None = None,
     w_cycle: float | None = None,
+    w_peak_slack: float | None = None,
     soc_target: float | None = None,
+    initial_soc: float | None = None,
     peak_cap_kw: float | None = None,
+    peak_cap_ratio: float | None = None,
+    peak_cap_reference_kw: float | None = None,
+    tariff_template: str | None = None,
+    tariff_gamma: float | None = None,
+    cp_uplift: float | None = None,
+    float_share: float | None = None,
+    dr_enabled: bool | None = None,
+    dr_event_type: str | None = None,
+    dr_reduction_frac: float | None = None,
+    dr_start_hour: float | None = None,
+    dr_duration_hours: float | None = None,
+    dr_event_day_index: int | None = None,
+    dr_event_start_timestamp: str | None = None,
+    dr_baseline_kw: float | None = None,
+    dr_compensation_cny_per_kwh: float | None = None,
 ) -> Path:
     """Run closed-loop validation and write monitor/solver/summary outputs."""
 
@@ -74,6 +92,8 @@ def run_closed_loop(
         cfg["economics"]["pv_scale"] = float(pv_scale)
     if peak_cap_kw is not None:
         cfg["economics"]["peak_cap_kw"] = float(peak_cap_kw)
+    if peak_cap_ratio is not None and peak_cap_reference_kw is not None:
+        cfg["economics"]["peak_cap_kw"] = float(peak_cap_ratio) * float(peak_cap_reference_kw)
     if horizon_steps_override is not None:
         cfg["time"]["horizon_steps"] = int(horizon_steps_override)
     if w_terminal is not None:
@@ -82,12 +102,48 @@ def run_closed_loop(
         cfg["objective"]["w_spill"] = float(w_spill)
     if w_cycle is not None:
         cfg["objective"]["w_cycle"] = float(w_cycle)
+    if w_peak_slack is not None:
+        cfg["objective"]["w_peak_slack"] = float(w_peak_slack)
     if soc_target is not None:
         cfg["tes"]["soc_target"] = float(soc_target)
+    if initial_soc is not None:
+        cfg["tes"]["initial_soc"] = float(initial_soc)
+    cfg.setdefault("tariff", {})
+    if tariff_template is not None:
+        cfg["tariff"]["template"] = str(tariff_template)
+    if tariff_gamma is not None:
+        cfg["tariff"]["gamma"] = float(tariff_gamma)
+    if cp_uplift is not None:
+        cfg["tariff"]["cp_uplift"] = float(cp_uplift)
+    if float_share is not None:
+        cfg["tariff"]["float_share"] = float(float_share)
+    cfg.setdefault("dr", {})
+    if dr_enabled is not None:
+        cfg["dr"]["enabled"] = bool(dr_enabled)
+    if dr_event_type is not None:
+        cfg["dr"]["event_type"] = str(dr_event_type)
+    if dr_reduction_frac is not None:
+        cfg["dr"]["reduction_frac"] = float(dr_reduction_frac)
+    if dr_start_hour is not None:
+        cfg["dr"]["start_hour"] = float(dr_start_hour)
+    if dr_duration_hours is not None:
+        cfg["dr"]["duration_hours"] = float(dr_duration_hours)
+    if dr_event_day_index is not None:
+        cfg["dr"]["event_day_index"] = int(dr_event_day_index)
+    if dr_event_start_timestamp is not None:
+        cfg["dr"]["event_start_timestamp"] = str(dr_event_start_timestamp)
+    if dr_baseline_kw is not None:
+        cfg["dr"]["baseline_kw"] = float(dr_baseline_kw)
+    if dr_compensation_cny_per_kwh is not None:
+        cfg["dr"]["compensation_cny_per_kwh"] = float(dr_compensation_cny_per_kwh)
 
     dt_hours = float(cfg["time"]["dt_hours"])
     horizon_steps = int(cfg["time"]["horizon_steps"])
     n_steps = int(steps if steps is not None else cfg["time"]["default_closed_loop_steps"])
+    synthetic = cfg.get("synthetic", {})
+    start_ts = parse_timestamp(synthetic.get("start_timestamp", "2025-07-01 00:00:00"))
+    cfg.setdefault("dr", {})
+    cfg["dr"].setdefault("episode_start_timestamp", start_ts.isoformat(sep=" "))
     root = Path(output_root or cfg["paths"]["output_root"])
     run_dir = root / case_id
     suffix = 1
@@ -124,11 +180,11 @@ def run_closed_loop(
         facility_model=facility_model,
         room_model=room_model,
         dt_hours=dt_hours,
+        tariff_config=cfg.get("tariff", {}),
+        dr_config=cfg.get("dr", {}),
     )
     controller = EconomicTESMPCController.from_config(cfg)
 
-    synthetic = cfg.get("synthetic", {})
-    start_ts = parse_timestamp(synthetic.get("start_timestamp", "2025-07-01 00:00:00"))
     it_load_kw = float(synthetic.get("it_load_kw", 18000.0))
     outdoor_base_c = float(synthetic.get("outdoor_base_c", 29.0))
     outdoor_amplitude_c = float(synthetic.get("outdoor_amplitude_c", 6.0))
@@ -293,7 +349,12 @@ def run_closed_loop(
         u_signed = action.u_signed
         prev_u_signed = prev_u_ch - prev_u_dis
         signed_du = abs(u_signed - prev_u_signed)
-        peak_cap = economics_params.peak_cap_kw
+        dynamic_cap = (
+            float(actual.dynamic_peak_cap_kw[0])
+            if actual.dynamic_peak_cap_kw is not None and float(actual.dynamic_peak_cap_kw[0]) >= 0.0
+            else None
+        )
+        peak_cap = dynamic_cap if dynamic_cap is not None else economics_params.peak_cap_kw
         peak_slack_kw = max(0.0, grid_import_kw - peak_cap) if peak_cap is not None else 0.0
         monitor_row = {
             "timestamp": now.isoformat(sep=" "),
@@ -306,6 +367,15 @@ def run_closed_loop(
             "pv_actual_kw": actual_pv,
             "pv_forecast_kw": float(forecast.pv_forecast_kw[0]),
             "price_currency_per_mwh": float(actual.price_forecast[0]),
+            "price_total_cny_mwh": float(actual.price_forecast[0]),
+            "price_float_cny_mwh": (
+                float(actual.price_float_forecast[0]) if actual.price_float_forecast else float(actual.price_forecast[0])
+            ),
+            "price_nonfloat_cny_mwh": (
+                float(actual.price_nonfloat_forecast[0]) if actual.price_nonfloat_forecast else 0.0
+            ),
+            "tou_stage": str(actual.tou_stage[0]) if actual.tou_stage else "",
+            "cp_flag": int(actual.cp_flag[0]) if actual.cp_flag else 0,
             "demand_charge_rate": economics_params.demand_charge_rate,
             "demand_charge_basis": economics_params.demand_charge_basis,
             "peak_cap_kw": peak_cap,
@@ -336,6 +406,15 @@ def run_closed_loop(
             "episode_peak_grid_so_far_kw": episode_peak_grid_so_far,
             "predicted_peak_grid_kw": predicted_peak_grid,
             "peak_slack_kw": peak_slack_kw,
+            "dr_flag": int(actual.dr_flag[0]) if actual.dr_flag else 0,
+            "dr_notice_type": str(actual.dr_notice_type[0]) if actual.dr_notice_type else "",
+            "dr_req_kw": float(actual.dr_req_kw[0]) if actual.dr_req_kw else 0.0,
+            "dr_baseline_kw": float(actual.dr_baseline_kw[0]) if actual.dr_baseline_kw else 0.0,
+            "dr_event_id": str(actual.dr_event_id[0]) if actual.dr_event_id else "",
+            "dr_compensation_cny_per_kwh": (
+                float(actual.dr_compensation_cny_per_kwh[0]) if actual.dr_compensation_cny_per_kwh else 0.0
+            ),
+            "dr_response_threshold": float(cfg.get("dr", {}).get("response_threshold", 0.50)),
             "room_temp_c": room_temp_c,
             "predicted_room_temp_c": predicted_room_temp,
             "soc": soc,
@@ -381,7 +460,10 @@ def run_closed_loop(
     monitor = pd.DataFrame(monitor_rows)
     solver_log = pd.DataFrame(solver_rows)
     monitor.to_csv(run_dir / "monitor.csv", index=False)
+    monitor.to_csv(run_dir / "timeseries.csv", index=False)
     solver_log.to_csv(run_dir / "solver_log.csv", index=False)
+    events = summarize_dr_events(monitor, dt_hours=dt_hours, temp_max_c=float(cfg["temperature"]["max_c"]))
+    events.to_csv(run_dir / "events.csv", index=False)
     summary = compute_episode_metrics(
         monitor=monitor,
         solver_log=solver_log,
@@ -397,7 +479,9 @@ def run_closed_loop(
         initial_soc=initial_soc,
         final_soc_after_last_update=soc,
     )
-    (run_dir / "episode_summary.json").write_text(json.dumps(asdict(summary), indent=2), encoding="utf-8")
+    summary_dict = asdict(summary)
+    (run_dir / "episode_summary.json").write_text(json.dumps(summary_dict, indent=2), encoding="utf-8")
+    pd.DataFrame([summary_dict]).to_csv(run_dir / "summary.csv", index=False)
     return run_dir
 
 
@@ -626,8 +710,25 @@ def main() -> None:
     parser.add_argument("--w-terminal", type=float, default=None)
     parser.add_argument("--w-spill", type=float, default=None)
     parser.add_argument("--w-cycle", type=float, default=None)
+    parser.add_argument("--w-peak-slack", type=float, default=None)
     parser.add_argument("--soc-target", type=float, default=None)
+    parser.add_argument("--initial-soc", type=float, default=None)
     parser.add_argument("--peak-cap-kw", type=float, default=None)
+    parser.add_argument("--peak-cap-ratio", type=float, default=None)
+    parser.add_argument("--peak-cap-reference-kw", type=float, default=None)
+    parser.add_argument("--tariff-template", default=None, choices=["none", "jiangsu_csv", "beijing", "guangdong_cold_storage"])
+    parser.add_argument("--tariff-gamma", type=float, default=None)
+    parser.add_argument("--cp-uplift", type=float, default=None)
+    parser.add_argument("--float-share", type=float, default=None)
+    parser.add_argument("--dr-enabled", action="store_true")
+    parser.add_argument("--dr-event-type", default=None, choices=["day_ahead", "fast", "realtime", "peak_cap"])
+    parser.add_argument("--dr-reduction-frac", type=float, default=None)
+    parser.add_argument("--dr-start-hour", type=float, default=None)
+    parser.add_argument("--dr-duration-hours", type=float, default=None)
+    parser.add_argument("--dr-event-day-index", type=int, default=None)
+    parser.add_argument("--dr-event-start-timestamp", default=None)
+    parser.add_argument("--dr-baseline-kw", type=float, default=None)
+    parser.add_argument("--dr-compensation-cny-per-kwh", type=float, default=None)
     args = parser.parse_args()
     run_dir = run_closed_loop(
         config_path=args.config,
@@ -647,8 +748,25 @@ def main() -> None:
         w_terminal=args.w_terminal,
         w_spill=args.w_spill,
         w_cycle=args.w_cycle,
+        w_peak_slack=args.w_peak_slack,
         soc_target=args.soc_target,
+        initial_soc=args.initial_soc,
         peak_cap_kw=args.peak_cap_kw,
+        peak_cap_ratio=args.peak_cap_ratio,
+        peak_cap_reference_kw=args.peak_cap_reference_kw,
+        tariff_template=args.tariff_template,
+        tariff_gamma=args.tariff_gamma,
+        cp_uplift=args.cp_uplift,
+        float_share=args.float_share,
+        dr_enabled=True if args.dr_enabled else None,
+        dr_event_type=args.dr_event_type,
+        dr_reduction_frac=args.dr_reduction_frac,
+        dr_start_hour=args.dr_start_hour,
+        dr_duration_hours=args.dr_duration_hours,
+        dr_event_day_index=args.dr_event_day_index,
+        dr_event_start_timestamp=args.dr_event_start_timestamp,
+        dr_baseline_kw=args.dr_baseline_kw,
+        dr_compensation_cny_per_kwh=args.dr_compensation_cny_per_kwh,
     )
     print(run_dir)
 

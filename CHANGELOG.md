@@ -17,6 +17,104 @@
   - 是否影响论文
   - 已知限制
 
+## v0.3.0-china-tou-dr-matrix - 2026-05-07
+
+### Git
+
+- Commit: `e86779bf` 为当前工作树基线；本版本变更尚未提交。
+- 状态：本地已完成代码、测试、138-run pilot、138-run 30 天正式矩阵和结果冻结。
+
+### Scope
+
+本版本完成中国 TOU/尖峰电价、DR event、peak-cap 和稳健性矩阵的 1 个月 synthetic/replay MILP-MPC 仿真：
+
+```text
+tariff service with gamma/cp uplift/float share
++ single-event DR service
++ generated 138-run China TOU/DR matrix
++ derived peak-cap baseline
++ 30-day closed-loop validation
++ frozen result package
+```
+
+### Code Changes
+
+- `mpc_v2/core/tariff_service.py`：新增中国 TOU/尖峰电价服务；`actual_at` 使用全序列参考均值，避免 1-step settlement 下 `gamma/cp_uplift` 失效。
+- `mpc_v2/core/dr_service.py`：新增单次 DR 事件定位参数，支持 `event_day_index` 和 `event_start_timestamp`，避免 30 天 run 中每日重复触发。
+- `mpc_v2/scripts/generate_china_matrix.py`：生成 pilot 和正式矩阵 YAML。
+- `mpc_v2/scripts/run_validation_matrix.py`：支持由 no-cap baseline 自动推导 peak cap，支持 `--max-workers` 和 `--resume-existing`。
+- `mpc_v2/scripts/analyze_results.py`：新增 TOU cost curve、TOU arbitrage spread、DR event profile、peak-cap tradeoff 和 solver time 图。
+- `mpc_v2/scripts/generate_result_reports.py`：为每个正式 run 生成 4 张 MATLAB 风格图和一份 Markdown 报告，并生成总报告。
+- `tests/`：新增 tariff、DR 单次事件、矩阵生成和 derived peak-cap 测试。
+- 同步更新 `README.md`、任务文件和论文草稿。
+
+### Validation
+
+Final test command:
+
+```powershell
+python -m pytest -q
+```
+
+Result:
+
+```text
+32 passed
+```
+
+Pilot command:
+
+```powershell
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenarios mpc_v2/config/generated_china_matrix_pilot.yaml --scenario-set china_all_full --output-dir runs/china_tou_dr_pilot_20260506
+```
+
+Formal matrix command:
+
+```powershell
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenarios mpc_v2/config/generated_china_matrix_month.yaml --scenario-set china_all_full --output-dir runs/china_tou_dr_month_20260506 --max-workers 8 --resume-existing
+```
+
+Analysis command:
+
+```powershell
+python -m mpc_v2.scripts.analyze_results --input-dir runs/china_tou_dr_month_20260506 --output-dir runs/china_tou_dr_month_20260506/analysis
+python -m mpc_v2.scripts.generate_result_reports --result-dir results/china_tou_dr_matrices_20260506
+```
+
+### 运行结果位置
+
+- Frozen result directory: `results/china_tou_dr_matrices_20260506/`
+- Formal raw runs: `results/china_tou_dr_matrices_20260506/raw/`
+- Formal summary: `results/china_tou_dr_matrices_20260506/validation_summary.csv`
+- Analysis outputs: `results/china_tou_dr_matrices_20260506/analysis/`
+- Per-case reports and figures: `results/china_tou_dr_matrices_20260506/reports/`
+- Result README: `results/china_tou_dr_matrices_20260506/README.md`
+
+### 运行结果简述
+
+- Matrix size: 138 / 138 runs completed, each 30 days = 2880 steps.
+- Categories: TOU screening 40, TOU full compare 32, peak-cap 24, DR event 18, robustness 24.
+- Reports: 138 per-case Markdown reports and 552 MATLAB-style PNG figures generated under `results/china_tou_dr_matrices_20260506/reports/`.
+- Feasibility: total `fallback_count = 1`; minimum `feasible_rate = 1.0`; minimum `optimal_rate = 0.999653`.
+- Solver time: maximum `solve_time_p95_s = 3.7692 s`.
+- Paired TES-MPC benefit: `mpc_no_tes` to `mpc` mean monthly saving = 518.81 CNY, bootstrap CI = 313.84 to 737.38 CNY, `n_pairs = 61`.
+- TOU screening: `mpc` mean monthly cost = 1,291,919.83 CNY; `mpc_no_tes` = 1,292,366.36 CNY; paired mean saving = 446.52 CNY.
+- TOU full compare: mean monthly cost is 1,296,598.71 CNY for `mpc`, 1,297,248.94 CNY for `mpc_no_tes`, 1,347,132.29 CNY for `rbc`, and 1,348,448.17 CNY for `no_tes`.
+- Peak-cap: derived caps achieved mean peaks of 21090.0, 20879.1, 20457.3, 20035.5 kW for `r_cap = 1.00, 0.99, 0.97, 0.95`; `peak_slack_max_kw` is numerically zero.
+- DR event: each scenario triggers one event; requested reductions are 1900, 3800, 5700 kWh for `r_DR = 0.05, 0.10, 0.15`; served reduction is 2060.78 kWh in the current proxy setting.
+
+### Thesis Impact
+
+- `docs/project_management/毕业设计论文/thesis_draft.tex` 已同步更新，加入 1 个月中国 TOU/DR synthetic/replay 矩阵结果和结论边界。
+- `references.bib` 未更新，因为本版本未把政策或论文依据作为正式引用写入论文。
+
+### Known Limitations
+
+- 本版本仍是 `mpc_v2` synthetic/replay closed loop，不是 EnergyPlus online co-simulation。
+- DR baseline 与收益是情景估算，不能表述为真实市场结算。
+- 严格 `r_cap=0.95` peak-cap 场景出现约 415-431 degree-hours 温度违约，应作为约束压力测试。
+- TES 增量收益只能按 `mpc_no_tes` 到 `mpc` 报告，不能把 direct baseline 到 MPC 的全部收益归因于 TES。
+
 ## v0.1.0-mpc-v2 - 2026-05-05
 
 ### Git
@@ -244,6 +342,95 @@ git diff --check passed with line-ending warnings only
 - 48 h prediction horizon 未作为最终候选运行，只保留为慢速扩展。
 
 ## Unreleased
+
+### 2026-05-06 - China TOU/DR scenario services and task plan
+
+#### Git
+
+- Commit: not committed yet
+- Branch: current working branch
+
+#### Scope
+
+- 从 `C:\Users\18430\Downloads\deep-research-report (10).md` 提取审查报告任务，生成：
+  - `docs/project_management/中国TOU_DR控制对比任务执行计划_20260506.md`
+- 新增中国分时电价/尖峰电价服务：
+  - `mpc_v2/core/tariff_service.py`
+  - 支持 `beijing`、`guangdong_cold_storage` 和既有 CSV 价格模板
+  - 支持 `gamma`、`cp_uplift`、`float_share`
+- 新增 DR/peak-cap 服务：
+  - `mpc_v2/core/dr_service.py`
+  - 支持 DR 事件窗口、baseline、请求削减、动态 cap、响应率和事件收益估算
+- 扩展闭环输出：
+  - `timeseries.csv`
+  - `events.csv`
+  - `summary.csv`
+  - 保留 `monitor.csv`、`solver_log.csv`、`episode_summary.json`
+- 新增统计和结果汇总工具：
+  - `mpc_v2/core/statistics.py`
+  - `mpc_v2/scripts/analyze_results.py`
+- 扩展 `scenario_sets.yaml`：
+  - `china_tou_screening_smoke`
+  - `china_tou_full_compare`
+  - `china_dr_peakcap_core`
+  - `china_robustness_core`
+
+#### Validation
+
+```powershell
+python -m pytest -q
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set china_tou_screening_smoke --steps 4 --output-dir runs/china_tou_screening_smoke_20260506
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set china_tou_full_compare --steps 4 --output-dir runs/china_tou_full_compare_smoke_20260506
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set china_dr_peakcap_core --steps 4 --output-dir runs/china_dr_peakcap_core_20260506
+python -m mpc_v2.scripts.run_validation_matrix --config mpc_v2/config/base.yaml --scenario-set china_robustness_core --steps 4 --output-dir runs/china_robustness_core_smoke_20260506
+python -m mpc_v2.scripts.analyze_results --input-dir runs/china_tou_screening_smoke_20260506 --output-dir runs/china_tou_screening_smoke_20260506/analysis
+python -m mpc_v2.scripts.analyze_results --input-dir runs/china_tou_full_compare_smoke_20260506 --output-dir runs/china_tou_full_compare_smoke_20260506/analysis
+python -m mpc_v2.scripts.analyze_results --input-dir runs/china_dr_peakcap_core_20260506 --output-dir runs/china_dr_peakcap_core_20260506/analysis
+python -m mpc_v2.scripts.analyze_results --input-dir runs/china_robustness_core_smoke_20260506 --output-dir runs/china_robustness_core_smoke_20260506/analysis
+```
+
+结果：
+
+```text
+28 passed
+TOU smoke matrix completed
+DR/peak-cap smoke matrix completed
+analysis summaries completed
+```
+
+#### 运行结果位置
+
+- Smoke output:
+  - `runs/china_tou_screening_smoke_20260506/`
+  - `runs/china_tou_full_compare_smoke_20260506/`
+  - `runs/china_dr_peakcap_core_20260506/`
+  - `runs/china_robustness_core_smoke_20260506/`
+- Analysis output:
+  - `runs/china_tou_screening_smoke_20260506/analysis/`
+  - `runs/china_tou_full_compare_smoke_20260506/analysis/`
+  - `runs/china_dr_peakcap_core_20260506/analysis/`
+  - `runs/china_robustness_core_smoke_20260506/analysis/`
+- Frozen result directory: 无新增冻结结果；本次只生成 ignored `runs/` 下的短步长配置 smoke。
+
+#### 运行结果简述
+
+- `china_tou_screening_smoke` 以 `--steps 4` 跑通 6 个短场景，验证北京 TOU 参数、`gamma/cp_uplift/float_share`、批量场景和新增输出文件链路。
+- `china_tou_full_compare` 以 `--steps 4` 跑通 8 个短场景，验证 direct no-TES、MPC no-TES、RBC TES 和 TES-MPC 在代表性 TOU 配置中的批量入口。
+- `china_dr_peakcap_core` 以 `--steps 4` 跑通 8 个短场景，验证 DR/peak-cap 配置可被 runner 消化；默认 DR 场景事件窗口在 18:00，4-step 午夜 smoke 不触发事件，事件触发由单元测试覆盖。
+- `china_robustness_core` 以 `--steps 4` 跑通 4 个短场景，验证 `initial_soc`、horizon 和 forecast disturbance 配置入口。
+- 这些 smoke 只验证配置和日志链路，不能作为论文统计结果。
+
+#### Thesis Impact
+
+- `thesis_draft.tex` 已同步补充：当前 `mpc_v2` 已包含中国 TOU/尖峰电价、DR/peak-cap 场景服务和事件日志，但仍属于 synthetic/replay closed-loop validation，不是 EnergyPlus co-simulation。
+- `references.bib` 未更新，因为本次未新增正式文献或政策引用；后续若把政策依据写入论文正文，需要先核验原文并补引用。
+
+#### Known Limitations
+
+- 完整 72-run TOU 矩阵和 DR/peak-cap 主线矩阵尚未运行。
+- DR baseline 和补偿当前是情景估算，不等于真实市场结算。
+- `peak_cap_reference_kw` 当前为工程设定；正式论文建议从 no-cap baseline 自动推导。
+- `guangdong_cold_storage` 模板是附录接口，尚未完成正式政策核验。
 
 后续版本建议优先处理：
 

@@ -1,0 +1,2 @@
+event_id,scenario_id,event_type,event_window,baseline_energy_kwh,requested_reduction_kwh,served_reduction_kwh,response_rate,tes_event_discharge_kwh_th,event_temp_violation_dh,dr_revenue_cny
+dr_event,dr_realtime_r0p1_mpc_tes,realtime,2025-07-20 18:00:00 to 2025-07-20 19:45:00,38000.0,3800.0,2060.779999999999,0.5423105263157891,2413.4892733697534,0.0,0.0

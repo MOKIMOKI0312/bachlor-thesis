@@ -21,7 +21,7 @@
 
 ### Git
 
-- Commit: `25ec838a`（amend 后如 hash 变化，以最终 `git log -1 --oneline` 为准）。
+- Commit: `03d4f609`（实现提交；本 changelog 条目如被后续 metadata-only commit 更新，以分支历史为准）。
 - 分支：`codex/mpc-rebuild`
 - 备份：重建前未提交 MPC 状态已保存到本地分支 `codex/mpc-before-rebuild-backup-20260507`，commit `8f942ad0`。
 

@@ -167,6 +167,7 @@ def _run_one_scenario(
         dr_compensation_cny_per_kwh=(
             float(scenario["dr_compensation_cny_per_kwh"]) if "dr_compensation_cny_per_kwh" in scenario else None
         ),
+        truncate_horizon_to_episode=bool(scenario.get("truncate_horizon_to_episode", False)),
     )
 
 

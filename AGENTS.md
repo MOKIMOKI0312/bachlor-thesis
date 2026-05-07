@@ -28,6 +28,7 @@
 ### 根目录分层
 
 - `Nanjing-DataCenter-TES-EnergyPlus/`：当前核心代码工作区，保留南京数据中心 TES EnergyPlus 最小模型包。
+- `mpc_v2/`：synthetic/replay MILP-MPC 验证框架，用于 MPC 算法验证、固定输入算法验算、SOC-neutral 复核和 TOU/DR 矩阵；不是 EnergyPlus 在线耦合入口。
 - `docs/literature/`：论文复现材料和其它参考文献，不是主代码入口。
 - `docs/project_management/`：项目进度和管理性文档。
 - `_archive/runtime/`：agent 通信和其它运行期协作记录，默认不作为论文代码入口。
@@ -48,6 +49,7 @@
 - EnergyPlus 模型问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/model/` 和 `Nanjing-DataCenter-TES-EnergyPlus/docs/`。
 - 天气、电价、PV 数据问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/weather/` 和 `Nanjing-DataCenter-TES-EnergyPlus/inputs/`。
 - 仿真运行问题：优先查看 `Nanjing-DataCenter-TES-EnergyPlus/run_energyplus_nanjing.ps1` 和本地 `Nanjing-DataCenter-TES-EnergyPlus/out/`。
+- MPC 算法本体验证、固定点位/固定环境输入 MPC 情景、SOC-neutral MPC 复核、TOU/DR synthetic/replay 矩阵问题：优先查看 `mpc_v2/`，并遵守 `mpc_v2/AGENTS.md`。
 - 文献、报告、当前路线和项目管理问题：再转向 `docs/`。
 - 历史目标、旧路线和过时任务包仅在需要追溯背景时查看 `_archive/project_goals/`。
 
@@ -125,6 +127,7 @@
 
 - 如果用户明确提到 `agent`、`subagent`、委派、并行处理，优先按上述角色分工。
 - 如果用户没有明确说明目标目录，但任务显然是 EnergyPlus 模型、输入数据、runner 或仿真验证问题，默认目标目录是 `Nanjing-DataCenter-TES-EnergyPlus/`。
+- 如果用户提到 “MPC 算法验证”“固定点位”“固定环境输入”“算法验算”“SOC-neutral MPC 复核” 或 “TOU/DR synthetic/replay 矩阵”，默认目标目录是 `mpc_v2/`，不先进入 `Nanjing-DataCenter-TES-EnergyPlus/`。
 - 如果用户说“看当前计划”“按现在计划做”“更新结果”，默认按本文件中的“当前计划与结果落盘”规则执行。
 - 新窗口不会继承旧窗口里已经创建好的 agent 实例；如果需要，应按本文件中的角色重新创建。
 

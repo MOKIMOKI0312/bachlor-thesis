@@ -72,6 +72,7 @@ def run_closed_loop(
     dr_event_start_timestamp: str | None = None,
     dr_baseline_kw: float | None = None,
     dr_compensation_cny_per_kwh: float | None = None,
+    truncate_horizon_to_episode: bool = False,
 ) -> Path:
     """Run closed-loop validation and write monitor/solver/summary outputs."""
 
@@ -162,6 +163,7 @@ def run_closed_loop(
         seed=seed,
         tariff_multiplier=tariff_multiplier,
         outdoor_offset_c=outdoor_offset_c,
+        truncate_horizon_to_episode=truncate_horizon_to_episode,
     )
 
     tes_params = TESParams.from_config(cfg["tes"])
@@ -205,9 +207,14 @@ def run_closed_loop(
 
     for step in range(n_steps):
         now = start_ts + timedelta(minutes=15 * step)
+        current_horizon_steps = (
+            max(1, min(horizon_steps, n_steps - step))
+            if truncate_horizon_to_episode
+            else horizon_steps
+        )
         forecast = forecast_builder.build(
             now_ts=now,
-            horizon_steps=horizon_steps,
+            horizon_steps=current_horizon_steps,
             pv_error_sigma=pv_error_sigma,
             seed=seed_value + step,
             it_load_kw=it_load_kw,
@@ -668,6 +675,7 @@ def _write_effective_config(
     seed: int | None,
     tariff_multiplier: float,
     outdoor_offset_c: float,
+    truncate_horizon_to_episode: bool,
 ) -> None:
     snapshot = dict(cfg)
     snapshot["effective_run"] = {
@@ -687,6 +695,7 @@ def _write_effective_config(
         "w_terminal": float(cfg.get("objective", {}).get("w_terminal", 0.0)),
         "w_spill": float(cfg.get("objective", {}).get("w_spill", 0.0)),
         "w_cycle": float(cfg.get("objective", {}).get("w_cycle", 0.0)),
+        "truncate_horizon_to_episode": bool(truncate_horizon_to_episode),
     }
     (run_dir / "config_effective.yaml").write_text(yaml.safe_dump(snapshot, sort_keys=False), encoding="utf-8")
 
@@ -729,6 +738,7 @@ def main() -> None:
     parser.add_argument("--dr-event-start-timestamp", default=None)
     parser.add_argument("--dr-baseline-kw", type=float, default=None)
     parser.add_argument("--dr-compensation-cny-per-kwh", type=float, default=None)
+    parser.add_argument("--truncate-horizon-to-episode", action="store_true")
     args = parser.parse_args()
     run_dir = run_closed_loop(
         config_path=args.config,
@@ -767,6 +777,7 @@ def main() -> None:
         dr_event_start_timestamp=args.dr_event_start_timestamp,
         dr_baseline_kw=args.dr_baseline_kw,
         dr_compensation_cny_per_kwh=args.dr_compensation_cny_per_kwh,
+        truncate_horizon_to_episode=args.truncate_horizon_to_episode,
     )
     print(run_dir)
 

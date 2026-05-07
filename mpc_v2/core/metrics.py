@@ -163,7 +163,11 @@ def compute_episode_metrics(
     temp_hi = (monitor["room_temp_c"] - temp_max_c).clip(lower=0.0)
     temp_lo = (temp_min_c - monitor["room_temp_c"]).clip(lower=0.0)
     temp_violation = temp_hi + temp_lo
-    soc_bad = (monitor["soc"] < soc_physical_min - 1e-7) | (monitor["soc"] > soc_physical_max + 1e-7)
+    soc_series = pd.concat(
+        [monitor["soc"], pd.Series([final_soc_after_last_update])],
+        ignore_index=True,
+    )
+    soc_bad = (soc_series < soc_physical_min - 1e-7) | (soc_series > soc_physical_max + 1e-7)
     status_values = [str(v).lower() for v in solver_log["solve_status"]]
     q_on = monitor["q_chiller_kw_th"] > 1e-9
     if "mode_specific_plr" in monitor.columns:
@@ -256,8 +260,8 @@ def compute_episode_metrics(
         temp_violation_count=int((temp_violation > 1e-7).sum()),
         temp_violation_degree_hours=float((temp_violation * dt_hours).sum()),
         max_temp_c=float(monitor["room_temp_c"].max()),
-        soc_min=float(monitor["soc"].min()),
-        soc_max=float(monitor["soc"].max()),
+        soc_min=float(soc_series.min()),
+        soc_max=float(soc_series.max()),
         soc_violation_count=int(soc_bad.sum()),
         initial_soc=initial_soc,
         final_soc_after_last_update=final_soc_after_last_update,

@@ -29,10 +29,12 @@ NOTICE = {
 def generate_china_matrix(profile: str = "month") -> dict[str, Any]:
     """Return a scenario YAML mapping for pilot or month runs."""
 
-    if profile not in {"pilot", "month"}:
-        raise ValueError("profile must be pilot or month")
-    steps = 96 if profile == "pilot" else 2880
-    event_day_index = 0 if profile == "pilot" else 19
+    if profile not in {"pilot", "month", "pilot_soc_neutral", "month_soc_neutral"}:
+        raise ValueError("profile must be pilot, month, pilot_soc_neutral, or month_soc_neutral")
+    is_pilot = profile.startswith("pilot")
+    soc_neutral = profile.endswith("soc_neutral")
+    steps = 96 if is_pilot else 2880
+    event_day_index = 0 if is_pilot else 19
     scenario_sets: dict[str, list[str]] = {
         "china_tou_screening_full": [],
         "china_tou_full_compare_full": [],
@@ -44,7 +46,7 @@ def generate_china_matrix(profile: str = "month") -> dict[str, Any]:
     scenarios: dict[str, dict[str, Any]] = {}
 
     def add(set_name: str, scenario_id: str, spec: dict[str, Any]) -> None:
-        scenarios[scenario_id] = _with_defaults(spec, steps)
+        scenarios[scenario_id] = _with_defaults(spec, steps, soc_neutral=soc_neutral)
         scenario_sets[set_name].append(scenario_id)
         scenario_sets["china_all_full"].append(scenario_id)
 
@@ -96,6 +98,7 @@ def generate_china_matrix(profile: str = "month") -> dict[str, Any]:
             "float_share": 0.8,
         },
         steps,
+        soc_neutral=soc_neutral,
     )
     for ratio in [1.0, 0.99, 0.97, 0.95]:
         for eta in [5, 10, 20]:
@@ -192,6 +195,7 @@ def generate_china_matrix(profile: str = "month") -> dict[str, Any]:
             "dt_minutes": 15,
             "episode_days": steps / 96,
             "event_day_index": event_day_index,
+            "soc_neutral_terminal": soc_neutral,
             "expected_run_count_excluding_derived_references": len(scenario_sets["china_all_full"]),
         },
         "scenario_sets": scenario_sets,
@@ -207,13 +211,17 @@ def write_china_matrix(path: str | Path, profile: str = "month") -> Path:
     return path
 
 
-def _with_defaults(spec: dict[str, Any], steps: int) -> dict[str, Any]:
+def _with_defaults(spec: dict[str, Any], steps: int, soc_neutral: bool = False) -> dict[str, Any]:
     merged = {
         "closed_loop_steps": steps,
         "horizon_steps": 48,
         "pv_error_sigma": 0.0,
     }
     merged.update(spec)
+    if soc_neutral:
+        merged.setdefault("soc_target", float(merged.get("initial_soc", 0.5)))
+        merged.setdefault("w_terminal", 50000.0)
+        merged.setdefault("truncate_horizon_to_episode", True)
     return merged
 
 
@@ -224,7 +232,11 @@ def _slug(value: float) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", choices=["pilot", "month"], default="month")
+    parser.add_argument(
+        "--profile",
+        choices=["pilot", "month", "pilot_soc_neutral", "month_soc_neutral"],
+        default="month",
+    )
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
     output = args.output or f"mpc_v2/config/generated_china_matrix_{args.profile}.yaml"

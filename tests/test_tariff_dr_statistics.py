@@ -107,6 +107,18 @@ def test_generate_china_matrix_counts_and_peak_reference_source():
     assert matrix["metadata"]["closed_loop_steps"] == 2880
 
 
+def test_generate_soc_neutral_matrix_sets_terminal_target():
+    matrix = generate_china_matrix(profile="month_soc_neutral")
+    assert matrix["metadata"]["soc_neutral_terminal"] is True
+    scenario = matrix["scenarios"]["tou_screen_g1_cp0p2_hot_mpc_tes"]
+    assert scenario["soc_target"] == pytest.approx(0.5)
+    assert scenario["w_terminal"] == pytest.approx(50000.0)
+    assert scenario["truncate_horizon_to_episode"] is True
+    robust = matrix["scenarios"]["robust_base_cp20_soc0p8_mpc_tes"]
+    assert robust["initial_soc"] == pytest.approx(0.8)
+    assert robust["soc_target"] == pytest.approx(0.8)
+
+
 def test_statistics_helpers_return_paired_summary_and_holm_decisions():
     frame = pd.DataFrame(
         {

@@ -17,6 +17,82 @@
   - 是否影响论文
   - 已知限制
 
+## v0.6.0-energyplus-mpc-coupling - 2026-05-07
+
+### Git
+
+- Commit: `待本次实现提交后回填`。
+- 分支：`codex/energyplus-mpc-coupling`
+- 基线：从 `codex/kim-lite-hardening` 的 `a6f10591` 创建。
+
+### Scope
+
+本版本将 Kim-lite MPC 从 synthetic/replay 验证推进到南京 EnergyPlus 模型的在线闭环 co-simulation 第一版。在线 runner 放在 `Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/`，不污染 `mpc_v2/` 的算法验证边界。
+
+### Code Changes
+
+- 新增 EnergyPlus-MPC coupling package，包含静态 epJSON 参数提取、baseline timeseries 参数识别、forecast adapter、Kim-lite MPC adapter、Runtime API runner、TES perturbation runner 和结果 audit。
+- 新增参数产物 `Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/config/energyplus_mpc_params.yaml`。
+- 新增物理参数说明 `Nanjing-DataCenter-TES-EnergyPlus/docs/physical_model_parameters.md`。
+- 新增耦合报告 `docs/energyplus_mpc_coupling_report_20260507.md` 和任务执行记录 `docs/project_management/energyplus_mpc_coupling_execution_20260507.md`。
+- 在线 runner 只控制 `TES_Set`，通过 Runtime API 读取 SOC、TES heat transfer、chiller、facility electricity、zone temperature 和天气状态。
+- 默认 `--record-start-step auto`，从 baseline 中选择 chiller 已活跃的 96 步窗口，避免 January 1 前 96 步无法验证 TES 物理响应。
+- 未修改 `Nanjing_DataCenter_TES.epJSON`。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m pytest -q
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.extract_params --model Nanjing-DataCenter-TES-EnergyPlus/model/Nanjing_DataCenter_TES.epJSON
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.identify_params --timeseries Nanjing-DataCenter-TES-EnergyPlus/out/energyplus_nanjing/timeseries_15min.csv
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller no_control --max-steps 96
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller rbc --max-steps 96
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller mpc --max-steps 96
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_perturbation_profile --max-steps 96
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_results --root results/energyplus_mpc_20260507
+git diff --check
+```
+
+Result:
+
+```text
+extract_params -> passed
+identify_params -> passed
+no_control/rbc/mpc EnergyPlus Runtime API runs -> completed, 0 Severe Errors
+perturbation EnergyPlus Runtime API run -> completed, both TES use/source responses observed
+audit_results -> passed
+```
+
+`python -m pytest -q` 和 `git diff --check` 在提交前最终复核。
+
+### 运行结果位置
+
+`results/energyplus_mpc_20260507/`
+
+### 运行结果简述
+
+- 记录窗口：simulation step `142` 到 `237`，`2024-01-02 11:30:00` 到 `2024-01-03 11:15:00`。
+- `no_control`：facility energy `184392.28 kWh`，PV-adjusted cost `8189.44`，peak facility `9571.20 kW`。
+- `rbc`：facility energy `181918.29 kWh`，PV-adjusted cost `7994.71`，TES use response count `2`。
+- `mpc`：facility energy `171517.75 kWh`，PV-adjusted cost `7583.33`，peak facility `7336.20 kW`，fallback count `0`，TES use response count `26`。
+- `perturbation`：positive and negative `TES_Set` pulses both produced EnergyPlus TES physical response; use response count `10`，source response count `31`。
+- 所有 case 的 `TES_Set` echo mismatch count 为 `0`。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本版本生成了 EnergyPlus 在线闭环证据，但尚未由用户确认作为论文主结论；若采用，论文必须区分 EnergyPlus facility electricity、PV-adjusted grid/cost、EnergyPlus 物理响应和 MPC proxy prediction。
+
+### Known Limitations
+
+- MPC 优化层仍是 Kim-lite proxy，EnergyPlus 负责物理响应；这不是完整白盒 plant MPC。
+- 当前 MPC 96-step case 主要执行放冷，未在经济 MPC case 内触发 source-side 充冷；source-side 响应由 perturbation case 验证。
+- 第一版只控制 `TES_Set`，不直接控制 chiller availability、pump mass flow、CRAH fan 或 setpoint。
+- `--record-start-step auto` 是为了获得可验证 TES 物理响应窗口；不应把 January 1 前 96 步无 TES 响应误判为耦合失效。
+
 ## v0.5.1-kim-lite-hardening - 2026-05-07
 
 ### Git

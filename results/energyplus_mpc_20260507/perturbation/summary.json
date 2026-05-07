@@ -1,0 +1,23 @@
+{
+  "controller": "perturbation",
+  "steps": 96,
+  "record_start_step": 142,
+  "first_timestamp": "2024-01-02 11:30:00",
+  "last_timestamp": "2024-01-03 11:15:00",
+  "exit_code": 0,
+  "elapsed_s": 2.6908265999809373,
+  "fallback_count": 0,
+  "facility_energy_kwh": 176292.9768448355,
+  "pv_adjusted_grid_kwh": 175893.8418448355,
+  "pv_adjusted_cost": 7838.268257689906,
+  "peak_facility_kw": 9427.196854478403,
+  "peak_grid_kw": 9405.98640505845,
+  "soc_min": 0.8679404183466047,
+  "soc_max": 1.0,
+  "soc_final": 1.0,
+  "zone_temp_min_c": 24.58147881207649,
+  "zone_temp_max_c": 25.90396461407283,
+  "tes_set_mismatch_count": 0,
+  "tes_use_response_count": 10,
+  "tes_source_response_count": 31
+}

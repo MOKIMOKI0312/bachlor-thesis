@@ -1,0 +1,2 @@
+controller,steps,record_start_step,first_timestamp,last_timestamp,exit_code,elapsed_s,fallback_count,facility_energy_kwh,pv_adjusted_grid_kwh,pv_adjusted_cost,peak_facility_kw,peak_grid_kw,soc_min,soc_max,soc_final,zone_temp_min_c,zone_temp_max_c,tes_set_mismatch_count,tes_use_response_count,tes_source_response_count
+mpc,96,142,2024-01-02 11:30:00,2024-01-03 11:15:00,0,4.406213500013109,0,171517.74675993895,171118.61175993894,7583.328294219438,7336.198926619204,7336.198926619204,0.8661996006367051,1.0,0.9907890120632157,24.582436758019185,25.915423551993058,0,26,0

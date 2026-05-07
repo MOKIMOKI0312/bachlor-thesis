@@ -21,7 +21,7 @@
 
 ### Git
 
-- Commit: `待本次实现提交后回填`。
+- Commit: `a484c5a9`（EnergyPlus-MPC coupling 实现、结果与报告提交；本条目的 hash 回填由后续 metadata commit 完成）。
 - 分支：`codex/energyplus-mpc-coupling`
 - 基线：从 `codex/kim-lite-hardening` 的 `a6f10591` 创建。
 
@@ -65,7 +65,10 @@ perturbation EnergyPlus Runtime API run -> completed, both TES use/source respon
 audit_results -> passed
 ```
 
-`python -m pytest -q` 和 `git diff --check` 在提交前最终复核。
+```text
+python -m pytest -q -> 33 passed
+git diff --check -> passed, CRLF warnings only
+```
 
 ### 运行结果位置
 

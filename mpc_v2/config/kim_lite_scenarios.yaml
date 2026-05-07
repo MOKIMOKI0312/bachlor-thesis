@@ -1,0 +1,57 @@
+phase_a:
+  steps: 96
+  controllers:
+    - storage_priority
+    - paper_like_mpc
+
+phase_b_attribution:
+  steps: 96
+  controllers:
+    - direct_no_tes
+    - mpc_no_tes
+    - storage_priority_tes
+    - paper_like_mpc_tes
+
+phase_c_tou:
+  steps: 96
+  scenarios:
+    - name: flat
+      spread_gamma: 0.0
+      critical_peak_uplift: 0.0
+    - name: base
+      spread_gamma: 1.0
+      critical_peak_uplift: 0.0
+    - name: base_cp20
+      spread_gamma: 1.0
+      critical_peak_uplift: 0.20
+    - name: high_spread
+      spread_gamma: 2.0
+      critical_peak_uplift: 0.0
+    - name: high_spread_cp20
+      spread_gamma: 2.0
+      critical_peak_uplift: 0.20
+  controllers:
+    - mpc_no_tes
+    - paper_like_mpc_tes
+  representative_controllers:
+    - direct_no_tes
+    - mpc_no_tes
+    - storage_priority_tes
+    - paper_like_mpc_tes
+
+phase_d_peakcap:
+  steps: 96
+  cap_ratios:
+    - 1.00
+    - 0.99
+    - 0.97
+    - 0.95
+  controllers:
+    - mpc_no_tes
+    - paper_like_mpc_tes
+
+phase_e_signed_valve:
+  steps: 96
+  controllers:
+    - paper_like_mpc_tes
+  enforce_signed_ramp: true

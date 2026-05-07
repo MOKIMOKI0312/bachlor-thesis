@@ -17,6 +17,78 @@
   - 是否影响论文
   - 已知限制
 
+## v0.5.0-kim-lite-paper-mpc - 2026-05-07
+
+### Git
+
+- Commit: 本条目随 Kim-lite 实现提交一起生成；最终 hash 以 `git log -1 --oneline` 为准。
+- 分支：`codex/kim-lite-paper-mpc`
+- 基线：从 `codex/mpc-rebuild` 的 `20398c7a` 创建。
+
+### Scope
+
+本版本新增独立 Kim-style paper-like MPC 主线，不替换当前 rebuilt minimal MPC v1：
+
+```text
+mpc_v2/kim_lite/
+mpc_v2/scripts/run_kim_lite_closed_loop.py
+mpc_v2/scripts/run_kim_lite_matrix.py
+mpc_v2/scripts/plot_kim_lite_results.py
+```
+
+### Code Changes
+
+- 新增 Kim-lite typed config、输入构造、signed-net TES proxy、cold plant mode MILP、baseline、metrics 和 plotting。
+- 新增 `direct_no_tes`、`mpc_no_tes`、`storage_priority_tes`、`paper_like_mpc_tes` 归因路径。
+- 新增中国 TOU/尖峰电价工程近似和 peak-cap screening。
+- 新增 signed valve ramp 指标与约束。
+- 新增 Phase 0 inventory、final report、PPT storyboard 和结果 figures。
+- Phase D peak-cap 为防止 solver time-limit 卡死，显式使用 relaxed mode binaries，`solver_status` 记录为 `optimal_relaxed_modes`。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m pytest -q
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase all --output-root results/kim_lite_repro_20260507
+```
+
+Result:
+
+```text
+python -m pytest -q -> 24 passed
+Kim-lite Phase A-E matrix -> completed
+figures -> 8 PNG generated
+PPT storyboard -> generated, no PPTX modified
+```
+
+### 运行结果位置
+
+`results/kim_lite_repro_20260507/`
+
+### 运行结果简述
+
+- Phase A：`paper_like_mpc` cost `19162.4750`，final SOC `0.5000`；`storage_priority` cost `19219.3182`，final SOC `0.8496`。
+- Phase B attribution：`MPC_value=0.0000`，`TES_value=182.0938`，`RBC_gap=56.8432`。
+- Phase C：flat/base/base_cp20/high_spread/high_spread_cp20 TOU 场景完成。
+- Phase D：cap ratio `1.00/0.99/0.97/0.95` peak-cap screening 完成；此阶段为 relaxed mode binary screening。
+- Phase E：signed valve run 完成，`max_signed_du=0.25`，`signed_valve_violation_count=0`。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本版本生成 Kim-lite 结构复现代码、结果和报告，但尚未把这些结果写入论文正文，也未新增正式引用。
+- 如果后续把 Kim-lite 结果作为论文主结果，必须同步更新 thesis draft，并明确这是 Kim et al. 2022 风格结构复现，不是数值复现。
+
+### Known Limitations
+
+- Kim-lite TES 是 signed net LTI proxy，尚不是 split charge/discharge efficiency model。
+- Phase D peak-cap 是 relaxed mode binary screening，不等同于完整整数 plant-mode proof。
+- `direct_no_tes` 与 `mpc_no_tes` 在当前简化 plant setup 下 cost 相同，说明无 TES 时暂未体现独立 MPC value。
+- `storage_priority_tes` 非 SOC-neutral，和 `paper_like_mpc_tes` 比较时必须显式报告 final SOC。
+
 ## v0.4.0-mpc-rebuild-minimal - 2026-05-07
 
 ### Git

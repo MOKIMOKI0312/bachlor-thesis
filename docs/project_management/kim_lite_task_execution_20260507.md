@@ -3,7 +3,7 @@
 ## Task Status
 
 - Task ID: `kim_lite_paper_like_mpc_20260507`
-- Status: `planned`
+- Status: `completed`
 - Created: 2026-05-07
 - Owner context: Codex local workspace
 - Execution mode: local project-management task record
@@ -39,7 +39,7 @@ Default implementation direction for future work:
 
 ### Phase 0 - Inventory And Current State Confirmation
 
-- Status: not started
+- Status: completed
 - Required outputs:
   - `docs/codex_kim_lite_inventory_20260507.md`
   - repo tree snapshot
@@ -49,7 +49,7 @@ Default implementation direction for future work:
 
 ### Phase A - Paper-like Minimal Reproduction
 
-- Status: not started
+- Status: completed
 - Target:
   - Run `storage_priority_baseline` vs `paper_like_mpc`.
   - Implement Kim-like cold-plant/TES scheduling structure with signed net TES proxy.
@@ -68,7 +68,7 @@ Default implementation direction for future work:
 
 ### Phase B - Attribution Matrix
 
-- Status: not started
+- Status: completed
 - Controllers:
   - `direct_no_tes`
   - `mpc_no_tes`
@@ -82,7 +82,7 @@ Default implementation direction for future work:
 
 ### Phase C - China TOU And Critical Peak Pricing
 
-- Status: not started
+- Status: completed
 - Target:
   - Add flat/base/high-spread and critical-peak scenarios.
   - Use engineering approximation for float/nonfloat split if no explicit split exists.
@@ -96,7 +96,7 @@ Default implementation direction for future work:
 
 ### Phase D - Peak-cap
 
-- Status: not started
+- Status: completed
 - Target:
   - Add peak-cap slack formulation before adding complex DR.
 - Required outputs:
@@ -108,7 +108,7 @@ Default implementation direction for future work:
 
 ### Phase E - Signed Valve Extension
 
-- Status: not started
+- Status: completed
 - Target:
   - Add `u_signed = Q_tes_net / Q_tes_max_kw_th` after paper-like MPC is stable.
 - Acceptance:
@@ -117,7 +117,7 @@ Default implementation direction for future work:
 
 ### Phase F - PPT Storyboard Or PPT Update
 
-- Status: not started
+- Status: completed
 - Default:
   - If `PPT_PATH` is not provided, do not modify any PPT.
   - Generate `docs/ppt_storyboard_kim_lite_20260507.md`.
@@ -174,7 +174,20 @@ Stop implementation and report evidence if any of these occur:
 
 ## Notes For Future Execution
 
-- This task record does not start Phase A.
-- This task record does not update `thesis_draft.tex` or `references.bib`.
-- When implementation starts, update `CHANGELOG.md` because code and validation outputs will change.
-- If paper-like results are later used in the thesis, update `docs/project_management/毕业设计论文/thesis_draft.tex` and check `references.bib`.
+- Phase 0-F execution completed on branch `codex/kim-lite-paper-mpc`.
+- Implementation added a separate `mpc_v2/kim_lite/` path and did not modify local PPT files.
+- `PPT_PATH` was not set, so Phase F generated `docs/ppt_storyboard_kim_lite_20260507.md`.
+- Changelog was updated for the reproducible Kim-lite version.
+- `thesis_draft.tex` and `references.bib` were not updated because the new results were documented in a final report but not inserted into the thesis正文.
+
+## Completion Evidence
+
+- Inventory: `docs/codex_kim_lite_inventory_20260507.md`
+- Final report: `docs/kim_lite_final_report_20260507.md`
+- Phase A summary: `results/kim_lite_repro_20260507/phase_a/summary.csv`
+- Phase B summary: `results/kim_lite_repro_20260507/phase_b_attribution/summary.csv`
+- Phase C summary: `results/kim_lite_repro_20260507/phase_c_tou/summary.csv`
+- Phase D summary: `results/kim_lite_repro_20260507/phase_d_peakcap/summary.csv`
+- Phase E summary: `results/kim_lite_repro_20260507/phase_e_signed_valve/summary.csv`
+- Figures: `results/kim_lite_repro_20260507/figures/`
+- PPT storyboard: `docs/ppt_storyboard_kim_lite_20260507.md`

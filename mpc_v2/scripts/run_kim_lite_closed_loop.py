@@ -24,6 +24,7 @@ def run_kim_lite_closed_loop(
     cp_uplift: float = 0.0,
     peak_cap_kw: float | None = None,
     enforce_signed_ramp: bool = False,
+    mode_integrality: str = "strict",
 ) -> Path:
     cfg = load_config(config_path)
     n_steps = int(steps or cfg.default_steps)
@@ -36,6 +37,7 @@ def run_kim_lite_closed_loop(
         output_root=output_root or cfg.output_root,
         peak_cap_kw=peak_cap_kw,
         enforce_signed_ramp=enforce_signed_ramp,
+        mode_integrality=mode_integrality,
     )
     return run_dir
 
@@ -51,6 +53,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cp-uplift", type=float, default=0.0)
     parser.add_argument("--peak-cap-kw", type=float)
     parser.add_argument("--enforce-signed-ramp", action="store_true")
+    parser.add_argument("--mode-integrality", choices=["strict", "relaxed"], default="strict")
     return parser
 
 
@@ -66,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         cp_uplift=args.cp_uplift,
         peak_cap_kw=args.peak_cap_kw,
         enforce_signed_ramp=args.enforce_signed_ramp,
+        mode_integrality=args.mode_integrality,
     )
     print(run_dir)
     return 0

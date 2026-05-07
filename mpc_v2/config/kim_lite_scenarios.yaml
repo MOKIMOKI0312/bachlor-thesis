@@ -10,6 +10,7 @@ phase_b_attribution:
     - direct_no_tes
     - mpc_no_tes
     - storage_priority_tes
+    - storage_priority_neutral_tes
     - paper_like_mpc_tes
 
 phase_c_tou:
@@ -37,6 +38,7 @@ phase_c_tou:
     - direct_no_tes
     - mpc_no_tes
     - storage_priority_tes
+    - storage_priority_neutral_tes
     - paper_like_mpc_tes
 
 phase_d_peakcap:

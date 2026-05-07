@@ -44,7 +44,8 @@ def run_matrix(
             _run_phase_e(cfg, scenarios[item], root)
         else:
             raise ValueError(f"unknown Kim-lite phase: {item}")
-    _write_storyboard(root)
+    if phase == "all":
+        _write_storyboard(root)
     return root
 
 
@@ -118,24 +119,135 @@ def _run_phase_c(cfg, phase_cfg, root: Path) -> None:
 def _run_phase_d(cfg, phase_cfg, root: Path) -> None:
     phase_dir = root / "phase_d_peakcap"
     base_inputs = build_inputs(cfg, int(phase_cfg["steps"]))
-    _, base_summary = run_controller_case(cfg, base_inputs, "mpc_no_tes", "mpc_no_tes_no_cap_reference", phase_dir)
+    _, base_summary = run_controller_case(
+        cfg,
+        base_inputs,
+        "mpc_no_tes",
+        "mpc_no_tes_no_cap_reference",
+        phase_dir,
+        mode_integrality="strict",
+    )
     reference_peak = float(base_summary["peak_grid_kw"])
     rows = []
     for ratio in phase_cfg["cap_ratios"]:
         cap = reference_peak * float(ratio)
         for controller in phase_cfg["controllers"]:
-            case_id = f"cap_{str(ratio).replace('.', 'p')}_{controller}"
-            run_dir, summary = run_controller_case(cfg, base_inputs, controller, case_id, phase_dir, peak_cap_kw=cap)
-            summary["cap_ratio"] = float(ratio)
-            summary["peak_cap_kw"] = cap
-            summary["peak_reduction_kw"] = reference_peak - float(summary["peak_grid_kw"])
-            summary["cost_increase_vs_no_cap"] = float(summary["cost_total"]) - float(base_summary["cost_total"])
-            rows.append(summary)
-            if float(ratio) == 0.97 and controller == "paper_like_mpc_tes":
-                plot_representative_dispatch(run_dir / "monitor.csv", root / "figures" / "fig_peak_window_dispatch.png", "Peak-cap representative dispatch")
+            for mode_integrality in ["strict", "relaxed"]:
+                case_id = f"{mode_integrality}_cap_{str(ratio).replace('.', 'p')}_{controller}"
+                try:
+                    run_dir, summary = run_controller_case(
+                        cfg,
+                        base_inputs,
+                        controller,
+                        case_id,
+                        phase_dir,
+                        peak_cap_kw=cap,
+                        mode_integrality=mode_integrality,
+                    )
+                    summary = _with_phase_d_fields(summary, ratio, cap, reference_peak, base_summary, mode_integrality, "")
+                    if (
+                        mode_integrality == "strict"
+                        and float(ratio) == 0.97
+                        and controller == "paper_like_mpc_tes"
+                    ):
+                        plot_representative_dispatch(
+                            run_dir / "monitor.csv",
+                            root / "figures" / "fig_peak_window_dispatch.png",
+                            "Peak-cap representative dispatch",
+                        )
+                except RuntimeError as exc:
+                    summary = _phase_d_diagnostic(
+                        cfg,
+                        base_inputs,
+                        case_id,
+                        controller,
+                        ratio,
+                        cap,
+                        reference_peak,
+                        base_summary,
+                        mode_integrality,
+                        exc,
+                    )
+                rows.append(summary)
     summary = pd.DataFrame(rows)
     summary.to_csv(phase_dir / "summary.csv", index=False)
     plot_xy(phase_dir / "summary.csv", root / "figures" / "fig_peak_reduction_cost_tradeoff.png", "peak_reduction_kw", "cost_increase_vs_no_cap", "Peak reduction cost tradeoff")
+
+
+def _with_phase_d_fields(
+    summary: dict,
+    ratio: float,
+    cap: float,
+    reference_peak: float,
+    base_summary: dict,
+    mode_integrality: str,
+    fallback_reason: str,
+) -> dict:
+    summary["cap_ratio"] = float(ratio)
+    summary["peak_cap_kw"] = cap
+    summary["phase_d_track"] = mode_integrality
+    summary["fallback_reason"] = fallback_reason
+    summary["peak_reduction_kw"] = reference_peak - float(summary["peak_grid_kw"])
+    summary["cost_increase_vs_no_cap"] = float(summary["cost_total"]) - float(base_summary["cost_total"])
+    return summary
+
+
+def _phase_d_diagnostic(
+    cfg,
+    inputs,
+    case_id: str,
+    controller: str,
+    ratio: float,
+    cap: float,
+    reference_peak: float,
+    base_summary: dict,
+    mode_integrality: str,
+    exc: RuntimeError,
+) -> dict:
+    return {
+        "case_id": case_id,
+        "controller": controller,
+        "steps": len(inputs.timestamps),
+        "cost_total": float("nan"),
+        "whole_facility_energy_cost": float("nan"),
+        "plant_energy_cost": float("nan"),
+        "grid_import_kwh": float("nan"),
+        "plant_energy_kwh": float("nan"),
+        "pv_used_kwh": float("nan"),
+        "pv_spill_kwh": float("nan"),
+        "peak_grid_kw": float("nan"),
+        "peak_slack_max_kw": float("nan"),
+        "peak_slack_kwh": float("nan"),
+        "soc_initial": cfg.tes.initial_soc,
+        "soc_target": cfg.tes.soc_target,
+        "soc_final": float("nan"),
+        "terminal_soc_abs_error": float("nan"),
+        "soc_delta": float("nan"),
+        "soc_min": float("nan"),
+        "soc_max": float("nan"),
+        "soc_violation_count": -1,
+        "TES_charge_kwh_th": float("nan"),
+        "TES_discharge_kwh_th": float("nan"),
+        "TES_charge_weighted_avg_price": float("nan"),
+        "TES_discharge_weighted_avg_price": float("nan"),
+        "TES_arbitrage_spread": float("nan"),
+        "solver_time_avg_s": float("nan"),
+        "solver_time_p95_s": float("nan"),
+        "solver_status": "failed",
+        "mode_integrality": mode_integrality,
+        "strict_success": False,
+        "fallback_reason": str(exc),
+        "mode_fractionality_max": float("nan"),
+        "solver_message": str(exc),
+        "max_signed_du": float("nan"),
+        "signed_valve_violation_count": -1,
+        "grid_balance_violation_count": -1,
+        "cap_ratio": float(ratio),
+        "peak_cap_kw": cap,
+        "phase_d_track": mode_integrality,
+        "peak_reduction_kw": float("nan") if reference_peak else float("nan"),
+        "cost_increase_vs_no_cap": float("nan") if base_summary else float("nan"),
+    }
 
 
 def _run_phase_e(cfg, phase_cfg, root: Path) -> None:

@@ -49,6 +49,11 @@ class KimLiteSolution:
     d_peak_kw: float
     mode_index: np.ndarray
     peak_slack_kw: np.ndarray
+    mode_integrality: str = "fixed"
+    strict_success: bool = True
+    fallback_reason: str = ""
+    mode_fractionality_max: float = 0.0
+    solver_message: str = ""
 
 
 def build_inputs(
@@ -87,12 +92,15 @@ def solve_paper_like_mpc(
     tes_enabled: bool = True,
     peak_cap_kw: float | None = None,
     enforce_signed_ramp: bool = False,
+    mode_integrality: str = "strict",
 ) -> KimLiteSolution:
     """Solve the Kim-like cold plant + signed-net-TES MILP."""
 
     n = len(inputs.timestamps)
     m = len(cfg.modes)
-    relax_mode_binaries = peak_cap_kw is not None
+    if mode_integrality not in {"strict", "relaxed"}:
+        raise ValueError("mode_integrality must be 'strict' or 'relaxed'")
+    relax_mode_binaries = mode_integrality == "relaxed"
     idx = _Index(n=n, m=m, peak_cap=peak_cap_kw is not None)
     c = np.zeros(idx.nvar)
     lb = np.zeros(idx.nvar)
@@ -106,6 +114,8 @@ def solve_paper_like_mpc(
             ub[idx.nu(j, k)] = cfg.modes[j].q_max_kw_th
     for k in range(n + 1):
         ub[idx.soc(k)] = 1.0
+        ub[idx.soc_slack_low(k)] = 0.0
+        ub[idx.soc_slack_high(k)] = 0.0
         c[idx.soc_slack_low(k)] = cfg.objective.w_soc
         c[idx.soc_slack_high(k)] = cfg.objective.w_soc
     for k in range(n):
@@ -230,8 +240,21 @@ def solve_paper_like_mpc(
     solver_time = time.perf_counter() - start
     if not result.success or result.x is None:
         raise RuntimeError(f"Kim-lite MILP infeasible or failed: {result.message}")
+    x = np.asarray(result.x)
     status = "optimal_relaxed_modes" if relax_mode_binaries else "optimal"
-    return _solution_from_x(cfg, inputs, idx, np.asarray(result.x), status, float(result.fun), solver_time)
+    fractionality = _mode_fractionality(idx, x)
+    return _solution_from_x(
+        cfg,
+        inputs,
+        idx,
+        x,
+        status,
+        float(result.fun),
+        solver_time,
+        mode_integrality=mode_integrality,
+        mode_fractionality_max=fractionality,
+        solver_message=str(result.message),
+    )
 
 
 def plant_dispatch(q_chiller_kw_th: float, cfg: KimLiteConfig, t_wb_c: float) -> tuple[float, float, int]:
@@ -259,6 +282,9 @@ def _solution_from_x(
     status: str,
     objective_value: float,
     solver_time_s: float,
+    mode_integrality: str,
+    mode_fractionality_max: float,
+    solver_message: str,
 ) -> KimLiteSolution:
     n = idx.n
     q_chiller = np.zeros(n)
@@ -294,7 +320,20 @@ def _solution_from_x(
         d_peak_kw=float(x[idx.d_peak()]),
         mode_index=mode_index,
         peak_slack_kw=_clean(peak_slack),
+        mode_integrality=mode_integrality,
+        strict_success=mode_integrality == "strict",
+        fallback_reason="",
+        mode_fractionality_max=mode_fractionality_max,
+        solver_message=solver_message,
     )
+
+
+def _mode_fractionality(idx: "_Index", x: np.ndarray) -> float:
+    values = [float(x[idx.s(j, k)]) for j in range(idx.m) for k in range(idx.n)]
+    if not values:
+        return 0.0
+    arr = np.asarray(values, dtype=float)
+    return float(np.minimum(np.abs(arr), np.abs(arr - 1.0)).max())
 
 
 def _add_signed_ramp_constraints(

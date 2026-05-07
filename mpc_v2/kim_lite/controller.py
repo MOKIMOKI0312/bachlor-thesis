@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mpc_v2.kim_lite.baseline import direct_no_tes, storage_priority
+from mpc_v2.kim_lite.baseline import direct_no_tes, storage_priority, storage_priority_neutral
 from mpc_v2.kim_lite.config import KimLiteConfig
 from mpc_v2.kim_lite.metrics import build_monitor, summarize_monitor, write_case_outputs
 from mpc_v2.kim_lite.model import KimLiteInputs, solve_paper_like_mpc
@@ -18,6 +18,7 @@ def run_controller_case(
     output_root: str | Path,
     peak_cap_kw: float | None = None,
     enforce_signed_ramp: bool = False,
+    mode_integrality: str = "strict",
 ) -> tuple[Path, dict]:
     """Run a single Kim-lite controller and persist outputs."""
 
@@ -27,8 +28,17 @@ def run_controller_case(
     elif normalized == "storage_priority" or normalized == "storage_priority_tes":
         solution = storage_priority(cfg, inputs)
         normalized = "storage_priority_tes" if controller.endswith("_tes") else "storage_priority"
+    elif normalized in {"storage_priority_neutral", "storage_priority_neutral_tes"}:
+        solution = storage_priority_neutral(cfg, inputs)
+        normalized = "storage_priority_neutral_tes" if normalized.endswith("_tes") else "storage_priority_neutral"
     elif normalized == "mpc_no_tes":
-        solution = solve_paper_like_mpc(cfg, inputs, tes_enabled=False, peak_cap_kw=peak_cap_kw)
+        solution = solve_paper_like_mpc(
+            cfg,
+            inputs,
+            tes_enabled=False,
+            peak_cap_kw=peak_cap_kw,
+            mode_integrality=mode_integrality,
+        )
     elif normalized in {"paper_like_mpc", "paper_like_mpc_tes"}:
         solution = solve_paper_like_mpc(
             cfg,
@@ -36,6 +46,7 @@ def run_controller_case(
             tes_enabled=True,
             peak_cap_kw=peak_cap_kw,
             enforce_signed_ramp=enforce_signed_ramp,
+            mode_integrality=mode_integrality,
         )
         normalized = "paper_like_mpc_tes" if normalized.endswith("_tes") else "paper_like_mpc"
     else:
@@ -52,6 +63,7 @@ def run_controller_case(
             "controller": normalized,
             "peak_cap_kw": peak_cap_kw,
             "enforce_signed_ramp": enforce_signed_ramp,
+            "mode_integrality": mode_integrality,
         },
     )
     return run_dir, summary

@@ -47,6 +47,11 @@ def build_monitor(controller: str, inputs: KimLiteInputs, solution: KimLiteSolut
             "mode_index": solution.mode_index,
             "solver_status": solution.status,
             "solver_time_s": solution.solver_time_s,
+            "mode_integrality": solution.mode_integrality,
+            "strict_success": solution.strict_success,
+            "fallback_reason": solution.fallback_reason,
+            "mode_fractionality_max": solution.mode_fractionality_max,
+            "solver_message": solution.solver_message,
         }
     )
 
@@ -74,10 +79,20 @@ def summarize_monitor(monitor: pd.DataFrame, cfg: KimLiteConfig, case_id: str, c
         "peak_slack_max_kw": float(monitor["peak_slack_kw"].max()),
         "peak_slack_kwh": float((monitor["peak_slack_kw"] * dt).sum()),
         "soc_initial": float(monitor["soc"].iloc[0]),
+        "soc_target": float(cfg.tes.soc_target),
         "soc_final": float(monitor["soc_next"].iloc[-1]),
+        "terminal_soc_abs_error": float(abs(monitor["soc_next"].iloc[-1] - cfg.tes.soc_target)),
         "soc_delta": float(monitor["soc_next"].iloc[-1] - monitor["soc"].iloc[0]),
         "soc_min": float(min(monitor["soc"].min(), monitor["soc_next"].min())),
         "soc_max": float(max(monitor["soc"].max(), monitor["soc_next"].max())),
+        "soc_violation_count": int(
+            (
+                (monitor["soc"] < cfg.tes.soc_min - 1e-8)
+                | (monitor["soc"] > cfg.tes.soc_max + 1e-8)
+                | (monitor["soc_next"] < cfg.tes.soc_min - 1e-8)
+                | (monitor["soc_next"] > cfg.tes.soc_max + 1e-8)
+            ).sum()
+        ),
         "TES_charge_kwh_th": charge_kwh,
         "TES_discharge_kwh_th": discharge_kwh,
         "TES_charge_weighted_avg_price": _weighted_price(monitor, q_pos, dt),
@@ -86,6 +101,11 @@ def summarize_monitor(monitor: pd.DataFrame, cfg: KimLiteConfig, case_id: str, c
         "solver_time_avg_s": float(monitor["solver_time_s"].mean()),
         "solver_time_p95_s": float(monitor["solver_time_s"].quantile(0.95)),
         "solver_status": str(monitor["solver_status"].iloc[0]),
+        "mode_integrality": str(monitor["mode_integrality"].iloc[0]),
+        "strict_success": bool(monitor["strict_success"].iloc[0]),
+        "fallback_reason": str(monitor["fallback_reason"].iloc[0]),
+        "mode_fractionality_max": float(monitor["mode_fractionality_max"].max()),
+        "solver_message": str(monitor["solver_message"].iloc[0]),
         "max_signed_du": float(monitor["signed_du"].abs().max()),
         "signed_valve_violation_count": int((monitor["signed_du"].abs() > cfg.signed_du_max + 1e-8).sum()),
         "grid_balance_violation_count": int(
@@ -154,9 +174,14 @@ def attribution_table(summary: pd.DataFrame) -> pd.DataFrame:
             "value": costs.get("mpc_no_tes", np.nan) - costs.get("paper_like_mpc_tes", np.nan),
         },
         {
-            "metric": "RBC_gap",
+            "metric": "RBC_gap_non_neutral",
             "formula": "cost(storage_priority_tes) - cost(paper_like_mpc_tes)",
             "value": costs.get("storage_priority_tes", np.nan) - costs.get("paper_like_mpc_tes", np.nan),
+        },
+        {
+            "metric": "RBC_gap_neutral",
+            "formula": "cost(storage_priority_neutral_tes) - cost(paper_like_mpc_tes)",
+            "value": costs.get("storage_priority_neutral_tes", np.nan) - costs.get("paper_like_mpc_tes", np.nan),
         },
     ]
     return pd.DataFrame(rows)

@@ -12,6 +12,7 @@ def test_kim_lite_scenario_config_contains_required_phases():
         "phase_e_signed_valve",
     ]:
         assert name in scenarios
+    assert "storage_priority_neutral_tes" in scenarios["phase_b_attribution"]["controllers"]
 
 
 def test_kim_lite_closed_loop_script_writes_monitor(tmp_path):

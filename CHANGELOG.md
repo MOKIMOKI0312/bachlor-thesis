@@ -17,6 +17,73 @@
   - 是否影响论文
   - 已知限制
 
+## v0.5.1-kim-lite-hardening - 2026-05-07
+
+### Git
+
+- Commit: 本条目随 hardening 实现提交一起生成；最终 hash 以 `git log -1 --oneline` 为准。
+- 分支：`codex/kim-lite-hardening`
+- 基线：从 `codex/kim-lite-paper-mpc` 的 `a77baf8d` 创建。
+
+### Scope
+
+本版本加严 Kim-lite 结果口径，不引入 split charge/discharge efficiency、不接入 EnergyPlus、不修改 PPT。
+
+### Code Changes
+
+- 新增 `storage_priority_neutral_tes`，保留非 neutral `storage_priority_tes` 作为诊断。
+- 新增显式 `mode_integrality=strict|relaxed` 接口，peak-cap 不再自动 relaxed。
+- Phase D 同时输出 strict 主结果和 relaxed reference；strict 失败只写诊断，不静默替换。
+- Kim-lite MILP SOC bounds 改为硬约束，terminal SOC error 单独报告。
+- 新增 `mpc_v2/scripts/audit_kim_lite_results.py`，审计 final SOC、grid balance、SOC bounds、mode integrality 和 attribution 字段。
+- 新增 hardening 报告和执行记录。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m pytest -q
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_b_attribution --output-root results/kim_lite_hardened_20260507
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_d_peakcap --output-root results/kim_lite_hardened_20260507
+python -m mpc_v2.scripts.audit_kim_lite_results --root results/kim_lite_hardened_20260507
+git diff --check
+```
+
+Result:
+
+```text
+python -m pytest -q -> 28 passed
+Phase B matrix -> completed
+Phase D matrix -> completed with strict timeout diagnostics for TES cap 0.97 and 0.95
+Audit -> passed
+git diff --check -> passed, CRLF warnings only
+```
+
+### 运行结果位置
+
+`results/kim_lite_hardened_20260507/`
+
+### 运行结果简述
+
+- Phase B hardened attribution：`MPC_value=0.0000`，`TES_value=182.1120`，`RBC_gap_non_neutral=56.8614`，`RBC_gap_neutral=26.3821`。
+- `storage_priority_neutral_tes` final SOC error 约 `4.44e-16`，满足 SOC-neutral 口径。
+- Phase D strict rows：TES cap `1.00` 和 `0.99` 成功；TES cap `0.97` 和 `0.95` 触发 solver time limit 并记录 `fallback_reason`。
+- Relaxed Phase D rows 仅作为 reference，明确标记 `mode_integrality=relaxed` 和 `solver_status=optimal_relaxed_modes`。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本版本是 Kim-lite 结果加严和诊断，不直接把 hardened 结果写入论文正文。
+- 如果后续采用 hardened Kim-lite 结果作为论文结论，必须同步说明：这是 Kim-style 结构复现，不是 Kim et al. 2022 数值复现。
+
+### Known Limitations
+
+- TES 仍是 signed net LTI proxy，split charge/discharge efficiency 尚未加入。
+- Phase D strict TES peak-cap 在 cap ratio `0.97` 和 `0.95` 下达到 solver time limit。
+- Relaxed mode rows 不能支持最终整数 plant-mode 结论。
+
 ## v0.5.0-kim-lite-paper-mpc - 2026-05-07
 
 ### Git

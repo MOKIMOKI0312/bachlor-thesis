@@ -1,0 +1,77 @@
+schema_version: 1
+source_root: results\energyplus_mpc_sampling_20260507
+split_method: date_block_dayofyear_mod_5_validation
+samples:
+  rows: 35424
+  cases: 5
+  bootstrap_existing_rows: 384
+adoption_ready: false
+failure_reasons:
+- full high_explainable sampling matrix has not been run; fit used baseline/bootstrap
+  data
+- TES direction accuracy below 95% or unavailable
+models:
+  chiller_power:
+    type: linear
+    features:
+    - chiller_cooling_kw
+    - outdoor_wetbulb_c
+    - chiller_t_set_written
+    intercept: 63.50001000150531
+    coefficients:
+      chiller_cooling_kw: 0.26947640457137295
+      outdoor_wetbulb_c: 14.56360475339912
+      chiller_t_set_written: 0.0
+    rows: 32513
+    status: fitted
+  tes_discharge_response:
+    type: linear
+    features:
+    - tes_set_abs
+    - soc
+    - chiller_cooling_kw
+    - outdoor_wetbulb_c
+    intercept: -4396.445157300258
+    coefficients:
+      tes_set_abs: -235.27335941925503
+      soc: 5733.707321351293
+      chiller_cooling_kw: 0.0
+      outdoor_wetbulb_c: -10.885812662920216
+    rows: 38
+    status: fitted
+  tes_charge_response:
+    type: linear
+    features:
+    - tes_set_abs
+    - soc
+    - chiller_cooling_kw
+    - outdoor_wetbulb_c
+    intercept: -215.07636082408987
+    coefficients:
+      tes_set_abs: 44.33537771615647
+      soc: 262.7998894069275
+      chiller_cooling_kw: 0.042620886511521405
+      outdoor_wetbulb_c: 7.776662160465673
+    rows: 31
+    status: fitted
+  zone_temperature_safety:
+    type: linear
+    features:
+    - zone_temp_c
+    - outdoor_wetbulb_c
+    - tes_use_side_kw
+    - tes_source_side_kw
+    - chiller_cooling_kw
+    intercept: 0.07172814585687819
+    coefficients:
+      zone_temp_c: 0.9970762660845757
+      outdoor_wetbulb_c: -6.939204281293911e-05
+      tes_use_side_kw: 0.0001225596679209168
+      tes_source_side_kw: -0.00013249722808665804
+      chiller_cooling_kw: 6.983488117784376e-07
+    rows: 35419
+    status: fitted
+  soc:
+    capacity_kwh_th: 39069.768
+    dt_hours: 0.25
+    loss_per_h: -0.0

@@ -54,9 +54,13 @@ def extract_static_params(model_path: str | Path = DEFAULT_MODEL) -> dict[str, A
         },
         "actuators": {
             "tes_set": {"component_type": "Schedule:Constant", "control_type": "Schedule Value", "key": "TES_Set"},
+            "ite_set": {"component_type": "Schedule:Constant", "control_type": "Schedule Value", "key": "ITE_Set"},
+            "chiller_t_set": {"component_type": "Schedule:Constant", "control_type": "Schedule Value", "key": "Chiller_T_Set"},
         },
         "variables": {
             "tes_set_echo": {"variable_name": "Schedule Value", "key": "TES_Set"},
+            "ite_set_echo": {"variable_name": "Schedule Value", "key": "ITE_Set"},
+            "chiller_t_set_echo": {"variable_name": "Schedule Value", "key": "Chiller_T_Set"},
             "tes_soc": {"variable_name": "Schedule Value", "key": "TES_SOC_Obs"},
             "tes_avg_temp": {"variable_name": "Schedule Value", "key": "TES_Avg_Temp_Obs"},
             "tes_use_avail_echo": {"variable_name": "Schedule Value", "key": "TES_Use_Avail_Sch"},
@@ -86,7 +90,15 @@ def extract_static_params(model_path: str | Path = DEFAULT_MODEL) -> dict[str, A
         },
         "schedules": {
             name: schedules[name]["hourly_value"]
-            for name in ["TES_Set", "TES_SOC_Obs", "TES_Avg_Temp_Obs", "TES_Use_Avail_Sch", "TES_Source_Avail_Sch"]
+            for name in [
+                "TES_Set",
+                "ITE_Set",
+                "Chiller_T_Set",
+                "TES_SOC_Obs",
+                "TES_Avg_Temp_Obs",
+                "TES_Use_Avail_Sch",
+                "TES_Source_Avail_Sch",
+            ]
             if name in schedules
         },
         "identified": {},
@@ -122,6 +134,7 @@ def write_physical_model_doc(params: dict[str, Any], path: str | Path | None = N
         "## Control Interface",
         "",
         "- Primary actuator: `TES_Set` as `Schedule:Constant / Schedule Value`.",
+        "- Identification actuators: `ITE_Set` and `Chiller_T_Set` as `Schedule:Constant / Schedule Value`.",
         "- `TES_Set > 0` enables TES use side discharge.",
         "- `TES_Set < 0` enables TES source side charge.",
         "- MPC signed action mapping: `TES_Set = -clip(q_tes_net / q_tes_abs_max_kw_th, -1, 1)`.",

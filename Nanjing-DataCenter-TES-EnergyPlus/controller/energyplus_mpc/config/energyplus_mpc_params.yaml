@@ -26,10 +26,24 @@ actuators:
     component_type: Schedule:Constant
     control_type: Schedule Value
     key: TES_Set
+  ite_set:
+    component_type: Schedule:Constant
+    control_type: Schedule Value
+    key: ITE_Set
+  chiller_t_set:
+    component_type: Schedule:Constant
+    control_type: Schedule Value
+    key: Chiller_T_Set
 variables:
   tes_set_echo:
     variable_name: Schedule Value
     key: TES_Set
+  ite_set_echo:
+    variable_name: Schedule Value
+    key: ITE_Set
+  chiller_t_set_echo:
+    variable_name: Schedule Value
+    key: Chiller_T_Set
   tes_soc:
     variable_name: Schedule Value
     key: TES_SOC_Obs
@@ -74,6 +88,8 @@ meters:
   purchased_electricity_j: ElectricityPurchased:Facility
 schedules:
   TES_Set: 0
+  ITE_Set: 0.45
+  Chiller_T_Set: 0
   TES_SOC_Obs: 0.5
   TES_Avg_Temp_Obs: 10
   TES_Use_Avail_Sch: 0

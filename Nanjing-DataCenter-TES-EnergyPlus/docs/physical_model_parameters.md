@@ -21,6 +21,7 @@ This file records EnergyPlus parameters used by the MPC coupling layer.
 ## Control Interface
 
 - Primary actuator: `TES_Set` as `Schedule:Constant / Schedule Value`.
+- Identification actuators: `ITE_Set` and `Chiller_T_Set` as `Schedule:Constant / Schedule Value`.
 - `TES_Set > 0` enables TES use side discharge.
 - `TES_Set < 0` enables TES source side charge.
 - MPC signed action mapping: `TES_Set = -clip(q_tes_net / q_tes_abs_max_kw_th, -1, 1)`.
@@ -28,6 +29,8 @@ This file records EnergyPlus parameters used by the MPC coupling layer.
 ## Required Runtime Variables
 
 - `tes_set_echo`: `TES_Set` / `Schedule Value`
+- `ite_set_echo`: `ITE_Set` / `Schedule Value`
+- `chiller_t_set_echo`: `Chiller_T_Set` / `Schedule Value`
 - `tes_soc`: `TES_SOC_Obs` / `Schedule Value`
 - `tes_avg_temp`: `TES_Avg_Temp_Obs` / `Schedule Value`
 - `tes_use_avail_echo`: `TES_Use_Avail_Sch` / `Schedule Value`
@@ -64,10 +67,16 @@ Source file: `Nanjing-DataCenter-TES-EnergyPlus/out/energyplus_nanjing/timeserie
 - Baseline TES use/source heat transfer maxima are `0.0 kW`, because the baseline run does not actuate TES.
 - Baseline initial SOC from tank temperature is `1.0`.
 
-## Online Coupling Window
+## Identification Sampling Interface
 
-The online runner defaults to `--record-start-step auto`, which starts recording at the first baseline window with active chiller cooling. For the current baseline this is step `142`, timestamp `2024-01-02 11:30:00`.
+The sampling layer may actuate the following schedules for parameter identification only:
+
+- `TES_Set`: sampled over `[-1, 1]`.
+- `ITE_Set`: sampled over `{0.35, 0.45, 0.55}` to excite IT load.
+- `Chiller_T_Set`: sampled over `{0.0, 0.5, 1.0}` to excite chilled-water setpoint behavior.
+
+These identification perturbations are not normal operating conclusions and must be labeled as `identification_only=true` in sampling manifests.
 
 ## Modification History
 
-- 2026-05-07: initial parameter extraction and baseline identification for EnergyPlus-MPC coupling. No epJSON file was modified.
+- 2026-05-07: added identification sampling actuators and echo variables. No epJSON file was modified.

@@ -52,6 +52,7 @@ class EnergyPlusMpcRunner:
         mode_integrality: str = "relaxed",
         load_forecast: str = "baseline",
         record_start_step: str | int = "auto",
+        sampling_profile: dict[str, Any] | None = None,
     ):
         self.controller = controller
         self.max_steps = int(max_steps)
@@ -67,6 +68,7 @@ class EnergyPlusMpcRunner:
         self.horizon_steps = int(horizon_steps)
         self.mode_integrality = mode_integrality
         self.load_forecast = load_forecast
+        self.sampling_profile = sampling_profile or {}
         self.forecast = ForecastProvider(
             str(self.baseline_timeseries),
             str(self.price_csv),
@@ -119,8 +121,13 @@ class EnergyPlusMpcRunner:
             timestamp = self._timestamp_for_step(simulation_step)
             observation = self._read_observation(exchange, current_state, step, simulation_step, timestamp)
             action = self._choose_action(observation, step, simulation_step, timestamp)
+            self._apply_sampling_actuators(exchange, current_state, action)
             self._set_tes(exchange, current_state, float(action["tes_set"]))
             action["tes_set_written"] = float(action["tes_set"])
+            if "ite_set" in action:
+                action["ite_set_written"] = float(action["ite_set"])
+            if "chiller_t_set" in action:
+                action["chiller_t_set_written"] = float(action["chiller_t_set"])
             self.action_rows.append(action)
 
         def on_end_timestep(current_state):
@@ -200,9 +207,19 @@ class EnergyPlusMpcRunner:
         return True
 
     def _set_tes(self, exchange, state, value: float) -> None:
+        self._set_actuator(exchange, state, "tes_set", value)
+
+    def _set_actuator(self, exchange, state, name: str, value: float) -> None:
         value = float(np.clip(value, -1.0, 1.0))
-        exchange.set_actuator_value(state, self._actuator_handles["tes_set"], value)
-        self._last_tes_set = value
+        exchange.set_actuator_value(state, self._actuator_handles[name], value)
+        if name == "tes_set":
+            self._last_tes_set = value
+
+    def _apply_sampling_actuators(self, exchange, state, action: dict[str, Any]) -> None:
+        if "ite_set" in action and "ite_set" in self._actuator_handles:
+            self._set_actuator(exchange, state, "ite_set", float(action["ite_set"]))
+        if "chiller_t_set" in action and "chiller_t_set" in self._actuator_handles:
+            self._set_actuator(exchange, state, "chiller_t_set", float(action["chiller_t_set"]))
 
     def _resolve_record_start_step(self, value: str | int) -> int:
         if isinstance(value, int):
@@ -247,6 +264,9 @@ class EnergyPlusMpcRunner:
             profile = [-1.0, -0.5, 0.0, 0.5, 1.0, 0.0, 0.5, -0.5]
             base["tes_set"] = profile[step % len(profile)]
             return base
+        if self.controller == "sampling":
+            base.update(self._sampling_values(timestamp, simulation_step))
+            return base
         if self.controller == "rbc":
             price_values = self.external.price_per_kwh.to_numpy(dtype=float)
             base["tes_set"] = rbc_action(price, float(np.quantile(price_values, 0.30)), float(np.quantile(price_values, 0.70)), observation["soc"])
@@ -265,6 +285,47 @@ class EnergyPlusMpcRunner:
             return base
         raise ValueError(f"unsupported controller: {self.controller}")
 
+    def _sampling_values(self, timestamp: datetime, simulation_step: int) -> dict[str, Any]:
+        family = str(self.sampling_profile.get("family", "sampling"))
+        values = {
+            "case_id": self.sampling_profile.get("case_id", "sampling"),
+            "sampling_family": family,
+            "identification_only": bool(self.sampling_profile.get("identification_only", True)),
+            "ite_set": float(self.sampling_profile.get("ite_set", 0.45)),
+            "chiller_t_set": float(self.sampling_profile.get("chiller_t_set", 0.0)),
+            "tes_set": 0.0,
+        }
+        if family == "tes_pulse":
+            pulse = float(self.sampling_profile["tes_set"])
+            hour = timestamp.hour + timestamp.minute / 60.0
+            if hour < 4.0:
+                values["tes_set"] = -0.5 if pulse > 0.0 else 0.5
+            elif hour < 10.0:
+                values["tes_set"] = 0.0
+            elif hour < 14.0:
+                values["tes_set"] = pulse
+            else:
+                values["tes_set"] = 0.0
+        elif family == "combined":
+            seed = int(self.sampling_profile.get("seed", 0))
+            day_index = int(simulation_step // 96)
+            rng = np.random.default_rng(seed * 1000003 + day_index)
+            ite_levels = np.asarray([0.35, 0.45, 0.55], dtype=float)
+            chiller_levels = np.asarray([0.0, 0.5, 1.0], dtype=float)
+            amp_levels = np.asarray([0.25, 0.5, 0.75, 1.0], dtype=float)
+            values["ite_set"] = float(ite_levels[(day_index + seed) % len(ite_levels)])
+            values["chiller_t_set"] = float(chiller_levels[(day_index + 2 * seed) % len(chiller_levels)])
+            amplitude = float(rng.choice(amp_levels))
+            block = int((timestamp.hour * 4 + timestamp.minute // 15) // 16)
+            sign = 1.0 if ((block + day_index + seed) % 2 == 0) else -1.0
+            values["tes_set"] = float(sign * amplitude)
+        else:
+            values["tes_set"] = float(self.sampling_profile.get("tes_set", 0.0))
+        values["tes_set"] = float(np.clip(values["tes_set"], -1.0, 1.0))
+        values["ite_set"] = float(np.clip(values["ite_set"], 0.0, 1.0))
+        values["chiller_t_set"] = float(np.clip(values["chiller_t_set"], 0.0, 1.0))
+        return values
+
     def _read_observation(self, exchange, state, step: int, simulation_step: int, timestamp: datetime) -> dict[str, Any]:
         values = {name: exchange.get_variable_value(state, handle) for name, handle in self._var_handles.items()}
         meters = {name: exchange.get_meter_value(state, handle) for name, handle in self._meter_handles.items()}
@@ -281,6 +342,8 @@ class EnergyPlusMpcRunner:
             "soc": float(values["tes_soc"]),
             "tes_avg_temp_c": float(values["tes_avg_temp"]),
             "tes_set_echo": float(values["tes_set_echo"]),
+            "ite_set_echo": float(values["ite_set_echo"]) if "ite_set_echo" in values else np.nan,
+            "chiller_t_set_echo": float(values["chiller_t_set_echo"]) if "chiller_t_set_echo" in values else np.nan,
             "tes_use_avail_echo": float(values["tes_use_avail_echo"]) if "tes_use_avail_echo" in values else np.nan,
             "tes_source_avail_echo": float(values["tes_source_avail_echo"]) if "tes_source_avail_echo" in values else np.nan,
             "chiller_avail_echo": float(values["chiller_avail_echo"]) if "chiller_avail_echo" in values else np.nan,
@@ -314,7 +377,8 @@ class EnergyPlusMpcRunner:
             pass
 
     def _write_selected_outputs(self, exit_code: int, elapsed_s: float) -> Path:
-        case_dir = self.selected_output_root / self.controller
+        case_name = str(self.sampling_profile.get("case_id", self.controller)) if self.controller == "sampling" else self.controller
+        case_dir = self.selected_output_root / case_name
         case_dir.mkdir(parents=True, exist_ok=True)
         obs = pd.DataFrame(self.observation_rows)
         actions = pd.DataFrame(self.action_rows)
@@ -339,6 +403,7 @@ class EnergyPlusMpcRunner:
             "params": self.params.get("source", {}),
             "mode_integrality": self.mode_integrality,
             "load_forecast": self.load_forecast,
+            "sampling_profile": self.sampling_profile,
             "exit_code": exit_code,
         }
         (case_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -376,6 +441,12 @@ def _summarize_monitor(monitor: pd.DataFrame, controller: str, exit_code: int, e
         "tes_set_mismatch_count": int((monitor["tes_set_echo"].sub(monitor["tes_set_written"]).abs() > 1e-6).sum())
         if "tes_set_written" in monitor
         else -1,
+        "ite_set_mismatch_count": int((monitor["ite_set_echo"].sub(monitor["ite_set_written"]).abs() > 1e-6).sum())
+        if "ite_set_written" in monitor and "ite_set_echo" in monitor
+        else 0,
+        "chiller_t_set_mismatch_count": int((monitor["chiller_t_set_echo"].sub(monitor["chiller_t_set_written"]).abs() > 1e-6).sum())
+        if "chiller_t_set_written" in monitor and "chiller_t_set_echo" in monitor
+        else 0,
         "tes_use_response_count": int(((monitor.get("tes_set_written", 0.0) > 0.01) & (monitor["tes_use_side_kw"].abs() > 1e-4)).sum()),
         "tes_source_response_count": int(((monitor.get("tes_set_written", 0.0) < -0.01) & (monitor["tes_source_side_kw"].abs() > 1e-4)).sum()),
     }
@@ -400,7 +471,7 @@ def default_raw_output(controller: str) -> Path:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--controller", choices=["no_control", "rbc", "mpc", "perturbation"], required=True)
+    parser.add_argument("--controller", choices=["no_control", "rbc", "mpc", "perturbation", "sampling"], required=True)
     parser.add_argument("--max-steps", type=int, default=96)
     parser.add_argument("--energyplus-root", default=str(DEFAULT_EPLUS_INSTALL))
     parser.add_argument("--model", default=str(DEFAULT_MODEL))

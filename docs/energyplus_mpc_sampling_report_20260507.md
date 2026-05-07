@@ -1,0 +1,30 @@
+# EnergyPlus MPC Sampling Report 2026-05-07
+
+## Summary
+
+- Samples root: `C:\Users\18430\AppData\Local\Temp\pytest-of-18430\pytest-62\test_sampling_fit_and_audit_ca0`
+- Rows: `35424`
+- Cases: `5`
+- Adoption ready: `False`
+
+This report treats sampling outputs as parameter-identification data. Identification-only perturbations are not normal operating conclusions.
+
+## Metrics
+
+| rows | validation_cvrmse | validation_mae | score | model | target | threshold | loss_per_h |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 32513 | 0.032741765224991524 | 57.34147841350134 | 0.032741765224991524 | chiller_power | chiller_electricity_kw | 0.15 |  |
+| 38 | 0.47930396340073683 | 361.37349230982835 | 0.47930396340073683 | tes_discharge_response | abs(tes_use_side_kw) |  |  |
+| 31 | 0.7784725290498345 | 57.09360764327976 | 0.7784725290498345 | tes_charge_response | abs(tes_source_side_kw) |  |  |
+| 35419 | 0.001406741695851378 | 0.017730489085684458 | 0.001406741695851378 | zone_temperature_safety | zone_temp_next_c |  |  |
+| 35419 |  | 4.510530755972665e-05 | 4.510530755972665e-05 | soc_24h_rollout | soc | 0.03 | -0.0 |
+| 106 |  | 0.08490566037735847 | 0.9150943396226415 | tes_direction | direction | 0.95 |  |
+
+## Failure Reasons / Limits
+
+- full high_explainable sampling matrix has not been run; fit used baseline/bootstrap data
+- TES direction accuracy below 95% or unavailable
+
+## Thesis Impact
+
+No thesis draft update is required until these identified models are accepted as thesis methods or conclusions.

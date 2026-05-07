@@ -21,7 +21,7 @@
 
 ### Git
 
-- Commit: 本条目随 Kim-lite 实现提交一起生成；最终 hash 以 `git log -1 --oneline` 为准。
+- Commit: `32cbd576`（Kim-lite 实现与结果提交；本条目的 hash 回填由后续 metadata commit 完成）。
 - 分支：`codex/kim-lite-paper-mpc`
 - 基线：从 `codex/mpc-rebuild` 的 `20398c7a` 创建。
 

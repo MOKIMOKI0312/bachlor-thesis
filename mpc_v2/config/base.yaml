@@ -24,7 +24,7 @@ tes:
   soc_physical_max: 0.95
   soc_planning_min: 0.15
   soc_planning_max: 0.85
-  soc_target: 0.30
+  soc_target: 0.50
 
 room:
   initial_room_temp_c: 24.0
@@ -33,6 +33,7 @@ room:
   it_heat_gain_c_per_mwh: 0.020
   cooling_gain_c_per_mwh: 0.030
   alpha_it_to_cooling: 0.12
+  room_drift_per_h: 0.02
 
 facility:
   base_pue: 1.18
@@ -106,7 +107,7 @@ objective:
   w_start: 5.0
   w_demand: 1.0
   w_peak_slack: 50000.0
-  w_terminal: 100.0
+  w_terminal: 50000.0
 
 solver:
   name: highs

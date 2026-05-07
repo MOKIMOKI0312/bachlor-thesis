@@ -17,6 +17,79 @@
   - 是否影响论文
   - 已知限制
 
+## v0.4.0-mpc-rebuild-minimal - 2026-05-07
+
+### Git
+
+- Commit: `25ec838a`（amend 后如 hash 变化，以最终 `git log -1 --oneline` 为准）。
+- 分支：`codex/mpc-rebuild`
+- 备份：重建前未提交 MPC 状态已保存到本地分支 `codex/mpc-before-rebuild-backup-20260507`，commit `8f942ad0`。
+
+### Scope
+
+本版本删除旧 MPC 大矩阵/归因/DR/peak-cap 实现路径，重建 `mpc_v2/` 为 deterministic/replay 最小闭环 MPC v1，同时保留前后数据流：
+
+- 输入仍以 `mpc_v2/config/base.yaml` 为默认配置入口。
+- 单场景入口仍为 `mpc_v2/scripts/run_closed_loop.py`。
+- 批量验证入口仍为 `mpc_v2/scripts/run_validation_matrix.py`。
+- 每次 run 仍输出 `monitor.csv`、`timeseries.csv`、`solver_log.csv`、`events.csv`、`episode_summary.json`、`summary.csv` 和 `config_effective.yaml`。
+
+### Code Changes
+
+- 新增 `mpc_v2/contracts/`，冻结输入配置、CLI 参数和输出文件/字段契约。
+- 新增最小 plant、forecast、controller、metrics 实现；支持 `no_tes`、`rbc`、`mpc` 和兼容别名 `mpc_no_tes`。
+- MPC v1 使用确定性线性优化，支持 horizon、SOC bounds、terminal SOC target、PV/grid/spill 平衡和价格驱动充放冷。
+- 删除旧 China TOU/DR generated matrix YAML；旧矩阵生成和高级报告脚本改为明确抛出 unsupported feature。
+- 新增 `mpc_v2/AGENTS.md`，明确 v1 支持范围和 deferred features。
+- 更新根目录 `AGENTS.md`，将 MPC 算法验证默认路由到 `mpc_v2/`。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m pytest -q
+python -m mpc_v2.scripts.run_closed_loop --controller-mode no_tes --steps 96 --case-id smoke_no_tes --output-root results/mpc_rebuild_v0_4_0_20260507
+python -m mpc_v2.scripts.run_closed_loop --controller-mode rbc --steps 96 --case-id smoke_rbc --output-root results/mpc_rebuild_v0_4_0_20260507
+python -m mpc_v2.scripts.run_closed_loop --controller-mode mpc --steps 96 --case-id smoke_mpc --output-root results/mpc_rebuild_v0_4_0_20260507 --truncate-horizon-to-episode --initial-soc 0.5 --soc-target 0.5
+python -m mpc_v2.scripts.run_validation_matrix --output-root results/mpc_rebuild_v0_4_0_20260507/matrix
+```
+
+Result:
+
+```text
+python -m pytest -q -> 17 passed
+no_tes smoke -> fallback_count 0, SOC violation 0, final SOC 0.5000
+rbc smoke -> fallback_count 0, SOC violation 0, final SOC 0.14947
+mpc smoke -> fallback_count 0, SOC violation 0, physical consistency violation 0, final SOC 0.5000
+minimal validation matrix -> 3/3 scenarios completed
+```
+
+### 运行结果位置
+
+`results/mpc_rebuild_v0_4_0_20260507/`
+
+### 运行结果简述
+
+- `smoke_mpc` 24h：total_cost `38780.2913`，grid_import_kwh `422240.5176`，peak_grid_kw `19280.7692`。
+- `smoke_mpc` SOC-neutral 验收通过：`initial_soc=0.5`，`final_soc_after_last_update=0.5`，`soc_min=0.15`，`soc_max=0.85`。
+- `smoke_mpc` 价格移峰行为可见：charge weighted avg price `0.0530`，discharge weighted avg price `0.17375`。
+- 结论边界：该结果只证明重建后的最小 deterministic/replay MPC 数据流和固定 24h smoke 可复核，不证明旧 China TOU/DR 矩阵、peak-cap、demand-charge 或 attribution 结论。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本版本重建代码和验证数据流，但没有把新 MPC 结果写入论文，也没有新增或删除引用。
+- 注意：旧 MPC 矩阵和归因结果不再代表当前 `mpc_v2/` 实现；如果论文正文引用旧结果，后续必须用新系统重新跑验证后再同步论文。
+
+### Known Limitations
+
+- MPC v1 只支持 deterministic/replay fixed scenario，不支持旧 China TOU/DR 大矩阵。
+- DR、peak-cap、demand-charge 和 attribution/report generation 已延后，调用时会明确报 unsupported。
+- 当前 plant/room 是可复核 proxy，不是 EnergyPlus 在线耦合模型。
+- `rbc` 是规则基线，不强制 SOC-neutral；论文对比前需要定义公平终端 SOC 口径。
+
 ## v0.3.2-literature-extracted-index - 2026-05-07
 
 ### Git

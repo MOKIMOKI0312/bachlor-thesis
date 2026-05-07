@@ -21,7 +21,7 @@
 
 ### Git
 
-- Commit: `待本次实现提交后回填`。
+- Commit: `cd315fdc`（sampling pipeline 实现、bootstrap fitting 结果与报告提交；本条目的 hash 回填由后续 metadata commit 完成）。
 - 分支：`codex/energyplus-mpc-sampling`
 - 基线：从 `codex/energyplus-mpc-coupling` 的 `c500c7f4` 创建。
 

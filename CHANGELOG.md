@@ -17,6 +17,81 @@
   - 是否影响论文
   - 已知限制
 
+## v0.3.2-literature-extracted-index - 2026-05-07
+
+### Git
+
+- Commit: 本条目随本次文献索引提交一起生成；云端提交 hash 以 `git log -1 --oneline` 和最终推送结果为准。
+- 状态：整理 `docs/literature/extracted_articles/` 文献索引、PDF 副本、摘要和核心公式/算法 Markdown；未新增仿真、验证矩阵或实验结论。
+
+### Scope
+
+本版本将本地文献 PDF 整理为低 token 文献索引：
+
+```text
+docs/literature/core_references + docs/literature/other_references
+-> docs/literature/extracted_articles
+```
+
+### Changes
+
+- 新增 `docs/literature/extracted_articles/README.md` 和 `manifest.json`，记录 27 个来源 PDF 去重后的 22 篇文章。
+- 为每篇文章创建独立文件夹，包含重命名后的 PDF 副本、`summary.md` 和 `core_algorithm.md`。
+- PDF 副本命名为 `YYYY_FirstAuthor_Short_Title.pdf`，并在 Markdown 与 manifest 中同步记录。
+- 新增 `docs/literature/extracted_articles/AGENTS.md`，定义该低 token 文献索引目录的维护、去重、命名、验证和论文同步规则。
+- 保留上层 `core_references/` 和 `other_references/` 原始 PDF，不移动、不重命名、不删除原始文献。
+
+### Validation
+
+Document-level validation commands:
+
+```powershell
+Get-ChildItem -Path "docs\literature\extracted_articles" -Directory
+python - <<'PY'
+from pathlib import Path
+root = Path('docs/literature/extracted_articles')
+assert len(list(root.glob('*/summary.md'))) == 22
+assert len(list(root.glob('*/core_algorithm.md'))) == 22
+assert len(list(root.glob('*/*.pdf'))) == 22
+PY
+```
+
+Result:
+
+```text
+22 个文献文件夹均包含 1 个 PDF 副本、summary.md 和 core_algorithm.md。
+PDF 副本 SHA256 与 manifest.json 中记录一致。
+summary.md、core_algorithm.md、README.md 和 manifest.json 中的 PDF 文件名已同步。
+```
+
+未运行 `python -m pytest -q`，因为本版本不修改代码、模型、输入或测试。
+
+### 运行结果位置
+
+运行结果位置：无新增结果
+
+原因：本版本只整理文献索引和 PDF/Markdown 证据材料，未执行 EnergyPlus 仿真或 MPC 验证矩阵。
+
+### 运行结果简述
+
+- 无新增仿真结果。
+- 无新增验证矩阵。
+- 无新增实验结论。
+- 新增文献索引目录可用于后续论文引用核对、公式回查和算法复现准备。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本版本没有新增或删除正式引用，也没有把文献结论写入论文正文；只是建立文献整理索引和来源证据。
+- 注意：抽查发现部分核心文献的 BibTeX 作者信息可能与 PDF 首页不一致，后续若修正引用库，应单独更新 `references.bib` 并检查正文 citation key。
+
+### Known Limitations
+
+- `core_algorithm.md` 中的公式来自 PDF 文本抽取，可能丢失上下标、分式和跨栏顺序；正式写入论文前必须回到 PDF 页面人工核对。
+- 本目录中的文献结论只能作为设计依据或复现入口，不能直接等同于当前 EnergyPlus/TES/PV/电价模型已经实现或验证。
+- `_archive/` 下外部项目自带 PDF 未纳入本次整理范围。
+
 ## v0.3.0-china-tou-dr-matrix - 2026-05-07
 
 ### Git

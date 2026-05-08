@@ -21,7 +21,7 @@
 
 ### Git
 
-- Commit: `待本次 controller matrix commit 后回填`。
+- Commit: `7139210a`（controller matrix runner、audit、12 个季节月度 case 结果与报告）。
 - 分支：`codex/energyplus-mpc-sampling`
 - 基线：`662d20d7`，包含 full EnergyPlus sampling 结果与 `adoption_ready=true` 的 prediction model。
 

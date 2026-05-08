@@ -22,7 +22,7 @@
 ### Git
 
 - Commit: `cd315fdc`（sampling pipeline 实现、bootstrap fitting 结果与报告提交；本条目的 hash 回填由后续 metadata commit 完成）。
-- Full sampling data commit: `待本次 data commit 生成后由后续 metadata commit 回填`。
+- Full sampling data commit: `bcb8df02`（22 个 full-year EnergyPlus runtime sampling case、fitted models、report 和 LFS result artifacts）。
 - 分支：`codex/energyplus-mpc-sampling`
 - 基线：从 `codex/energyplus-mpc-coupling` 的 `c500c7f4` 创建。
 

@@ -2,14 +2,11 @@ schema_version: 1
 source_root: results\energyplus_mpc_sampling_20260507
 split_method: date_block_dayofyear_mod_5_validation
 samples:
-  rows: 35424
-  cases: 5
-  bootstrap_existing_rows: 384
-adoption_ready: false
-failure_reasons:
-- full high_explainable sampling matrix has not been run; fit used baseline/bootstrap
-  data
-- TES direction accuracy below 95% or unavailable
+  rows: 805920
+  cases: 23
+  bootstrap_existing_rows: 0
+adoption_ready: true
+failure_reasons: []
 models:
   chiller_power:
     type: linear
@@ -17,12 +14,12 @@ models:
     - chiller_cooling_kw
     - outdoor_wetbulb_c
     - chiller_t_set_written
-    intercept: 63.50001000150531
+    intercept: 61.51961377505178
     coefficients:
-      chiller_cooling_kw: 0.26947640457137295
-      outdoor_wetbulb_c: 14.56360475339912
-      chiller_t_set_written: 0.0
-    rows: 32513
+      chiller_cooling_kw: 0.2687530035966877
+      outdoor_wetbulb_c: 14.47997007559144
+      chiller_t_set_written: 0.25416145799195167
+    rows: 689880
     status: fitted
   tes_discharge_response:
     type: linear
@@ -31,13 +28,13 @@ models:
     - soc
     - chiller_cooling_kw
     - outdoor_wetbulb_c
-    intercept: -4396.445157300258
+    intercept: 2346.407535767251
     coefficients:
-      tes_set_abs: -235.27335941925503
-      soc: 5733.707321351293
-      chiller_cooling_kw: 0.0
-      outdoor_wetbulb_c: -10.885812662920216
-    rows: 38
+      tes_set_abs: -106.5147361730328
+      soc: -928.3746908907825
+      chiller_cooling_kw: -0.6562671115308518
+      outdoor_wetbulb_c: 154.272024136264
+    rows: 142090
     status: fitted
   tes_charge_response:
     type: linear
@@ -46,13 +43,13 @@ models:
     - soc
     - chiller_cooling_kw
     - outdoor_wetbulb_c
-    intercept: -215.07636082408987
+    intercept: 2262.2700662541374
     coefficients:
-      tes_set_abs: 44.33537771615647
-      soc: 262.7998894069275
-      chiller_cooling_kw: 0.042620886511521405
-      outdoor_wetbulb_c: 7.776662160465673
-    rows: 31
+      tes_set_abs: -10.75646670755853
+      soc: -2259.7852700768544
+      chiller_cooling_kw: 0.012772621240982218
+      outdoor_wetbulb_c: -1.411777441260986
+    rows: 148187
     status: fitted
   zone_temperature_safety:
     type: linear
@@ -62,14 +59,14 @@ models:
     - tes_use_side_kw
     - tes_source_side_kw
     - chiller_cooling_kw
-    intercept: 0.07172814585687819
+    intercept: 0.5399468053068057
     coefficients:
-      zone_temp_c: 0.9970762660845757
-      outdoor_wetbulb_c: -6.939204281293911e-05
-      tes_use_side_kw: 0.0001225596679209168
-      tes_source_side_kw: -0.00013249722808665804
-      chiller_cooling_kw: 6.983488117784376e-07
-    rows: 35419
+      zone_temp_c: 0.9766756395777759
+      outdoor_wetbulb_c: -0.0024340168895435744
+      tes_use_side_kw: -3.891733528013641e-05
+      tes_source_side_kw: 2.946298952183346e-05
+      chiller_cooling_kw: 1.9448681140232793e-05
+    rows: 805897
     status: fitted
   soc:
     capacity_kwh_th: 39069.768

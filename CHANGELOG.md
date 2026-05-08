@@ -22,19 +22,21 @@
 ### Git
 
 - Commit: `cd315fdc`（sampling pipeline 实现、bootstrap fitting 结果与报告提交；本条目的 hash 回填由后续 metadata commit 完成）。
+- Full sampling data commit: `待本次 data commit 生成后由后续 metadata commit 回填`。
 - 分支：`codex/energyplus-mpc-sampling`
 - 基线：从 `codex/energyplus-mpc-coupling` 的 `c500c7f4` 创建。
 
 ### Scope
 
-本版本新增 EnergyPlus 数据采样与 MPC 预测模型辨识管线，用于后续加固 MPC 内部预测函数。本版本实现采样矩阵、dry-run、bootstrap fitting、audit 和报告；尚未实际跑完 22 个 full-year identification sampling case。
+本版本新增 EnergyPlus 数据采样与 MPC 预测模型辨识管线，用于后续加固 MPC 内部预测函数。本版本实现采样矩阵、dry-run、fitting、audit 和报告；2026-05-08 已补齐 `high_explainable` 矩阵中的 22 个 full-year EnergyPlus runtime identification sampling case，并重新拟合预测模型。
 
 ### Code Changes
 
 - 新增 `run_sampling_matrix`，生成 `high_explainable` 采样矩阵：1 个 baseline reuse row、22 个 runnable identification rows。
 - Runtime runner 增加 sampling profile 支持，可写入 `TES_Set`、`ITE_Set` 和 `Chiller_T_Set`，并记录 echo mismatch 计数。
 - `extract_params` 增加 `ITE_Set`、`Chiller_T_Set` actuator 和 echo variables。
-- 新增 `fit_prediction_models`，合并 baseline、sampling case 和当前闭环 bootstrap 数据，拟合冷机功率、TES use/source 响应、SOC rollout 和 zone temperature 安全模型。
+- 新增 `fit_prediction_models`，合并 baseline 与 sampling case 数据，拟合冷机功率、TES use/source 响应、SOC rollout 和 zone temperature 安全模型。
+- `fit_prediction_models` 增加可配置 report path，防止单元测试把正式采样报告覆盖成临时测试数据。
 - 新增 `audit_sampling_results`，审计 manifest、samples、metrics、model YAML、figures、date-block split 和已运行 case 的 handle/echo/severe error。
 - 新增 sampling 报告 `docs/energyplus_mpc_sampling_report_20260507.md` 和结果目录 `results/energyplus_mpc_sampling_20260507/`。
 
@@ -45,6 +47,7 @@ Commands:
 ```powershell
 python -m pytest -q
 python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_sampling_matrix --matrix high_explainable --output-root results/energyplus_mpc_sampling_20260507 --dry-run
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_sampling_matrix --matrix high_explainable --output-root results/energyplus_mpc_sampling_20260507 --max-steps 35040 --record-start-step 0
 python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.fit_prediction_models --root results/energyplus_mpc_sampling_20260507
 python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_sampling_results --root results/energyplus_mpc_sampling_20260507
 git diff --check
@@ -54,8 +57,9 @@ Current result:
 
 ```text
 run_sampling_matrix --dry-run -> 23 manifest rows, 22 runnable sampling cases
-fit_prediction_models -> completed with adoption_ready=false
-audit_sampling_results -> passed
+run_sampling_matrix full-year -> 22/22 runtime sampling cases completed
+fit_prediction_models -> completed with adoption_ready=true
+audit_sampling_results -> passed, 0 Severe Errors and 0 echo mismatches for all completed cases
 python -m pytest -q -> 35 passed
 git diff --check -> passed, CRLF warnings only
 ```
@@ -66,24 +70,28 @@ git diff --check -> passed, CRLF warnings only
 
 ### 运行结果简述
 
-- `samples_15min.csv` 当前包含 `35424` rows、`5` cases：baseline full-year rows + 已有 EnergyPlus-MPC 闭环/扰动结果作为 bootstrap data。
-- 冷机功率 bootstrap validation CVRMSE 为 `0.0327`，满足 15% 目标，但尚未覆盖 `Chiller_T_Set` 扰动。
-- SOC rollout MAE 为 `4.51e-05`，满足 `0.03` 目标。
-- TES direction accuracy 为 `0.9151`，低于 `0.95` 目标。
-- `prediction_models.yaml` 标记 `adoption_ready=false`，原因是完整 high_explainable sampling matrix 尚未实际运行，且 TES direction accuracy 未达标。
+- `sampling_manifest.csv` 包含 `23` rows：`1` 个 baseline reuse row 和 `22` 个 EnergyPlus runtime identification rows。
+- `results/energyplus_mpc_sampling_20260507/` 下已补齐 `22` 个 runtime case 子目录；每个 case 均生成 `monitor.csv`、`observation.csv`、`mpc_action.csv`、`summary.csv`、`run_manifest.json` 和 `handle_map.json`。
+- `samples_15min.csv` 包含 `805920` rows、`23` cases，采用 date-block validation split。
+- full-year 明细 CSV 通过 Git LFS 跟踪，避免 `samples_15min.csv` 的 250 MB 普通 Git blob 导致后续远端推送失败。
+- 冷机功率 validation CVRMSE 为 `0.0443`，满足 `<= 0.15` 目标。
+- SOC 24h rollout MAE 为 `0.0101`，满足 `<= 0.03` 目标。
+- TES direction accuracy 为 `0.9832`，满足 `>= 0.95` 目标。
+- Zone temperature one-step validation CVRMSE 为 `0.0246`。
+- `prediction_models.yaml` 标记 `adoption_ready=true`，`failure_reasons=[]`。
 
 ### Thesis Impact
 
 - 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
 - 未更新 `docs/project_management/毕业设计论文/references.bib`。
-- 原因：本版本是参数辨识采样与拟合管线落地，不是最终可采纳模型结果；若后续跑完 full-year sampling matrix 并采用辨识模型，论文必须标记 `ITE_Set` 和 `Chiller_T_Set` 为 parameter-identification excitation。
+- 原因：本版本已生成可采纳的参数辨识模型产物，但用户尚未明确将其作为论文方法或结论写入正文；若后续采用，论文必须标记 `ITE_Set` 和 `Chiller_T_Set` 为 parameter-identification excitation，并区分辨识实验与正常控制收益验证实验。
 
 ### Known Limitations
 
-- 22 个 full-year sampling case 尚未实际执行。
-- 当前 fitted model 使用 bootstrap 数据验证管线，不应替换 MPC 默认参数。
-- TES response bootstrap 数据覆盖不足，方向准确率未达到验收线。
-- Chiller_T_Set 采样尚未运行，因此 chiller setpoint 系数当前不可解释为真实物理结论。
+- `adoption_ready=true` 仅表示当前拟合指标达到预设验收线，不等同于已采纳为论文结论或已写回 MPC 默认参数。
+- 当前 TES use/source response 仍是线性可解释模型，适合作为第一版 MPC 内部预测函数候选；若用于高精度控制，还需做 out-of-sample closed-loop 验证。
+- 22 个 sampling case 是 parameter-identification excitation，不应直接作为正常控制收益结论。
+- EnergyPlus raw output 仍保留在 `Nanjing-DataCenter-TES-EnergyPlus/out/energyplus_sampling_*`，默认不入库。
 
 ## v0.6.0-energyplus-mpc-coupling - 2026-05-07
 

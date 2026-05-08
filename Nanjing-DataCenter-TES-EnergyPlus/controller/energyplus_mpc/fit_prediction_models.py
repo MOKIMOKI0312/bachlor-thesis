@@ -16,7 +16,12 @@ from .run_sampling_matrix import DEFAULT_SAMPLING_ROOT
 REPORT_PATH = REPO_ROOT / "docs" / "energyplus_mpc_sampling_report_20260507.md"
 
 
-def fit_prediction_models(root: str | Path, baseline_timeseries: str | Path = DEFAULT_BASELINE_TIMESERIES, params_path: str | Path = DEFAULT_PARAM_YAML) -> dict[str, Any]:
+def fit_prediction_models(
+    root: str | Path,
+    baseline_timeseries: str | Path = DEFAULT_BASELINE_TIMESERIES,
+    params_path: str | Path = DEFAULT_PARAM_YAML,
+    report_path: str | Path | None = REPORT_PATH,
+) -> dict[str, Any]:
     result_root = Path(root)
     result_root.mkdir(parents=True, exist_ok=True)
     samples = collect_samples(result_root, baseline_timeseries)
@@ -27,7 +32,8 @@ def fit_prediction_models(root: str | Path, baseline_timeseries: str | Path = DE
     model_doc = _build_model_doc(result_root, samples, metrics, models)
     write_yaml(result_root / "prediction_models.yaml", model_doc)
     _write_figures(result_root, samples, models)
-    _write_report(result_root, samples, metrics, model_doc)
+    if report_path is not None:
+        _write_report(result_root, samples, metrics, model_doc, Path(report_path))
     return model_doc
 
 
@@ -343,11 +349,12 @@ def _write_figures(root: Path, samples: pd.DataFrame, models: dict[str, Any]) ->
         plt.close()
 
 
-def _write_report(root: Path, samples: pd.DataFrame, metrics: pd.DataFrame, model_doc: dict[str, Any]) -> None:
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _write_report(root: Path, samples: pd.DataFrame, metrics: pd.DataFrame, model_doc: dict[str, Any], report_path: Path) -> None:
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     metric_md = _frame_to_markdown(metrics.fillna(""))
     failure_lines = "\n".join(f"- {reason}" for reason in model_doc["failure_reasons"]) or "- None"
-    REPORT_PATH.write_text(
+    matrix_lines = _matrix_completion_lines(root)
+    report_path.write_text(
         "\n".join(
             [
                 "# EnergyPlus MPC Sampling Report 2026-05-07",
@@ -361,6 +368,7 @@ def _write_report(root: Path, samples: pd.DataFrame, metrics: pd.DataFrame, mode
                 "",
                 "This report treats sampling outputs as parameter-identification data. Identification-only perturbations are not normal operating conclusions.",
                 "",
+                *matrix_lines,
                 "## Metrics",
                 "",
                 metric_md,
@@ -379,6 +387,25 @@ def _write_report(root: Path, samples: pd.DataFrame, metrics: pd.DataFrame, mode
     )
 
 
+def _matrix_completion_lines(root: Path) -> list[str]:
+    manifest_path = root / "sampling_manifest.csv"
+    if not manifest_path.exists():
+        return []
+    manifest = pd.read_csv(manifest_path).fillna("")
+    runtime = manifest[manifest["run_mode"] == "energyplus_runtime"].copy()
+    completed = int(sum((root / str(case_id) / "summary.csv").exists() for case_id in runtime["case_id"]))
+    identification_only = int((manifest["identification_only"].astype(str).str.lower() == "true").sum())
+    return [
+        "## Matrix Completion",
+        "",
+        f"- Manifest rows: `{len(manifest)}`",
+        f"- EnergyPlus runtime cases required: `{len(runtime)}`",
+        f"- EnergyPlus runtime cases completed: `{completed}`",
+        f"- Identification-only rows: `{identification_only}`",
+        "",
+    ]
+
+
 def _frame_to_markdown(frame: pd.DataFrame) -> str:
     columns = list(frame.columns)
     lines = ["| " + " | ".join(columns) + " |", "| " + " | ".join(["---"] * len(columns)) + " |"]
@@ -392,14 +419,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", default=str(DEFAULT_SAMPLING_ROOT))
     parser.add_argument("--baseline-timeseries", default=str(DEFAULT_BASELINE_TIMESERIES))
     parser.add_argument("--params", default=str(DEFAULT_PARAM_YAML))
+    parser.add_argument("--report", default=str(REPORT_PATH))
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    fit_prediction_models(args.root, args.baseline_timeseries, args.params)
+    fit_prediction_models(args.root, args.baseline_timeseries, args.params, args.report)
     print(Path(args.root) / "prediction_models.yaml")
-    print(REPORT_PATH)
+    print(Path(args.report))
     return 0
 
 

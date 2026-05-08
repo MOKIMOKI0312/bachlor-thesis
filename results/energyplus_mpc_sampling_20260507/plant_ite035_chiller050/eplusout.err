@@ -1,0 +1,28 @@
+Program Version,EnergyPlus, Version 23.1.0-87ed9199d4, YMD=2026.05.08 00:49,
+   ************* Beginning Zone Sizing Calculations
+   ** Warning ** Calculated design heating load for zone=DATACENTER ZN is zero.
+   **   ~~~   ** Check Sizing:Zone and ZoneControl:Thermostat inputs.
+   ************* Beginning System Sizing Calculations
+   ************* Beginning Plant Sizing Calculations
+   ************* Testing Individual Branch Integrity
+   ************* All Branches passed integrity testing
+   ************* Testing Individual Supply Air Path Integrity
+   ************* All Supply Air Paths passed integrity testing
+   ************* Testing Individual Return Air Path Integrity
+   ************* All Return Air Paths passed integrity testing
+   ************* No node connection errors were found.
+   ************* Beginning Simulation
+   ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Cooling tower air flow rate ratio calculation failed
+   **   ~~~   ** ...with conditions as Twb =  9.26, Trange =  1.07, Tapproach =  4.44, and water flow rate ratio =  1.61
+   **   ~~~   ** ...a solution could not be found within the valid range of air flow rate ratios
+   **   ~~~   **  ...Valid air flow rate ratio range =  0.20 to 1.0.
+   **   ~~~   **  Environment=RUN PERIOD 1, at Simulation time=10/31 00:00 - 00:15
+   **   ~~~   ** ...Consider modifying the design approach or design range temperature for this tower.
+   ************* Simulation Error Summary *************
+   ************* There are 7 unused schedules in input.
+   ************* There are 7 unused week schedules in input.
+   ************* There are 8 unused day schedules in input.
+   ************* Use Output:Diagnostics,DisplayUnusedSchedules; to see them.
+   ************* EnergyPlus Warmup Error Summary. During Warmup: 0 Warning; 0 Severe Errors.
+   ************* EnergyPlus Sizing Error Summary. During Sizing: 1 Warning; 0 Severe Errors.
+   ************* EnergyPlus Completed Successfully-- 2 Warning; 0 Severe Errors; Elapsed Time=00hr 17min 28.41sec

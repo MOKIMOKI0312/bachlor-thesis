@@ -1,0 +1,77 @@
+Program Version,EnergyPlus, Version 23.1.0-87ed9199d4, YMD=2026.05.08 07:12,
+   ************* Beginning Zone Sizing Calculations
+   ** Warning ** Calculated design heating load for zone=DATACENTER ZN is zero.
+   **   ~~~   ** Check Sizing:Zone and ZoneControl:Thermostat inputs.
+   ************* Beginning System Sizing Calculations
+   ************* Beginning Plant Sizing Calculations
+   ************* Testing Individual Branch Integrity
+   ************* All Branches passed integrity testing
+   ************* Testing Individual Supply Air Path Integrity
+   ************* All Supply Air Paths passed integrity testing
+   ************* Testing Individual Return Air Path Integrity
+   ************* All Return Air Paths passed integrity testing
+   ************* No node connection errors were found.
+   ************* Beginning Simulation
+   ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Tower range temperature is outside model boundaries at 0.44.
+   **   ~~~   **  ...Valid range = 0.50 to 22.22. Occurrence info = RUN PERIOD 1, 01/04 10:30 - 10:35
+   **   ~~~   **  ...Tower range temperature passed to the model = 0.44444
+   **   ~~~   **  ...Range temperatures outside model boundaries may not adversely affect tower performance.
+   **   ~~~   **  ...This is not an unexpected occurrence when simulating actual conditions.
+   ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Cooling tower air flow rate ratio calculation failed
+   **   ~~~   ** ...with conditions as Twb =  0.77, Trange =  4.32, Tapproach =  4.78, and water flow rate ratio =  0.50
+   **   ~~~   ** ...a solution could not be found within the valid range of air flow rate ratios
+   **   ~~~   **  ...Valid air flow rate ratio range =  0.20 to 1.0.
+   **   ~~~   **  Environment=RUN PERIOD 1, at Simulation time=01/10 00:41 - 00:42
+   **   ~~~   ** ...Consider modifying the design approach or design range temperature for this tower.
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 01/11 12:45 - 12:50
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   **   ~~~   ** ...use Output:Diagnostics,DisplayExtraWarnings; to show more details on each max iteration exceeded.
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 02/28 13:10 - 13:15
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 03/04 12:45 - 13:00
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 03/04 12:45 - 12:49
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 03/04 12:53 - 12:56
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 03/04 12:56 - 13:00
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 03/19 08:45 - 09:00
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 03/19 08:53 - 08:56
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 03/30 13:00 - 13:15
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 03/30 13:05 - 13:10
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 04/11 13:00 - 13:15
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 04/11 13:05 - 13:10
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 04/12 08:56 - 09:00
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 10/28 12:38 - 12:45
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   ************* Simulation Error Summary *************
+   ************* There are 7 unused schedules in input.
+   ************* There are 7 unused week schedules in input.
+   ************* There are 8 unused day schedules in input.
+   ************* Use Output:Diagnostics,DisplayUnusedSchedules; to see them.
+   *************
+   ************* ===== Recurring Error Summary =====
+   ************* The following recurring error messages occurred.
+   *************
+   *************  ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Tower range temperature is out of range error continues...
+   *************  **   ~~~   **   This error occurred 1484 total times;
+   *************  **   ~~~   **   during Warmup 0 times;
+   *************  **   ~~~   **   during Sizing 0 times.
+   *************  **   ~~~   **   Max=0.499857  Min=0.000114
+   *************
+   *************  ** Warning ** SimHVAC: Exceeding Maximum iterations for all HVAC loops, during RUN PERIOD 1 continues
+   *************  **   ~~~   **   This error occurred 20 total times;
+   *************  **   ~~~   **   during Warmup 0 times;
+   *************  **   ~~~   **   during Sizing 0 times.
+   *************
+   ************* EnergyPlus Warmup Error Summary. During Warmup: 0 Warning; 0 Severe Errors.
+   ************* EnergyPlus Sizing Error Summary. During Sizing: 1 Warning; 0 Severe Errors.
+   ************* EnergyPlus Completed Successfully-- 1521 Warning; 0 Severe Errors; Elapsed Time=00hr 21min 58.04sec

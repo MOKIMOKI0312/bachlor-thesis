@@ -1,0 +1,26 @@
+{
+  "controller": "sampling",
+  "max_steps": 35040,
+  "record_start_step": 0,
+  "raw_output_dir": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\Nanjing-DataCenter-TES-EnergyPlus\\out\\energyplus_sampling_plant_ite035_chiller050",
+  "selected_output_dir": "results\\energyplus_mpc_sampling_20260507\\plant_ite035_chiller050",
+  "model": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+  "weather": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\Nanjing-DataCenter-TES-EnergyPlus\\weather\\CHN_JS_Nanjing.582380_TMYx.2009-2023.epw",
+  "params": {
+    "model_path": "Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+    "model_unmodified": true
+  },
+  "mode_integrality": "relaxed",
+  "load_forecast": "baseline",
+  "sampling_profile": {
+    "case_id": "plant_ite035_chiller050",
+    "family": "plant_only",
+    "purpose": "plant_chiller_load_identification",
+    "identification_only": true,
+    "seed": "",
+    "ite_set": 0.35,
+    "chiller_t_set": 0.5,
+    "tes_set": 0.0
+  },
+  "exit_code": 0
+}

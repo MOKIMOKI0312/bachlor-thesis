@@ -78,9 +78,10 @@ def test_high_explainable_sampling_manifest_is_decision_complete():
 
 def test_sampling_fit_and_audit_can_use_existing_bootstrap_data(tmp_path):
     sampling_mod.write_sampling_manifest(tmp_path)
-    model_doc = fit_mod.fit_prediction_models(tmp_path)
+    model_doc = fit_mod.fit_prediction_models(tmp_path, report_path=tmp_path / "sampling_report.md")
     assert (tmp_path / "samples_15min.csv").exists()
     assert (tmp_path / "prediction_models.yaml").exists()
+    assert (tmp_path / "sampling_report.md").exists()
     assert model_doc["split_method"] == "date_block_dayofyear_mod_5_validation"
     assert model_doc["adoption_ready"] is False
     assert model_doc["failure_reasons"]

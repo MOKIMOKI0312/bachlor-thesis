@@ -1,0 +1,30 @@
+{
+  "variables": {
+    "tes_set_echo": 29,
+    "ite_set_echo": 26,
+    "chiller_t_set_echo": 25,
+    "tes_soc": 28,
+    "tes_avg_temp": 27,
+    "tes_use_avail_echo": 31,
+    "tes_source_avail_echo": 30,
+    "chiller_avail_echo": 23,
+    "tes_use_heat_transfer_w": 42,
+    "tes_source_heat_transfer_w": 44,
+    "tes_tank_temp_c": 40,
+    "zone_temp_c": 10,
+    "outdoor_drybulb_c": 1,
+    "outdoor_wetbulb_c": 2,
+    "chiller_electricity_w": 46,
+    "chiller_cooling_w": 48
+  },
+  "meters": {
+    "facility_electricity_j": 1,
+    "purchased_electricity_j": 34
+  },
+  "actuators": {
+    "tes_set": 35,
+    "ite_set": 31,
+    "chiller_t_set": 28
+  },
+  "missing": []
+}

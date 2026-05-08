@@ -1,0 +1,24 @@
+{
+  "controller": "no_mpc",
+  "max_steps": 2880,
+  "record_start_step": 17376,
+  "raw_output_dir": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\Nanjing-DataCenter-TES-EnergyPlus\\out\\energyplus_controller_matrix_20260508\\summer_no_mpc",
+  "selected_output_dir": "results\\energyplus_mpc_controller_matrix_20260508\\summer_no_mpc",
+  "model": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+  "weather": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\Nanjing-DataCenter-TES-EnergyPlus\\weather\\CHN_JS_Nanjing.582380_TMYx.2009-2023.epw",
+  "params": {
+    "model_path": "Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+    "model_unmodified": true
+  },
+  "mode_integrality": "relaxed",
+  "load_forecast": "baseline",
+  "sampling_profile": {},
+  "exit_code": 0,
+  "matrix_case_id": "summer_no_mpc",
+  "matrix_season": "summer",
+  "matrix_controller": "no_mpc",
+  "model_source": "none",
+  "prediction_model_path": "",
+  "matrix_days": 30,
+  "smoke": false
+}

@@ -17,6 +17,77 @@
   - 是否影响论文
   - 已知限制
 
+## v0.6.2-energyplus-mpc-controller-matrix - 2026-05-08
+
+### Git
+
+- Commit: `待本次 controller matrix commit 后回填`。
+- 分支：`codex/energyplus-mpc-sampling`
+- 基线：`662d20d7`，包含 full EnergyPlus sampling 结果与 `adoption_ready=true` 的 prediction model。
+
+### Scope
+
+本版本新增 EnergyPlus-MPC 三类控制器效果矩阵，按四个季节各一个月在线闭环比较 `no_mpc`、`default_mpc` 和 `measured_data_mpc`。矩阵仍只控制 `TES_Set`，不控制 `ITE_Set`、`Chiller_T_Set`、pump、fan 或 chiller availability。
+
+### Code Changes
+
+- 新增 `run_controller_matrix`，顺序运行 `4 seasons x 3 controllers = 12` 个 EnergyPlus Runtime API case。
+- 新增 `audit_controller_matrix`，检查 case 完整性、EnergyPlus exit code、Severe Errors、TES echo mismatch、fallback、窗口一致性和 measured model source。
+- `run_energyplus_mpc` 增加 `no_mpc`、`default_mpc`、`measured_data_mpc` 控制器标签、case name、run metadata 和 TES charge/discharge energy 汇总。
+- `mpc_adapter` 增加 measured sampling 模型映射，将 `prediction_models.yaml` 的 chiller/SOC/TES 参数转换为 Kim-lite proxy MPC 参数。
+- 新增报告 `docs/energyplus_mpc_controller_matrix_report_20260508.md` 和结果目录 `results/energyplus_mpc_controller_matrix_20260508/`。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m pytest -q
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_controller_matrix --output-root results/energyplus_mpc_controller_matrix_20260508 --days 1 --smoke
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix --root results/energyplus_mpc_controller_matrix_20260508
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_controller_matrix --output-root results/energyplus_mpc_controller_matrix_20260508 --seasons winter,spring,summer,autumn --days 30
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix --root results/energyplus_mpc_controller_matrix_20260508
+python -m pytest -q
+git diff --check
+```
+
+Result:
+
+```text
+smoke matrix -> 3/3 winter one-day cases completed
+full controller matrix -> 12/12 seasonal month cases completed
+audit_controller_matrix -> passed
+python -m pytest -q -> 38 passed
+git diff --check -> passed, CRLF warnings only
+```
+
+### 运行结果位置
+
+`results/energyplus_mpc_controller_matrix_20260508/`
+
+### 运行结果简述
+
+- 四季月度矩阵共 `12` 个 EnergyPlus online closed-loop case，每个 case `2880` steps。
+- 所有 case 的 EnergyPlus exit code 为 `0`，Severe Errors 为 `0`，`TES_Set` echo mismatch 为 `0`。
+- `default_mpc` 和 `measured_data_mpc` fallback count 均为 `0`。
+- 相对 `no_mpc`，`default_mpc` 在四个季节均降低 PV-adjusted cost：winter `16.01%`，spring `6.14%`，summer `6.57%`，autumn `5.08%`。
+- 相对 `no_mpc`，`measured_data_mpc` 也降低 PV-adjusted cost：winter `14.52%`，spring `4.77%`，summer `4.78%`，autumn `3.95%`。
+- 两个 MPC 口径均提高了 `peak_grid_kw`，peak reduction 为负，说明当前 objective 尚未惩罚峰值，不能把本矩阵解读为削峰成功。
+- `measured_data_mpc` 结果使用 `results/energyplus_mpc_sampling_20260507/prediction_models.yaml`，manifest 中记录 `model_source=measured_sampling`。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本版本生成了可复核的四季月度控制矩阵，但尚未由用户明确采用为论文实验结论；若采用，论文必须说明该矩阵不是全年收益，并明确 peak 指标当前恶化。
+
+### Known Limitations
+
+- 该矩阵代表四个季节月度窗口，不代表全年控制收益。
+- 当前 MPC objective 主要优化电费/SOC，并未显式压峰；结果显示电费下降但 grid peak 上升。
+- `measured_data_mpc` 使用 sampling-fit 参数更新 proxy MPC，不是完整白盒 EnergyPlus plant MPC。
+- `measured_data_mpc` 第一版成本节省低于 `default_mpc`，说明采样辨识参数更保守或 objective/约束尚未针对新参数重新调优。
+
 ## v0.6.1-energyplus-mpc-sampling - 2026-05-07
 
 ### Git

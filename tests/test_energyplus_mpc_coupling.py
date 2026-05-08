@@ -2,6 +2,7 @@ import importlib
 import json
 
 import pandas as pd
+import pytest
 
 
 pkg = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.common")
@@ -12,6 +13,9 @@ runner_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controll
 sampling_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_sampling_matrix")
 fit_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.fit_prediction_models")
 audit_sampling_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_sampling_results")
+matrix_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_controller_matrix")
+audit_matrix_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix")
+mpc_adapter_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.mpc_adapter")
 
 
 def test_tes_set_mapping_matches_energyplus_sign_convention():
@@ -87,3 +91,55 @@ def test_sampling_fit_and_audit_can_use_existing_bootstrap_data(tmp_path):
     assert model_doc["failure_reasons"]
     issues = audit_sampling_mod.audit_sampling_root(tmp_path)
     assert issues == []
+
+
+def test_measured_params_require_adoption_ready(tmp_path):
+    model_path = tmp_path / "prediction_models.yaml"
+    pkg.write_yaml(model_path, {"adoption_ready": False, "failure_reasons": ["not enough data"]})
+    params = pkg.read_yaml("Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/config/energyplus_mpc_params.yaml")
+    with pytest.raises(ValueError, match="not adoption_ready"):
+        mpc_adapter_mod.derive_measured_params(params, model_path)
+
+
+def test_measured_params_map_sampling_model(tmp_path):
+    model_path = tmp_path / "prediction_models.yaml"
+    samples_path = tmp_path / "samples_15min.csv"
+    pkg.write_yaml(
+        model_path,
+        {
+            "adoption_ready": True,
+            "failure_reasons": [],
+            "models": {
+                "chiller_power": {
+                    "intercept": 10.0,
+                    "coefficients": {"chiller_cooling_kw": 0.25, "outdoor_wetbulb_c": 2.0, "chiller_t_set_written": 3.0},
+                },
+                "soc": {"capacity_kwh_th": 1234.0, "loss_per_h": 0.001},
+            },
+        },
+    )
+    pd.DataFrame(
+        [
+            {"tes_set_written": -1.0, "tes_use_side_kw": 0.0, "tes_source_side_kw": -1000.0},
+            {"tes_set_written": 1.0, "tes_use_side_kw": 2000.0, "tes_source_side_kw": 0.0},
+        ]
+    ).to_csv(samples_path, index=False)
+    params = pkg.read_yaml("Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/config/energyplus_mpc_params.yaml")
+    measured = mpc_adapter_mod.derive_measured_params(params, model_path, samples_path)
+    mode = measured["plant_proxy"]["modes"][0]
+    assert mode["a_kw_per_kwth"] == 0.25
+    assert mode["c_kw_per_c"] == 2.0
+    assert measured["tes"]["capacity_kwh_th_proxy"] == 1234.0
+    assert measured["tes"]["q_ch_max_kw_th_proxy"] == 1000.0
+    assert measured["tes"]["q_dis_max_kw_th_proxy"] == 2000.0
+    assert measured["source"]["model_source"] == "measured_sampling"
+
+
+def test_controller_matrix_manifest_and_audit_missing_case(tmp_path):
+    manifest = matrix_mod.build_matrix_manifest(["winter"], days=1, smoke=True)
+    assert len(manifest) == 3
+    assert set(manifest["controller"]) == {"no_mpc", "default_mpc", "measured_data_mpc"}
+    assert set(manifest["case_id"]) == {"smoke_winter_no_mpc", "smoke_winter_default_mpc", "smoke_winter_measured_data_mpc"}
+    manifest.to_csv(tmp_path / "matrix_manifest.csv", index=False)
+    issues = audit_matrix_mod.audit_matrix_root(tmp_path)
+    assert any("missing case directory" in issue for issue in issues)

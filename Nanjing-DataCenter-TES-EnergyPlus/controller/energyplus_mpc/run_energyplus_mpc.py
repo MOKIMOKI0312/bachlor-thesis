@@ -7,7 +7,6 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-import shutil
 import sys
 import time
 from typing import Any
@@ -53,6 +52,8 @@ class EnergyPlusMpcRunner:
         load_forecast: str = "baseline",
         record_start_step: str | int = "auto",
         sampling_profile: dict[str, Any] | None = None,
+        case_name: str | None = None,
+        run_metadata: dict[str, Any] | None = None,
     ):
         self.controller = controller
         self.max_steps = int(max_steps)
@@ -69,6 +70,8 @@ class EnergyPlusMpcRunner:
         self.mode_integrality = mode_integrality
         self.load_forecast = load_forecast
         self.sampling_profile = sampling_profile or {}
+        self.case_name = case_name
+        self.run_metadata = run_metadata or {}
         self.forecast = ForecastProvider(
             str(self.baseline_timeseries),
             str(self.price_csv),
@@ -258,7 +261,7 @@ class EnergyPlusMpcRunner:
             "fallback": False,
             "fallback_reason": "",
         }
-        if self.controller == "no_control":
+        if self.controller in {"no_control", "no_mpc"}:
             return base
         if self.controller == "perturbation":
             profile = [-1.0, -0.5, 0.0, 0.5, 1.0, 0.0, 0.5, -0.5]
@@ -271,7 +274,7 @@ class EnergyPlusMpcRunner:
             price_values = self.external.price_per_kwh.to_numpy(dtype=float)
             base["tes_set"] = rbc_action(price, float(np.quantile(price_values, 0.30)), float(np.quantile(price_values, 0.70)), observation["soc"])
             return base
-        if self.controller == "mpc":
+        if self.controller in {"mpc", "default_mpc", "measured_data_mpc"}:
             forecast = self.forecast.horizon(simulation_step, timestamp, self.load_forecast)
             try:
                 result = solve_energyplus_mpc_action(self.params, forecast, observation["soc"], self.mode_integrality)
@@ -377,7 +380,9 @@ class EnergyPlusMpcRunner:
             pass
 
     def _write_selected_outputs(self, exit_code: int, elapsed_s: float) -> Path:
-        case_name = str(self.sampling_profile.get("case_id", self.controller)) if self.controller == "sampling" else self.controller
+        case_name = self.case_name
+        if case_name is None:
+            case_name = str(self.sampling_profile.get("case_id", self.controller)) if self.controller == "sampling" else self.controller
         case_dir = self.selected_output_root / case_name
         case_dir.mkdir(parents=True, exist_ok=True)
         obs = pd.DataFrame(self.observation_rows)
@@ -406,10 +411,12 @@ class EnergyPlusMpcRunner:
             "sampling_profile": self.sampling_profile,
             "exit_code": exit_code,
         }
+        manifest.update(self.run_metadata)
         (case_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         err = self.raw_output_dir / "eplusout.err"
         if err.exists():
-            shutil.copy2(err, case_dir / "eplusout.err")
+            cleaned_err = "\n".join(line.rstrip() for line in err.read_text(encoding="utf-8", errors="ignore").splitlines()) + "\n"
+            (case_dir / "eplusout.err").write_text(cleaned_err, encoding="utf-8")
             warning_summary = _parse_err(err)
             (case_dir / "warning_summary.json").write_text(json.dumps(warning_summary, indent=2), encoding="utf-8")
         return case_dir
@@ -433,6 +440,16 @@ def _summarize_monitor(monitor: pd.DataFrame, controller: str, exit_code: int, e
         "pv_adjusted_cost": float(monitor["pv_adjusted_cost"].sum()),
         "peak_facility_kw": float(monitor["facility_electricity_kw"].max()),
         "peak_grid_kw": float(monitor["grid_import_kw"].max()),
+        "tes_charge_energy_kwh_th": float(
+            (monitor.loc[monitor.get("tes_set_written", 0.0) < -0.01, "tes_source_side_kw"].abs() * 0.25).sum()
+        )
+        if "tes_set_written" in monitor
+        else 0.0,
+        "tes_discharge_energy_kwh_th": float(
+            (monitor.loc[monitor.get("tes_set_written", 0.0) > 0.01, "tes_use_side_kw"].abs() * 0.25).sum()
+        )
+        if "tes_set_written" in monitor
+        else 0.0,
         "soc_min": float(monitor["soc"].min()),
         "soc_max": float(monitor["soc"].max()),
         "soc_final": float(monitor["soc"].iloc[-1]),
@@ -471,7 +488,11 @@ def default_raw_output(controller: str) -> Path:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--controller", choices=["no_control", "rbc", "mpc", "perturbation", "sampling"], required=True)
+    parser.add_argument(
+        "--controller",
+        choices=["no_control", "no_mpc", "rbc", "mpc", "default_mpc", "measured_data_mpc", "perturbation", "sampling"],
+        required=True,
+    )
     parser.add_argument("--max-steps", type=int, default=96)
     parser.add_argument("--energyplus-root", default=str(DEFAULT_EPLUS_INSTALL))
     parser.add_argument("--model", default=str(DEFAULT_MODEL))

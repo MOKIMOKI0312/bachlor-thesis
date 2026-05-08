@@ -1,0 +1,13 @@
+case_id,season,month,controller,model_source,record_start_step,max_steps,days,smoke
+winter_no_mpc,winter,January,no_mpc,none,0,2880,30,False
+winter_default_mpc,winter,January,default_mpc,default_proxy,0,2880,30,False
+winter_measured_data_mpc,winter,January,measured_data_mpc,measured_sampling,0,2880,30,False
+spring_no_mpc,spring,April,no_mpc,none,8640,2880,30,False
+spring_default_mpc,spring,April,default_mpc,default_proxy,8640,2880,30,False
+spring_measured_data_mpc,spring,April,measured_data_mpc,measured_sampling,8640,2880,30,False
+summer_no_mpc,summer,July,no_mpc,none,17376,2880,30,False
+summer_default_mpc,summer,July,default_mpc,default_proxy,17376,2880,30,False
+summer_measured_data_mpc,summer,July,measured_data_mpc,measured_sampling,17376,2880,30,False
+autumn_no_mpc,autumn,October,no_mpc,none,26208,2880,30,False
+autumn_default_mpc,autumn,October,default_mpc,default_proxy,26208,2880,30,False
+autumn_measured_data_mpc,autumn,October,measured_data_mpc,measured_sampling,26208,2880,30,False

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from mpc_v2.kim_lite.config import load_config
@@ -19,6 +21,7 @@ def test_mode_selection_respects_bounds_or_off():
 
 def test_relaxed_mode_integrality_is_blocked_for_multi_mode_proxy():
     cfg = load_config("mpc_v2/config/kim_lite_base.yaml")
+    cfg = replace(cfg, q_load_kw_th=9000.0)
     inputs = build_inputs(cfg, steps=4)
 
     with pytest.raises(RuntimeError, match="single-mode proxy"):

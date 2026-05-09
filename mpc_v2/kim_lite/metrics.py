@@ -56,6 +56,7 @@ def build_monitor(controller: str, inputs: KimLiteInputs, solution: KimLiteSolut
             "mode_fractionality_max": solution.mode_fractionality_max,
             "solver_message": solution.solver_message,
             "plant_tracking_error_kw_th": tracking_error,
+            "objective_value": solution.objective_value,
         }
     )
 
@@ -68,20 +69,36 @@ def summarize_monitor(monitor: pd.DataFrame, cfg: KimLiteConfig, case_id: str, c
     q_neg = (-monitor["Q_tes_net_kw_th"]).clip(lower=0.0)
     charge_kwh = float((q_pos * dt).sum())
     discharge_kwh = float((q_neg * dt).sum())
+    cp_mask = monitor["cp_flag"].astype(int) > 0
+    valley_threshold = float(monitor["price_cny_per_kwh"].quantile(0.30))
+    valley_mask = monitor["price_cny_per_kwh"] <= valley_threshold + 1e-12
+    active = monitor["Q_chiller_kw_th"].abs() > 1e-9
+    if active.any():
+        grid_kw_per_kwth = float((monitor.loc[active, "P_plant_kw"] / monitor.loc[active, "Q_chiller_kw_th"]).median())
+    else:
+        grid_kw_per_kwth = 0.0
+    peak_slack_kwh = float((monitor["peak_slack_kw"] * dt).sum())
+    peak_slack_max = float(monitor["peak_slack_kw"].max())
+    energy_cost = float((monitor["P_grid_pos_kw"] * monitor["price_cny_per_kwh"] * dt).sum())
+    peak_slack_penalty_cost = float(peak_slack_kwh * cfg.objective.w_peak_slack)
     summary = {
         "case_id": case_id,
         "controller": controller,
         "steps": int(len(monitor)),
-        "cost_total": float((monitor["P_grid_pos_kw"] * monitor["price_cny_per_kwh"] * dt).sum()),
-        "whole_facility_energy_cost": float((monitor["P_grid_pos_kw"] * monitor["price_cny_per_kwh"] * dt).sum()),
+        "cost_total": energy_cost,
+        "energy_cost": energy_cost,
+        "whole_facility_energy_cost": energy_cost,
         "plant_energy_cost": float((monitor["P_plant_kw"] * monitor["price_cny_per_kwh"] * dt).sum()),
+        "peak_slack_penalty_cost": peak_slack_penalty_cost,
+        "objective_cost": float(monitor["objective_value"].iloc[0]),
         "grid_import_kwh": float((monitor["P_grid_pos_kw"] * dt).sum()),
         "plant_energy_kwh": float((monitor["P_plant_kw"] * dt).sum()),
         "pv_used_kwh": float(((monitor["P_pv_kw"] - monitor["P_spill_kw"]).clip(lower=0.0) * dt).sum()),
         "pv_spill_kwh": float((monitor["P_spill_kw"] * dt).sum()),
         "peak_grid_kw": float(monitor["P_grid_pos_kw"].max()),
-        "peak_slack_max_kw": float(monitor["peak_slack_kw"].max()),
-        "peak_slack_kwh": float((monitor["peak_slack_kw"] * dt).sum()),
+        "peak_slack_max_kw": peak_slack_max,
+        "peak_slack_kwh": peak_slack_kwh,
+        "peak_cap_success_flag": bool(peak_slack_max <= 1e-6),
         "soc_initial": float(monitor["soc"].iloc[0]),
         "soc_target": float(cfg.tes.soc_target),
         "soc_final": float(monitor["soc_next"].iloc[-1]),
@@ -99,6 +116,10 @@ def summarize_monitor(monitor: pd.DataFrame, cfg: KimLiteConfig, case_id: str, c
         ),
         "TES_charge_kwh_th": charge_kwh,
         "TES_discharge_kwh_th": discharge_kwh,
+        "TES_discharge_during_cp_kwh_th": float((q_neg[cp_mask] * dt).sum()),
+        "TES_charge_during_valley_kwh_th": float((q_pos[valley_mask] * dt).sum()),
+        "grid_reduction_during_cp_kwh": float((q_neg[cp_mask] * grid_kw_per_kwth * dt).sum()),
+        "cp_hours": float(cp_mask.sum() * dt),
         "TES_charge_weighted_avg_price": _weighted_price(monitor, q_pos, dt),
         "TES_discharge_weighted_avg_price": _weighted_price(monitor, q_neg, dt),
         "TES_arbitrage_spread": _weighted_price(monitor, q_neg, dt) - _weighted_price(monitor, q_pos, dt),

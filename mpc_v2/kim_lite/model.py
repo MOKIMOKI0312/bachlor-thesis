@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
 from datetime import datetime, timedelta
 import time
 
@@ -103,6 +104,8 @@ def solve_paper_like_mpc(
     m = len(cfg.modes)
     if mode_integrality not in {"strict", "relaxed"}:
         raise ValueError("mode_integrality must be 'strict' or 'relaxed'")
+    cfg = _with_reachable_modes(cfg, inputs, tes_enabled)
+    m = len(cfg.modes)
     if mode_integrality == "relaxed" and m > 1:
         raise RuntimeError("relaxed mode is only allowed for single-mode proxy tests")
     relax_mode_binaries = mode_integrality == "relaxed"
@@ -264,6 +267,27 @@ def plant_dispatch(q_chiller_kw_th: float, cfg: KimLiteConfig, t_wb_c: float) ->
     q = mode.q_max_kw_th
     p = mode.a_kw_per_kwth * q + mode.b_kw + mode.c_kw_per_c * t_wb_c
     return q, p, idx
+
+
+def _with_reachable_modes(cfg: KimLiteConfig, inputs: KimLiteInputs, tes_enabled: bool) -> KimLiteConfig:
+    """Remove plant modes that cannot intersect the horizon's feasible chiller-output range."""
+
+    if len(cfg.modes) <= 1:
+        return cfg
+    if tes_enabled:
+        q_lo = np.maximum(0.0, inputs.q_load_kw_th - cfg.tes.q_dis_max_kw_th)
+        q_hi = inputs.q_load_kw_th + cfg.tes.q_ch_max_kw_th
+    else:
+        q_lo = inputs.q_load_kw_th
+        q_hi = inputs.q_load_kw_th
+    modes = tuple(
+        mode
+        for mode in cfg.modes
+        if bool(np.any((q_hi >= mode.q_min_kw_th - 1e-9) & (q_lo <= mode.q_max_kw_th + 1e-9)))
+    )
+    if not modes:
+        return cfg
+    return replace(cfg, modes=modes)
 
 
 def _solution_from_x(

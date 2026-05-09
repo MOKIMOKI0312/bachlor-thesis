@@ -19,6 +19,7 @@ def audit_root(root: str | Path, config_path: str = "mpc_v2/config/kim_lite_base
     result_root = Path(root)
     issues: list[str] = []
     _audit_phase_b(result_root, cfg, issues)
+    _audit_phase_c(result_root, cfg, issues)
     _audit_phase_d(result_root, cfg, issues)
     return issues
 
@@ -40,6 +41,11 @@ def _audit_phase_b(root: Path, cfg, issues: list[str]) -> None:
             "terminal_soc_abs_error",
             "soc_violation_count",
             "grid_balance_violation_count",
+            "signed_valve_violation_count",
+            "TES_discharge_during_cp_kwh_th",
+            "TES_charge_during_valley_kwh_th",
+            "grid_reduction_during_cp_kwh",
+            "cp_hours",
         ],
     )
     if issues:
@@ -52,6 +58,7 @@ def _audit_phase_b(root: Path, cfg, issues: list[str]) -> None:
         if max_error > 1e-3:
             issues.append(f"storage_priority_neutral_tes terminal SOC error too high: {max_error}")
     _audit_common_success_rows(summary, cfg, issues, context="Phase B")
+    _audit_signed_ramp_mainline(summary, issues, context="Phase B")
     table = root / "phase_b_attribution" / "attribution_table.csv"
     if not table.exists():
         issues.append(f"missing attribution table: {table}")
@@ -83,8 +90,16 @@ def _audit_phase_d(root: Path, cfg, issues: list[str]) -> None:
             "peak_cap_kw",
             "peak_grid_kw",
             "peak_slack_max_kw",
+            "peak_slack_kwh",
+            "energy_cost",
+            "peak_slack_penalty_cost",
+            "objective_cost",
+            "peak_cap_success_flag",
+            "TES_peak_cap_help_kwh",
+            "TES_peak_cap_help_max_kw",
             "soc_violation_count",
             "grid_balance_violation_count",
+            "signed_valve_violation_count",
         ],
     )
     if issues:
@@ -114,6 +129,32 @@ def _audit_phase_d(root: Path, cfg, issues: list[str]) -> None:
         if float(row["peak_grid_kw"]) > float(row["peak_cap_kw"]) + float(row["peak_slack_max_kw"]) + 1e-5:
             issues.append(f"{label}: peak cap accounting mismatch")
     _audit_common_success_rows(summary, cfg, issues, context="Phase D")
+    _audit_signed_ramp_mainline(summary, issues, context="Phase D")
+
+
+def _audit_phase_c(root: Path, cfg, issues: list[str]) -> None:
+    path = root / "phase_c_tou" / "summary.csv"
+    if not path.exists():
+        return
+    summary = pd.read_csv(path)
+    _require_columns(
+        summary,
+        path,
+        issues,
+        [
+            "controller",
+            "scenario",
+            "TES_discharge_during_cp_kwh_th",
+            "TES_charge_during_valley_kwh_th",
+            "grid_reduction_during_cp_kwh",
+            "cp_hours",
+            "signed_valve_violation_count",
+        ],
+    )
+    if issues:
+        return
+    _audit_common_success_rows(summary, cfg, issues, context="Phase C")
+    _audit_signed_ramp_mainline(summary, issues, context="Phase C")
 
 
 def _audit_common_success_rows(summary: pd.DataFrame, cfg, issues: list[str], context: str) -> None:
@@ -131,6 +172,19 @@ def _audit_common_success_rows(summary: pd.DataFrame, cfg, issues: list[str], co
             issues.append(f"{context} {label}: SOC above maximum")
         if not str(row.get("solver_status", "")).strip():
             issues.append(f"{context} {label}: missing solver status")
+
+
+def _audit_signed_ramp_mainline(summary: pd.DataFrame, issues: list[str], context: str) -> None:
+    if "signed_valve_violation_count" not in summary:
+        return
+    mainline = summary[
+        (summary["controller"] == "paper_like_mpc_tes")
+        & (summary.get("solver_status", pd.Series("", index=summary.index)).astype(str) != "failed")
+    ]
+    for _, row in mainline.iterrows():
+        count = int(row.get("signed_valve_violation_count", -1))
+        if count != 0:
+            issues.append(f"{context} {row.get('case_id', 'paper_like_mpc_tes')}: signed valve violation count {count}")
 
 
 def _require_columns(frame: pd.DataFrame, path: Path, issues: list[str], columns: list[str]) -> None:

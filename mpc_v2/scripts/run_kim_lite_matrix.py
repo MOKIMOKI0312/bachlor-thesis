@@ -72,7 +72,14 @@ def _run_phase_b(cfg, phase_cfg, root: Path) -> None:
     inputs = build_inputs(cfg, int(phase_cfg["steps"]))
     rows = []
     for controller in phase_cfg["controllers"]:
-        _, summary = run_controller_case(cfg, inputs, controller, controller, phase_dir)
+        _, summary = run_controller_case(
+            cfg,
+            inputs,
+            controller,
+            controller,
+            phase_dir,
+            enforce_signed_ramp=_enforce_mainline_signed_ramp(controller),
+        )
         rows.append(summary)
     summary = pd.DataFrame(rows)
     summary.to_csv(phase_dir / "summary.csv", index=False)
@@ -94,7 +101,15 @@ def _run_phase_c(cfg, phase_cfg, root: Path) -> None:
         )
         for controller in phase_cfg["controllers"]:
             case_id = f"{scenario['name']}_{controller}"
-            run_dir, summary = run_controller_case(cfg, inputs, controller, case_id, phase_dir)
+            run_dir, summary = run_controller_case(
+                cfg,
+                inputs,
+                controller,
+                case_id,
+                phase_dir,
+                enforce_signed_ramp=_enforce_mainline_signed_ramp(controller),
+                mode_integrality=_mode_integrality_for_phase_c(controller),
+            )
             summary["scenario"] = scenario["name"]
             summary["spread_gamma"] = float(scenario["spread_gamma"])
             summary["critical_peak_uplift"] = float(scenario["critical_peak_uplift"])
@@ -105,7 +120,15 @@ def _run_phase_c(cfg, phase_cfg, root: Path) -> None:
     inputs = build_inputs(cfg, int(phase_cfg["steps"]), tariff_gamma=float(rep["spread_gamma"]), cp_uplift=float(rep["critical_peak_uplift"]))
     for controller in phase_cfg["representative_controllers"]:
         case_id = f"representative_{controller}"
-        _, summary = run_controller_case(cfg, inputs, controller, case_id, phase_dir)
+        _, summary = run_controller_case(
+            cfg,
+            inputs,
+            controller,
+            case_id,
+            phase_dir,
+            enforce_signed_ramp=_enforce_mainline_signed_ramp(controller),
+            mode_integrality=_mode_integrality_for_phase_c(controller),
+        )
         summary["scenario"] = "representative_base_cp20"
         summary["spread_gamma"] = float(rep["spread_gamma"])
         summary["critical_peak_uplift"] = float(rep["critical_peak_uplift"])
@@ -142,6 +165,7 @@ def _run_phase_d(cfg, phase_cfg, root: Path) -> None:
                         case_id,
                         phase_dir,
                         peak_cap_kw=cap,
+                        enforce_signed_ramp=_enforce_mainline_signed_ramp(controller),
                         mode_integrality=mode_integrality,
                     )
                     summary = _with_phase_d_fields(summary, ratio, cap, reference_peak, base_summary, mode_integrality, "")
@@ -169,7 +193,7 @@ def _run_phase_d(cfg, phase_cfg, root: Path) -> None:
                         exc,
                     )
                 rows.append(summary)
-    summary = pd.DataFrame(rows)
+    summary = _add_phase_d_help_fields(pd.DataFrame(rows))
     summary.to_csv(phase_dir / "summary.csv", index=False)
     plot_xy(phase_dir / "summary.csv", root / "figures" / "fig_peak_reduction_cost_tradeoff.png", "peak_reduction_kw", "cost_increase_vs_no_cap", "Peak reduction cost tradeoff")
 
@@ -189,6 +213,33 @@ def _with_phase_d_fields(
     summary["fallback_reason"] = fallback_reason
     summary["peak_reduction_kw"] = reference_peak - float(summary["peak_grid_kw"])
     summary["cost_increase_vs_no_cap"] = float(summary["cost_total"]) - float(base_summary["cost_total"])
+    summary["peak_cap_success_flag"] = bool(float(summary["peak_slack_max_kw"]) <= 1e-6)
+    summary["TES_peak_cap_help_kwh"] = 0.0
+    summary["TES_peak_cap_help_max_kw"] = 0.0
+    return summary
+
+
+def _add_phase_d_help_fields(summary: pd.DataFrame) -> pd.DataFrame:
+    if summary.empty:
+        return summary
+    summary = summary.copy()
+    if "peak_cap_success_flag" not in summary:
+        summary["peak_cap_success_flag"] = summary["peak_slack_max_kw"].fillna(float("inf")) <= 1e-6
+    summary["TES_peak_cap_help_kwh"] = 0.0
+    summary["TES_peak_cap_help_max_kw"] = 0.0
+    for keys, group in summary.groupby(["cap_ratio", "phase_d_track"], dropna=False):
+        reference = group[group["controller"] == "mpc_no_tes"]
+        if reference.empty:
+            continue
+        ref_kwh = float(reference["peak_slack_kwh"].iloc[0])
+        ref_max = float(reference["peak_slack_max_kw"].iloc[0])
+        mask = (
+            (summary["cap_ratio"] == keys[0])
+            & (summary["phase_d_track"] == keys[1])
+            & (summary["controller"] == "paper_like_mpc_tes")
+        )
+        summary.loc[mask, "TES_peak_cap_help_kwh"] = ref_kwh - summary.loc[mask, "peak_slack_kwh"].astype(float)
+        summary.loc[mask, "TES_peak_cap_help_max_kw"] = ref_max - summary.loc[mask, "peak_slack_max_kw"].astype(float)
     return summary
 
 
@@ -247,6 +298,16 @@ def _phase_d_diagnostic(
         "phase_d_track": mode_integrality,
         "peak_reduction_kw": float("nan") if reference_peak else float("nan"),
         "cost_increase_vs_no_cap": float("nan") if base_summary else float("nan"),
+        "energy_cost": float("nan"),
+        "peak_slack_penalty_cost": float("nan"),
+        "objective_cost": float("nan"),
+        "peak_cap_success_flag": False,
+        "TES_peak_cap_help_kwh": float("nan"),
+        "TES_peak_cap_help_max_kw": float("nan"),
+        "TES_discharge_during_cp_kwh_th": float("nan"),
+        "TES_charge_during_valley_kwh_th": float("nan"),
+        "grid_reduction_during_cp_kwh": float("nan"),
+        "cp_hours": float("nan"),
     }
 
 
@@ -295,6 +356,16 @@ def _write_storyboard(root: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _enforce_mainline_signed_ramp(controller: str) -> bool:
+    return controller.strip().lower() in {"paper_like_mpc", "paper_like_mpc_tes"}
+
+
+def _mode_integrality_for_phase_c(controller: str) -> str:
+    if _enforce_mainline_signed_ramp(controller):
+        return "relaxed"
+    return "strict"
 
 
 def _build_parser() -> argparse.ArgumentParser:

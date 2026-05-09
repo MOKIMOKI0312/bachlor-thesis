@@ -17,6 +17,76 @@
   - 是否影响论文
   - 已知限制
 
+## v0.6.5-kim-lite-mainline-hardening - 2026-05-09
+
+### Git
+
+- Commit: 本条目对应待提交的 `codex/kim-lite-mainline-hardening` 实现。
+- Baseline: `4c8512bd`，来自 `codex/energyplus-mpc-io-coupling`。
+- Branch: `codex/kim-lite-mainline-hardening`
+
+### Scope
+
+本版本按评审意见把论文主线收束到 Kim-lite proxy：`paper_like_mpc_tes` 在 Phase B/C/D 默认启用 signed valve ramp，Phase D peak-cap 改为 slack-first 评价，并补充 TOU/critical peak 行为指标。EnergyPlus 在线结果不继续扩大矩阵，只作为 I/O coupling feasibility 与温度风险诊断。
+
+### Code Changes
+
+- Kim-lite summary 新增 `energy_cost`、`peak_slack_penalty_cost`、`objective_cost`、`peak_cap_success_flag`、`TES_discharge_during_cp_kwh_th`、`TES_charge_during_valley_kwh_th`、`grid_reduction_during_cp_kwh`、`cp_hours`。
+- Phase B/C/D 的 `paper_like_mpc_tes` 默认传入 `enforce_signed_ramp=true`；Phase E 保留为代表性 signed valve 图形验证。
+- Phase D 新增 `TES_peak_cap_help_kwh` 和 `TES_peak_cap_help_max_kw`，以同一 cap/mode 下 `mpc_no_tes` 的 peak slack 为参照。
+- `solve_paper_like_mpc` 增加不可达 plant mode 预处理；Phase C `paper_like_mpc_tes` 使用 relaxed single-mode 路径，以避免 flat-price signed-ramp 场景的 binary degeneracy。
+- Kim-lite audit 加严：主线 `paper_like_mpc_tes` 的 signed valve violation 必须为 0，并检查新增 Phase C/D 字段。
+- 新增报告 `docs/kim_lite_mainline_hardening_report_20260509.md`。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m pytest -q
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_b_attribution --output-root results/kim_lite_mainline_hardening_20260509
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_c_tou --output-root results/kim_lite_mainline_hardening_20260509
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_d_peakcap --output-root results/kim_lite_mainline_hardening_20260509
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_e_signed_valve --output-root results/kim_lite_mainline_hardening_20260509
+python -m mpc_v2.scripts.audit_kim_lite_results --root results/kim_lite_mainline_hardening_20260509
+git diff --check
+```
+
+Result:
+
+```text
+pytest -> 51 passed
+Phase B/C/D/E generation -> completed
+Kim-lite audit -> passed
+git diff --check -> passed, CRLF warnings only
+```
+
+### 运行结果位置
+
+- `results/kim_lite_mainline_hardening_20260509/`
+- `docs/kim_lite_mainline_hardening_report_20260509.md`
+- `_review_packages/kim_lite_mainline_hardening_review_20260509.zip`（本地 GPT Pro 审查包）
+
+### 运行结果简述
+
+- Phase B `paper_like_mpc_tes`：`cost_total = 38712.05`，`signed_valve_violation_count = 0`，`max_signed_du = 0.25`，`TES_arbitrage_spread = 0.064`。
+- Phase C `paper_like_mpc_tes`：所有 TOU/CP 场景 signed ramp violation 为 0；high-spread 场景 TES saving 约 `605.59`，high-spread CP20 场景约 `606.67`。
+- Critical peak 行为指标显示 `base_cp20` 的 `TES_discharge_during_cp_kwh_th = 1274.31`，高于 `base` 的 `578.59`，说明 CP uplift 改变了放冷窗口，但总收益增幅较小。
+- Phase D strict track：0.99 cap 下 TES 将 slack energy 从 `1910.37 kWh` 降至 `119.22 kWh`；0.97/0.95 cap 下 TES 仍降低总 slack energy，但 max slack 变差，因此不能声明普遍削峰成功。
+- EnergyPlus I/O coupling 仍只作为接口可行性与温度风险诊断，不作为在线节能收益结论。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本轮生成的是可供用户审阅的 Kim-lite proxy 主线候选结果；是否纳入论文结论需要用户确认。
+
+### Known Limitations
+
+- Phase C `paper_like_mpc_tes` 使用 relaxed single-mode 路径；这是因为当前 96-step horizon 中只有一个 plant mode 可达，不代表多模式 relaxed MILP 被允许。
+- Phase D 证明 TES 有 peak slack reduction 潜力，但 tight cap 下存在 max slack tradeoff。
+- EnergyPlus 在线控制仍未解决温度安全问题；论文收益主结论应优先基于 Kim-lite proxy，而不是 EnergyPlus online matrix。
+
 ## v0.6.4-energyplus-mpc-io-coupling - 2026-05-09
 
 ### Git

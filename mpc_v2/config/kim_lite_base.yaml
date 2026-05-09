@@ -58,4 +58,4 @@ signed_valve:
   du_max_per_step: 0.25
 
 solver:
-  time_limit_s: 20.0
+  time_limit_s: 60.0

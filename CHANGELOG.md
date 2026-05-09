@@ -17,6 +17,91 @@
   - 是否影响论文
   - 已知限制
 
+## v0.6.3-kim-lite-review-hardening - 2026-05-09
+
+### Git
+
+- Implementation commit: `d10e6a3f`（Kim-lite hardening 代码、报告与结果）。
+- Metadata commit: 本条 CHANGELOG-only 提交。
+- 分支：`codex/kim-lite-review-hardening`
+- 基线：`codex/energyplus-mpc-sampling`，包含 full sampling 与 controller matrix 结果。
+
+### Scope
+
+本版本按 Kim-lite 代码审查意见收束 paper-like MPC proxy 层，不继续扩大 EnergyPlus controller matrix。目标是修复 15 min 输入对齐、tariff/critical peak 口径、SOC 和 baseline 一致性、signed valve ramp 首步约束，并把 EnergyPlus 在线结果标记为温度安全诊断而非论文最终收益结论。
+
+### Code Changes
+
+- `mpc_v2/kim_lite`：
+  - hourly 或任意粒度 CSV 输入改为 15 min forward-fill，对不同年份按 month/day/time 循环对齐，避免 00:15/00:30/00:45 回退到首行。
+  - TOU floating/non-floating split 改为 non-floating 常数 + floating component spread；`gamma=0` 时 floating component 变平。
+  - critical peak 改为显式配置窗口，默认 July/August 的 `[11,13)` 与 `[16,17)`，不再用 top price quantile。
+  - SOC 改为硬约束，移除误导性的 `soc_slack_low/high` 与 `w_soc`。
+  - `direct_no_tes` 强制 `Q_tes_net=0` 和 SOC constant；固定 dispatch baseline 基于最终 dispatch 重新 roll SOC。
+  - signed valve ramp 增加第 0 步 `previous_u_signed` 约束；multi-mode proxy 禁止 `mode_integrality=relaxed`。
+- `Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc`：
+  - EnergyPlus cyclic lookup 同步改为 15 min forward-fill。
+  - Online MPC adapter 将上一时刻 `TES_Set` 映射为 `previous_u_signed`。
+  - EnergyPlus summary 与 controller matrix comparison 增加 `temp_violation_degree_hours_27c`、temperature delta 和 `cost_comparison_valid`。
+- 新增 hardening 报告：`docs/energyplus_mpc_controller_matrix_hardening_report_20260509.md`。
+- 重新汇总旧 controller matrix：`results/energyplus_mpc_controller_matrix_20260508/` 的 case summary、season summary、comparison summary 和报告补充温度风险口径。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m pytest -q
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_b_attribution --output-root results/kim_lite_review_hardening_20260509
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_c_tou --output-root results/kim_lite_review_hardening_20260509
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_d_peakcap --output-root results/kim_lite_review_hardening_20260509
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_e_signed_valve --output-root results/kim_lite_review_hardening_20260509
+python -m mpc_v2.scripts.audit_kim_lite_results --root results/kim_lite_review_hardening_20260509
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_controller_matrix --output-root results/energyplus_mpc_controller_matrix_hardened_20260509 --days 1 --smoke
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix --root results/energyplus_mpc_controller_matrix_hardened_20260509
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix --root results/energyplus_mpc_controller_matrix_20260508
+git diff --check
+```
+
+Result:
+
+```text
+python -m pytest -q -> 46 passed
+Kim-lite Phase B/C/D/E generation -> completed
+audit_kim_lite_results -> passed
+EnergyPlus hardened smoke matrix -> 3/3 winter one-day cases completed
+audit_controller_matrix hardened smoke -> passed
+audit_controller_matrix existing 20260508 matrix -> passed after temperature KPI backfill
+git diff --check -> passed, CRLF warnings only
+```
+
+### 运行结果位置
+
+- `results/kim_lite_review_hardening_20260509/`
+- `results/energyplus_mpc_controller_matrix_hardened_20260509/`
+- `results/energyplus_mpc_controller_matrix_20260508/`（补充温度 KPI 汇总，未重跑 EnergyPlus full matrix）
+
+### 运行结果简述
+
+- Kim-lite Phase B attribution 审计通过；`storage_priority_neutral_tes` final SOC error 为 `1.67e-16`，SOC/grid balance violation 均为 `0`。
+- Phase B 中 `TES_value = 373.28`，`RBC_gap_neutral = 57.73`，保留 `RBC_gap_non_neutral = -10.23` 作为非 neutral 诊断。
+- Phase D peak-cap strict rows `8/8` optimal；relaxed rows `8/8` 明确失败并记录为 multi-mode relaxed 不支持，未被当作有效 strict 结论。
+- 旧 20260508 EnergyPlus controller matrix 的温度风险已补充：所有 MPC cost saving rows 的 `cost_comparison_valid=false`，因为相对 `no_mpc` 温度 degree-hours 或 max temperature 均恶化。
+- 本轮 hardened EnergyPlus smoke 仅用于验证新 summary/audit 字段，不作为收益结论。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本轮修复了 Kim-lite 方法口径并补充了温度风险诊断，但没有把 hardened 结果明确采纳为论文结论。若后续采用 EnergyPlus 在线结果，论文必须写明只有 `cost_comparison_valid=true` 的 case 才能作为控制收益证据。
+
+### Known Limitations
+
+- critical peak window 是工程近似配置，不声明政策精确复现。
+- Kim-lite proxy 层已更自洽，但 EnergyPlus 在线 MPC 仍只控制 `TES_Set`，不控制 chiller setpoint、availability、pump 或 fan。
+- 当前完整 EnergyPlus controller matrix 的成本下降伴随温度恶化，因此不能直接作为论文主控制收益结论。
+- Phase D relaxed reference 在 multi-mode 下被禁用；若需要 relaxed 对照，必须使用 single-mode proxy 或显式另建诊断场景。
+
 ## v0.6.2-energyplus-mpc-controller-matrix - 2026-05-08
 
 ### Git

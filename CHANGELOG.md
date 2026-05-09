@@ -21,7 +21,8 @@
 
 ### Git
 
-- Commit: `8fec1e84`
+- Implementation commit: `ca024d5e`
+- Metadata commit: 本条 CHANGELOG hash 记录提交。
 - Baseline: `c6c2beaa`，来自 `codex/kim-lite-mainline-hardening`。
 - Branch: `codex/kim-lite-mainline-hardening`
 

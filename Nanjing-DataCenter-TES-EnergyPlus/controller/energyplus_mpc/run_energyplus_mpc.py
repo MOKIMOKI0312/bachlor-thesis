@@ -90,6 +90,7 @@ class EnergyPlusMpcRunner:
         self._meter_handles: dict[str, int] = {}
         self._actuator_handles: dict[str, int] = {}
         self._last_tes_set = 0.0
+        self._last_chiller_t_set = float(self.params.get("schedules", {}).get("Chiller_T_Set", 0.0))
         self._simulation_step = 0
 
     def run(self) -> Path:
@@ -124,7 +125,7 @@ class EnergyPlusMpcRunner:
             timestamp = self._timestamp_for_step(simulation_step)
             observation = self._read_observation(exchange, current_state, step, simulation_step, timestamp)
             action = self._choose_action(observation, step, simulation_step, timestamp)
-            self._apply_sampling_actuators(exchange, current_state, action)
+            self._apply_action_actuators(exchange, current_state, action)
             self._set_tes(exchange, current_state, float(action["tes_set"]))
             action["tes_set_written"] = float(action["tes_set"])
             if "ite_set" in action:
@@ -149,6 +150,8 @@ class EnergyPlusMpcRunner:
             timestamp = self._timestamp_for_step(simulation_step)
             row = self._read_observation(exchange, current_state, step, simulation_step, timestamp)
             row["tes_set_command"] = self.action_rows[step]["tes_set_written"] if step < len(self.action_rows) else 0.0
+            if step < len(self.action_rows) and "chiller_t_set_written" in self.action_rows[step]:
+                row["chiller_t_set_command"] = self.action_rows[step]["chiller_t_set_written"]
             self.observation_rows.append(row)
             self._simulation_step += 1
             if len(self.observation_rows) >= self.max_steps:
@@ -213,12 +216,18 @@ class EnergyPlusMpcRunner:
         self._set_actuator(exchange, state, "tes_set", value)
 
     def _set_actuator(self, exchange, state, name: str, value: float) -> None:
-        value = float(np.clip(value, -1.0, 1.0))
+        if name == "tes_set":
+            value = float(np.clip(value, -1.0, 1.0))
+        else:
+            value = float(np.clip(value, 0.0, 1.0))
         exchange.set_actuator_value(state, self._actuator_handles[name], value)
         if name == "tes_set":
             self._last_tes_set = value
+        if name == "chiller_t_set":
+            self._last_chiller_t_set = value
 
-    def _apply_sampling_actuators(self, exchange, state, action: dict[str, Any]) -> None:
+    def _apply_action_actuators(self, exchange, state, action: dict[str, Any]) -> None:
+        # ITE_Set is reserved for identification sampling. Normal MPC actions do not include it.
         if "ite_set" in action and "ite_set" in self._actuator_handles:
             self._set_actuator(exchange, state, "ite_set", float(action["ite_set"]))
         if "chiller_t_set" in action and "chiller_t_set" in self._actuator_handles:
@@ -256,10 +265,18 @@ class EnergyPlusMpcRunner:
             "tes_set": 0.0,
             "q_tes_net_kw_th_pred": 0.0,
             "q_chiller_kw_th_pred": 0.0,
+            "mpc_predicted_q_tes_net_kw_th": 0.0,
+            "mpc_predicted_q_chiller_kw_th": 0.0,
+            "mpc_predicted_chiller_power_kw": 0.0,
+            "mpc_predicted_tes_set": 0.0,
             "solver_status": "not_used",
             "solver_time_s": 0.0,
             "fallback": False,
             "fallback_reason": "",
+            "safety_override": False,
+            "safety_override_reason": "",
+            "temp_guard_charge_block": False,
+            "mpc_predicted_chiller_t_set": np.nan,
         }
         if self.controller in {"no_control", "no_mpc"}:
             return base
@@ -274,7 +291,14 @@ class EnergyPlusMpcRunner:
             price_values = self.external.price_per_kwh.to_numpy(dtype=float)
             base["tes_set"] = rbc_action(price, float(np.quantile(price_values, 0.30)), float(np.quantile(price_values, 0.70)), observation["soc"])
             return base
-        if self.controller in {"mpc", "default_mpc", "measured_data_mpc"}:
+        if self.controller in {
+            "mpc",
+            "default_mpc",
+            "measured_data_mpc",
+            "tes_only_mpc",
+            "io_coupled_mpc",
+            "io_coupled_measured_mpc",
+        }:
             forecast = self.forecast.horizon(simulation_step, timestamp, self.load_forecast)
             try:
                 result = solve_energyplus_mpc_action(
@@ -283,6 +307,8 @@ class EnergyPlusMpcRunner:
                     observation["soc"],
                     self.mode_integrality,
                     previous_u_signed=-float(self._last_tes_set),
+                    observation=observation,
+                    io_coupled=self.controller in {"io_coupled_mpc", "io_coupled_measured_mpc"},
                 )
                 base.update(result)
             except Exception as exc:  # noqa: BLE001 - controller diagnostics must capture solver errors
@@ -476,9 +502,27 @@ def _summarize_monitor(monitor: pd.DataFrame, controller: str, exit_code: int, e
         "chiller_t_set_mismatch_count": int((monitor["chiller_t_set_echo"].sub(monitor["chiller_t_set_written"]).abs() > 1e-6).sum())
         if "chiller_t_set_written" in monitor and "chiller_t_set_echo" in monitor
         else 0,
+        "safety_override_count": int(monitor.get("safety_override", pd.Series(dtype=bool)).fillna(False).sum()),
+        "temp_guard_charge_block_count": int(
+            monitor.get("temp_guard_charge_block", pd.Series(dtype=bool)).fillna(False).sum()
+        ),
+        "actual_vs_predicted_chiller_power_mae_kw": _mae_if_present(
+            monitor, "chiller_electricity_kw", "mpc_predicted_chiller_power_kw"
+        ),
         "tes_use_response_count": int(((monitor.get("tes_set_written", 0.0) > 0.01) & (monitor["tes_use_side_kw"].abs() > 1e-4)).sum()),
         "tes_source_response_count": int(((monitor.get("tes_set_written", 0.0) < -0.01) & (monitor["tes_source_side_kw"].abs() > 1e-4)).sum()),
     }
+
+
+def _mae_if_present(frame: pd.DataFrame, actual_col: str, predicted_col: str) -> float:
+    if actual_col not in frame or predicted_col not in frame:
+        return float("nan")
+    actual = pd.to_numeric(frame[actual_col], errors="coerce")
+    predicted = pd.to_numeric(frame[predicted_col], errors="coerce")
+    mask = actual.notna() & predicted.notna()
+    if not mask.any():
+        return float("nan")
+    return float((actual[mask] - predicted[mask]).abs().mean())
 
 
 def _parse_err(path: Path) -> dict[str, Any]:
@@ -502,7 +546,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--controller",
-        choices=["no_control", "no_mpc", "rbc", "mpc", "default_mpc", "measured_data_mpc", "perturbation", "sampling"],
+        choices=[
+            "no_control",
+            "no_mpc",
+            "rbc",
+            "mpc",
+            "default_mpc",
+            "measured_data_mpc",
+            "tes_only_mpc",
+            "io_coupled_mpc",
+            "io_coupled_measured_mpc",
+            "perturbation",
+            "sampling",
+        ],
         required=True,
     )
     parser.add_argument("--max-steps", type=int, default=96)

@@ -1,0 +1,132 @@
+schema_version: 1
+source:
+  model_path: Nanjing-DataCenter-TES-EnergyPlus\model\Nanjing_DataCenter_TES.epJSON
+  model_unmodified: true
+  prediction_model_path: C:\Users\18430\Desktop\毕业设计代码\results\energyplus_mpc_sampling_20260507\prediction_models.yaml
+  model_source: measured_sampling
+  samples_path: C:\Users\18430\Desktop\毕业设计代码\results\energyplus_mpc_sampling_20260507\samples_15min.csv
+energyplus:
+  timestep_per_hour: 4
+  dt_hours: 0.25
+tes:
+  object_name: Chilled Water Tank
+  tank_volume_m3: 1400.0
+  nominal_cooling_capacity_w: 9767442.0
+  capacity_kwh_th_proxy: 39069.768
+  source_side_design_flow_rate: Autosize
+  use_side_design_flow_rate: Autosize
+  max_flow_kg_s_from_ems: 389.0
+  soc_cold_temp_c: 6.67
+  soc_hot_temp_c: 12.0
+  soc_formula: SOC = (soc_hot_temp_c - tank_avg_temp_c) / (soc_hot_temp_c - soc_cold_temp_c)
+  soc_min: 0.15
+  soc_max: 0.85
+  soc_target: 0.5
+  q_abs_max_kw_th_proxy: 6594.640798142311
+  initial_soc_from_baseline: 1.0
+  loss_per_h_proxy: 0.0
+  q_ch_max_kw_th_proxy: 2152.457289482025
+  q_dis_max_kw_th_proxy: 6594.640798142311
+actuators:
+  tes_set:
+    component_type: Schedule:Constant
+    control_type: Schedule Value
+    key: TES_Set
+  ite_set:
+    component_type: Schedule:Constant
+    control_type: Schedule Value
+    key: ITE_Set
+  chiller_t_set:
+    component_type: Schedule:Constant
+    control_type: Schedule Value
+    key: Chiller_T_Set
+variables:
+  tes_set_echo:
+    variable_name: Schedule Value
+    key: TES_Set
+  ite_set_echo:
+    variable_name: Schedule Value
+    key: ITE_Set
+  chiller_t_set_echo:
+    variable_name: Schedule Value
+    key: Chiller_T_Set
+  tes_soc:
+    variable_name: Schedule Value
+    key: TES_SOC_Obs
+  tes_avg_temp:
+    variable_name: Schedule Value
+    key: TES_Avg_Temp_Obs
+  tes_use_avail_echo:
+    variable_name: Schedule Value
+    key: TES_Use_Avail_Sch
+  tes_source_avail_echo:
+    variable_name: Schedule Value
+    key: TES_Source_Avail_Sch
+  chiller_avail_echo:
+    variable_name: Schedule Value
+    key: Chiller_Avail_Sch
+  tes_use_heat_transfer_w:
+    variable_name: Chilled Water Thermal Storage Use Side Heat Transfer Rate
+    key: Chilled Water Tank
+  tes_source_heat_transfer_w:
+    variable_name: Chilled Water Thermal Storage Source Side Heat Transfer Rate
+    key: Chilled Water Tank
+  tes_tank_temp_c:
+    variable_name: Chilled Water Thermal Storage Final Tank Temperature
+    key: Chilled Water Tank
+  zone_temp_c:
+    variable_name: Zone Air Temperature
+    key: DataCenter ZN
+  outdoor_drybulb_c:
+    variable_name: Site Outdoor Air DryBulb Temperature
+    key: Environment
+  outdoor_wetbulb_c:
+    variable_name: Site Outdoor Air WetBulb Temperature
+    key: Environment
+  chiller_electricity_w:
+    variable_name: Chiller Electricity Rate
+    key: 90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton
+  chiller_cooling_w:
+    variable_name: Chiller Evaporator Cooling Rate
+    key: 90.1-2019 WaterCooled  Centrifugal Chiller 0 1230tons 0.6kW/ton
+meters:
+  facility_electricity_j: Electricity:Facility
+  purchased_electricity_j: ElectricityPurchased:Facility
+schedules:
+  TES_Set: 0
+  ITE_Set: 0.45
+  Chiller_T_Set: 0
+  TES_SOC_Obs: 0.5
+  TES_Avg_Temp_Obs: 10
+  TES_Use_Avail_Sch: 0
+  TES_Source_Avail_Sch: 0
+identified:
+  timeseries_path: Nanjing-DataCenter-TES-EnergyPlus/out/energyplus_nanjing/timeseries_15min.csv
+  rows: 35040
+  facility_base_kw_median: 9968.428940066882
+  p_nonplant_kw_median: 7850.902251757906
+  q_load_kw_th_median: 6839.667166190265
+  q_load_kw_th_p95: 6865.179017053736
+  outdoor_wetbulb_c_mean: 13.680988641018788
+  outdoor_wetbulb_c_amp_proxy: 13.228206475252454
+  chiller_fit:
+    a_kw_per_kwth: 0.32331844265048487
+    b_kw: -69.96658576827282
+    active_points: 32458
+  tes_response:
+    max_use_side_kw: 0.0
+    max_source_side_kw: 0.0
+    soc_initial_from_tank_temp: 1.0
+    soc_no_tes_abs_drift_median_per_step: 0.0
+plant_proxy:
+  q_load_kw_th: 6839.667166190265
+  p_nonplant_kw: 7850.902251757906
+  wet_bulb_base_c: 13.680988641018788
+  wet_bulb_amp_c: 13.228206475252454
+  modes:
+  - q_min_kw_th: 0.0
+    q_max_kw_th: 10297.768525580605
+    a_kw_per_kwth: 0.2687530035966877
+    b_kw: 61.51961377505178
+    c_kw_per_c: 14.47997007559144
+  chiller_t_set_kw_per_norm: 0.25416145799195167

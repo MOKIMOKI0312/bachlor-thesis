@@ -83,6 +83,7 @@ def derive_measured_params(
         "c_kw_per_c": float(coeffs.get("outdoor_wetbulb_c", 0.0)),
     }
     params["plant_proxy"]["modes"] = [measured_mode]
+    params["plant_proxy"]["chiller_t_set_kw_per_norm"] = float(coeffs.get("chiller_t_set_written", 0.0))
     soc = model_doc["models"].get("soc", {})
     params["tes"]["capacity_kwh_th_proxy"] = float(soc.get("capacity_kwh_th", params["tes"]["capacity_kwh_th_proxy"]))
     params["tes"]["loss_per_h_proxy"] = max(0.0, float(soc.get("loss_per_h", 0.0)))
@@ -117,7 +118,9 @@ def solve_energyplus_mpc_action(
     current_soc: float,
     mode_integrality: str = "relaxed",
     previous_u_signed: float = 0.0,
-) -> dict[str, float | str]:
+    observation: dict[str, Any] | None = None,
+    io_coupled: bool = False,
+) -> dict[str, float | str | bool]:
     cfg = build_kim_config(params, current_soc, len(forecast["timestamps"]))
     inputs = KimLiteInputs(
         timestamps=list(forecast["timestamps"]),
@@ -137,13 +140,93 @@ def solve_energyplus_mpc_action(
         previous_u_signed=previous_u_signed,
     )
     q_net = float(solution.q_tes_net_kw_th[0])
-    return {
-        "tes_set": tes_set_from_q_tes_net(q_net, cfg.tes.q_abs_max_kw_th),
+    tes_set = tes_set_from_q_tes_net(q_net, cfg.tes.q_abs_max_kw_th)
+    mode_idx = int(solution.mode_index[0]) if len(solution.mode_index) else -1
+    plant_power = _predicted_plant_power_kw(cfg, mode_idx, float(solution.q_chiller_kw_th[0]), float(inputs.t_wb_c[0]))
+    out: dict[str, float | str | bool] = {
+        "tes_set": tes_set,
+        "mpc_predicted_tes_set": tes_set,
         "q_tes_net_kw_th": q_net,
+        "mpc_predicted_q_tes_net_kw_th": q_net,
         "q_chiller_kw_th_pred": float(solution.q_chiller_kw_th[0]),
+        "mpc_predicted_q_chiller_kw_th": float(solution.q_chiller_kw_th[0]),
+        "mpc_predicted_chiller_power_kw": plant_power,
         "solver_status": solution.status,
         "solver_time_s": float(solution.solver_time_s),
+        "safety_override": False,
+        "safety_override_reason": "",
+        "temp_guard_charge_block": False,
     }
+    if io_coupled:
+        out.update(_choose_io_coupled_outputs(params, forecast, observation or {}, tes_set, q_net, plant_power))
+    return out
+
+
+def _predicted_plant_power_kw(cfg: KimLiteConfig, mode_idx: int, q_chiller_kw_th: float, wetbulb_c: float) -> float:
+    if mode_idx < 0 or q_chiller_kw_th <= 1e-9:
+        return 0.0
+    mode = cfg.modes[mode_idx]
+    return float(mode.a_kw_per_kwth * q_chiller_kw_th + mode.b_kw + mode.c_kw_per_c * wetbulb_c)
+
+
+def _choose_io_coupled_outputs(
+    params: dict[str, Any],
+    forecast: dict[str, Any],
+    observation: dict[str, Any],
+    tes_set: float,
+    q_net: float,
+    plant_power_kw: float,
+) -> dict[str, float | str | bool]:
+    zone_temp = float(observation.get("zone_temp_c", np.nan))
+    levels = tuple(float(v) for v in params.get("io_coupling", {}).get("chiller_t_set_levels", [0.0, 0.5, 1.0]))
+    if not levels:
+        levels = (0.0,)
+    warm_threshold = float(params.get("io_coupling", {}).get("temp_guard_charge_block_c", 26.5))
+    hot_threshold = float(params.get("io_coupling", {}).get("temp_guard_hard_c", 27.0))
+    chiller_t = _choose_chiller_t_level(params, forecast, zone_temp, q_net, levels)
+    override = False
+    reasons: list[str] = []
+    charge_block = False
+    if np.isfinite(zone_temp) and zone_temp >= warm_threshold and tes_set < 0.0:
+        tes_set = 0.0
+        override = True
+        charge_block = True
+        reasons.append("temp_guard_charge_block")
+    if np.isfinite(zone_temp) and zone_temp >= hot_threshold:
+        chiller_t = min(levels)
+        if tes_set < 0.0:
+            tes_set = 0.0
+        override = True
+        reasons.append("temp_guard_hard_chiller_low")
+    chiller_kw_per_norm = float(params.get("plant_proxy", {}).get("chiller_t_set_kw_per_norm", 0.0))
+    return {
+        "tes_set": float(np.clip(tes_set, -1.0, 1.0)),
+        "chiller_t_set": float(np.clip(chiller_t, 0.0, 1.0)),
+        "mpc_predicted_chiller_t_set": float(np.clip(chiller_t, 0.0, 1.0)),
+        "mpc_predicted_chiller_power_kw": float(plant_power_kw + chiller_kw_per_norm * chiller_t),
+        "safety_override": bool(override),
+        "safety_override_reason": ";".join(dict.fromkeys(reasons)),
+        "temp_guard_charge_block": bool(charge_block),
+    }
+
+
+def _choose_chiller_t_level(
+    params: dict[str, Any],
+    forecast: dict[str, Any],
+    zone_temp_c: float,
+    q_net: float,
+    levels: tuple[float, ...],
+) -> float:
+    if np.isfinite(zone_temp_c) and zone_temp_c >= float(params.get("io_coupling", {}).get("temp_guard_charge_block_c", 26.5)):
+        return min(levels)
+    prices = np.asarray(forecast.get("price_per_kwh", [0.0]), dtype=float)
+    price = float(prices[0]) if len(prices) else 0.0
+    high_price = float(np.quantile(prices, 0.70)) if len(prices) else price
+    if np.isfinite(zone_temp_c) and zone_temp_c <= 25.0 and q_net <= 0.0 and price >= high_price:
+        return max(levels)
+    if np.isfinite(zone_temp_c) and zone_temp_c <= 25.5 and q_net <= 0.0:
+        return sorted(levels)[len(levels) // 2]
+    return min(levels)
 
 
 def rbc_action(price: float, low_price: float, high_price: float, soc: float) -> float:

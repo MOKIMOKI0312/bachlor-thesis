@@ -141,7 +141,8 @@ def _write_summaries(root: Path, manifest: pd.DataFrame) -> None:
         if baseline.empty:
             continue
         base = baseline.iloc[0]
-        for controller in ["default_mpc", "measured_data_mpc"]:
+        controllers = sorted(str(item) for item in group["controller"].unique() if str(item) != "no_mpc")
+        for controller in controllers:
             current = group[group["controller"] == controller]
             if current.empty:
                 continue
@@ -208,7 +209,7 @@ def _write_report(root: Path, manifest: pd.DataFrame) -> None:
                 f"- Result root: `{root}`",
                 f"- Matrix cases expected: `{len(manifest)}`",
                 f"- Matrix cases completed: `{len(summary)}`",
-                "- Controllers: `no_mpc`, `default_mpc`, `measured_data_mpc`",
+                "- Controllers: " + ", ".join(f"`{item}`" for item in sorted(manifest["controller"].unique())),
                 "- This matrix compares four seasonal month windows and is not a full-year saving claim.",
                 "- Cost saving rows are valid as control-benefit evidence only when `cost_comparison_valid=true`; current EnergyPlus online results are otherwise coupling feasibility plus temperature-safety diagnostics.",
                 "",

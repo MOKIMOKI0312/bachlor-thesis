@@ -67,15 +67,25 @@ def _audit_case(case_dir: Path, manifest_row: dict, issues: list[str]) -> None:
     if monitor["zone_temp_c"].min() < 5.0 or monitor["zone_temp_c"].max() > 40.0:
         issues.append(f"{case_dir.name}: zone temperature outside broad sanity range")
     controller = str(manifest_row["controller"])
+    control_surface = {item.strip() for item in str(run_manifest.get("control_surface", "")).split(",") if item.strip()}
     if controller == "no_mpc" and (monitor["tes_set_written"].abs() > 1e-9).any():
         issues.append(f"{case_dir.name}: no_mpc wrote nonzero TES_Set")
-    if controller in {"default_mpc", "measured_data_mpc"} and int(summary.get("fallback_count", -1)) != 0:
+    if controller == "no_mpc" and "chiller_t_set_written" in monitor and monitor["chiller_t_set_written"].notna().any():
+        issues.append(f"{case_dir.name}: no_mpc wrote Chiller_T_Set")
+    if "mpc" in controller and controller != "no_mpc" and int(summary.get("fallback_count", -1)) != 0:
         issues.append(f"{case_dir.name}: MPC fallback count {summary.get('fallback_count')}")
-    if controller == "measured_data_mpc":
+    if "chiller_t_set" in control_surface:
+        if "chiller_t_set_written" not in monitor:
+            issues.append(f"{case_dir.name}: control_surface includes chiller_t_set but monitor has no writes")
+        if int(summary.get("chiller_t_set_mismatch_count", -1)) != 0:
+            issues.append(f"{case_dir.name}: Chiller_T_Set echo mismatch")
+    if controller != "sampling" and "ite_set_written" in monitor and monitor["ite_set_written"].notna().any():
+        issues.append(f"{case_dir.name}: normal controller wrote ITE_Set")
+    if "measured" in controller:
         if run_manifest.get("model_source") != "measured_sampling":
-            issues.append(f"{case_dir.name}: measured_data_mpc missing measured model source")
+            issues.append(f"{case_dir.name}: measured controller missing measured model source")
         if not run_manifest.get("prediction_model_path"):
-            issues.append(f"{case_dir.name}: measured_data_mpc missing prediction_model_path")
+            issues.append(f"{case_dir.name}: measured controller missing prediction_model_path")
 
 
 def _audit_summaries(root: Path, manifest: pd.DataFrame, issues: list[str]) -> None:
@@ -91,7 +101,10 @@ def _audit_summaries(root: Path, manifest: pd.DataFrame, issues: list[str]) -> N
     comparison = pd.read_csv(comparison_path)
     if len(summary) != len(manifest):
         issues.append(f"season_summary rows {len(summary)} != manifest rows {len(manifest)}")
-    expected_comparisons = int(manifest["season"].nunique()) * 2
+    expected_controllers = {str(item) for item in manifest["controller"].unique()}
+    expected_comparisons = int(
+        sum(max(0, len(set(group["controller"])) - (1 if "no_mpc" in set(group["controller"]) else 0)) for _, group in manifest.groupby("season"))
+    )
     if len(comparison) != expected_comparisons:
         issues.append(f"comparison_summary rows {len(comparison)} != expected {expected_comparisons}")
     required_comparison_cols = {
@@ -110,8 +123,13 @@ def _audit_summaries(root: Path, manifest: pd.DataFrame, issues: list[str]) -> N
             issues.append(f"{season}: record_start_step not identical across controllers")
         if group["steps"].nunique() != 1:
             issues.append(f"{season}: steps not identical across controllers")
-        if set(group["controller"]) != {"no_mpc", "default_mpc", "measured_data_mpc"}:
+        expected_for_season = set(manifest.loc[manifest["season"] == season, "controller"])
+        if set(group["controller"]) != expected_for_season:
             issues.append(f"{season}: missing controller rows")
+    if "controller" in comparison:
+        unexpected = set(comparison["controller"]) - (expected_controllers - {"no_mpc"})
+        if unexpected:
+            issues.append(f"comparison_summary has unexpected controllers: {sorted(unexpected)}")
 
 
 def _build_parser() -> argparse.ArgumentParser:

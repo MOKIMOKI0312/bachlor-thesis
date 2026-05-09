@@ -14,6 +14,7 @@ sampling_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.contro
 fit_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.fit_prediction_models")
 audit_sampling_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_sampling_results")
 matrix_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_controller_matrix")
+io_matrix_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_io_coupling_matrix")
 audit_matrix_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix")
 mpc_adapter_mod = importlib.import_module("Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.mpc_adapter")
 
@@ -132,7 +133,40 @@ def test_measured_params_map_sampling_model(tmp_path):
     assert measured["tes"]["capacity_kwh_th_proxy"] == 1234.0
     assert measured["tes"]["q_ch_max_kw_th_proxy"] == 1000.0
     assert measured["tes"]["q_dis_max_kw_th_proxy"] == 2000.0
+    assert measured["plant_proxy"]["chiller_t_set_kw_per_norm"] == 3.0
     assert measured["source"]["model_source"] == "measured_sampling"
+
+
+def test_io_coupled_safety_filter_blocks_tes_charge_when_zone_is_warm():
+    params = {"io_coupling": {"chiller_t_set_levels": [0.0, 0.5, 1.0]}}
+    out = mpc_adapter_mod._choose_io_coupled_outputs(
+        params=params,
+        forecast={"price_per_kwh": [1.0, 1.0]},
+        observation={"zone_temp_c": 26.6},
+        tes_set=-0.75,
+        q_net=1000.0,
+        plant_power_kw=100.0,
+    )
+    assert out["tes_set"] == 0.0
+    assert out["chiller_t_set"] == 0.0
+    assert out["safety_override"] is True
+    assert out["temp_guard_charge_block"] is True
+
+
+def test_io_coupled_hard_temperature_forces_low_chiller_setpoint():
+    params = {"io_coupling": {"chiller_t_set_levels": [0.0, 0.5, 1.0]}}
+    out = mpc_adapter_mod._choose_io_coupled_outputs(
+        params=params,
+        forecast={"price_per_kwh": [1.0, 1.0]},
+        observation={"zone_temp_c": 27.2},
+        tes_set=0.5,
+        q_net=-1000.0,
+        plant_power_kw=100.0,
+    )
+    assert out["tes_set"] == 0.5
+    assert out["chiller_t_set"] == 0.0
+    assert out["safety_override"] is True
+    assert "temp_guard_hard_chiller_low" in out["safety_override_reason"]
 
 
 def test_controller_matrix_manifest_and_audit_missing_case(tmp_path):
@@ -143,6 +177,18 @@ def test_controller_matrix_manifest_and_audit_missing_case(tmp_path):
     manifest.to_csv(tmp_path / "matrix_manifest.csv", index=False)
     issues = audit_matrix_mod.audit_matrix_root(tmp_path)
     assert any("missing case directory" in issue for issue in issues)
+
+
+def test_io_coupling_matrix_manifest_records_control_surface():
+    manifest = io_matrix_mod.build_matrix_manifest(["winter"], days=1, smoke=True)
+    assert len(manifest) == 4
+    assert set(manifest["controller"]) == {"no_mpc", "tes_only_mpc", "io_coupled_mpc", "io_coupled_measured_mpc"}
+    surfaces = dict(zip(manifest["controller"], manifest["control_surface"]))
+    assert surfaces["no_mpc"] == ""
+    assert surfaces["tes_only_mpc"] == "tes_set"
+    assert surfaces["io_coupled_mpc"] == "tes_set,chiller_t_set"
+    assert surfaces["io_coupled_measured_mpc"] == "tes_set,chiller_t_set"
+    assert manifest.loc[manifest["controller"] == "io_coupled_measured_mpc", "model_source"].iloc[0] == "measured_sampling"
 
 
 def test_controller_matrix_comparison_invalidates_cost_when_temperature_worsens(tmp_path):

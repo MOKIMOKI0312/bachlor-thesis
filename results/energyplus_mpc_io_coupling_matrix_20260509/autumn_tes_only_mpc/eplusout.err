@@ -1,0 +1,41 @@
+Program Version,EnergyPlus, Version 23.1.0-87ed9199d4, YMD=2026.05.09 18:48,
+   ************* Beginning Zone Sizing Calculations
+   ** Warning ** Calculated design heating load for zone=DATACENTER ZN is zero.
+   **   ~~~   ** Check Sizing:Zone and ZoneControl:Thermostat inputs.
+   ************* Beginning System Sizing Calculations
+   ************* Beginning Plant Sizing Calculations
+   ************* Testing Individual Branch Integrity
+   ************* All Branches passed integrity testing
+   ************* Testing Individual Supply Air Path Integrity
+   ************* All Supply Air Paths passed integrity testing
+   ************* Testing Individual Return Air Path Integrity
+   ************* All Return Air Paths passed integrity testing
+   ************* No node connection errors were found.
+   ************* Beginning Simulation
+   ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Tower range temperature is outside model boundaries at 0.15.
+   **   ~~~   **  ...Valid range = 0.50 to 22.22. Occurrence info = RUN PERIOD 1, 10/01 11:45 - 11:50
+   **   ~~~   **  ...Tower range temperature passed to the model = 0.14739
+   **   ~~~   **  ...Range temperatures outside model boundaries may not adversely affect tower performance.
+   **   ~~~   **  ...This is not an unexpected occurrence when simulating actual conditions.
+   ** Warning ** SimHVAC: Maximum iterations (50) exceeded for all HVAC loops, at RUN PERIOD 1, 10/11 01:30 - 01:35
+   **   ~~~   ** The solution for one or more of the Air Loop HVAC systems did not appear to converge
+   **   ~~~   ** The solution for one or more plant systems did not appear to converge
+   **   ~~~   ** ...use Output:Diagnostics,DisplayExtraWarnings; to show more details on each max iteration exceeded.
+   ************* Simulation Error Summary *************
+   ************* There are 7 unused schedules in input.
+   ************* There are 7 unused week schedules in input.
+   ************* There are 8 unused day schedules in input.
+   ************* Use Output:Diagnostics,DisplayUnusedSchedules; to see them.
+   *************
+   ************* ===== Recurring Error Summary =====
+   ************* The following recurring error messages occurred.
+   *************
+   *************  ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Tower range temperature is out of range error continues...
+   *************  **   ~~~   **   This error occurred 711 total times;
+   *************  **   ~~~   **   during Warmup 0 times;
+   *************  **   ~~~   **   during Sizing 0 times.
+   *************  **   ~~~   **   Max=0.499681  Min=0.000228
+   *************
+   ************* EnergyPlus Warmup Error Summary. During Warmup: 0 Warning; 0 Severe Errors.
+   ************* EnergyPlus Sizing Error Summary. During Sizing: 1 Warning; 0 Severe Errors.
+   ************* EnergyPlus Completed Successfully-- 714 Warning; 0 Severe Errors; Elapsed Time=00hr 07min 23.44sec

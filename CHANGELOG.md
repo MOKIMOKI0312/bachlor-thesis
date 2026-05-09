@@ -17,6 +17,95 @@
   - 是否影响论文
   - 已知限制
 
+## v0.6.4-energyplus-mpc-io-coupling - 2026-05-09
+
+### Git
+
+- Commit: 本条目对应待提交的 `codex/energyplus-mpc-io-coupling` 实现。
+- 基线：`08685e45`，来自 `codex/kim-lite-review-hardening`。
+- 分支：`codex/energyplus-mpc-io-coupling`
+
+### Scope
+
+本版本把 EnergyPlus 在线 MPC 的控制面从 TES-only 扩展到 `TES_Set + Chiller_T_Set`，并新增四季 I/O-coupled controller matrix。`ITE_Set` 继续只作为辨识扰动输入，不作为正常 MPC 控制输出。
+
+### Code Changes
+
+- `run_energyplus_mpc`：
+  - 新增 `tes_only_mpc`、`io_coupled_mpc`、`io_coupled_measured_mpc` 控制器标签。
+  - normal MPC 只允许写 `TES_Set` 与可选 `Chiller_T_Set`；`ITE_Set` 只由 sampling 控制器使用。
+  - summary 增加 `chiller_t_set_mismatch_count`、`safety_override_count`、`temp_guard_charge_block_count`、`actual_vs_predicted_chiller_power_mae_kw`。
+- `mpc_adapter`：
+  - I/O-coupled action 返回 `TES_Set`、`Chiller_T_Set`、预测冷机功率和温度 safety override 字段。
+  - `zone_temp_c >= 26.5` 时阻止 TES 充冷；`zone_temp_c >= 27.0` 时强制最低 `Chiller_T_Set`。
+  - measured sampling 参数保留 `chiller_t_set_written` 对冷机功率的辨识系数。
+- 新增 `run_io_coupling_matrix`：
+  - controllers: `no_mpc`、`tes_only_mpc`、`io_coupled_mpc`、`io_coupled_measured_mpc`。
+  - 支持 `--workers` 并行运行独立 EnergyPlus case。
+  - 输出 `matrix_manifest.csv`、`season_summary.csv`、`comparison_summary.csv` 和报告。
+- `audit_controller_matrix` 改为支持动态 controller 集合、`control_surface` 校验、`Chiller_T_Set` echo 校验和 normal MPC 禁写 `ITE_Set`。
+- 新增契约文档：`Nanjing-DataCenter-TES-EnergyPlus/docs/mpc_io_coupling_contract_20260509.md`。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m pytest -q
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_io_coupling_matrix --output-root results/energyplus_mpc_io_coupling_matrix_20260509 --days 1 --smoke --overwrite
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix --root results/energyplus_mpc_io_coupling_matrix_20260509
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_io_coupling_matrix --output-root results/energyplus_mpc_io_coupling_matrix_20260509 --days 1 --smoke --overwrite --workers 2
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix --root results/energyplus_mpc_io_coupling_matrix_20260509
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_io_coupling_matrix --output-root results/energyplus_mpc_io_coupling_matrix_20260509 --seasons winter,spring,summer,autumn --days 30 --workers 8
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_io_coupling_matrix --output-root results/energyplus_mpc_io_coupling_matrix_20260509 --seasons winter,spring,summer,autumn --days 30 --workers 8
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix --root results/energyplus_mpc_io_coupling_matrix_20260509
+python -m pytest -q
+git diff --check
+```
+
+Result:
+
+```text
+python -m pytest -q -> 49 passed
+1-day smoke matrix -> 4/4 cases completed, audit passed
+1-day smoke matrix with --workers 2 -> 4/4 cases completed, audit passed
+full I/O matrix -> 16/16 seasonal month cases completed
+audit_controller_matrix -> passed
+git diff --check -> passed, CRLF warnings only
+```
+
+### 运行结果位置
+
+- `results/energyplus_mpc_io_coupling_matrix_20260509/`
+- `docs/energyplus_mpc_io_coupling_matrix_report_20260509.md`
+
+### 运行结果简述
+
+- Full matrix 共 `16` 个 EnergyPlus online closed-loop case，每个四季月度 case `2880` steps。
+- 所有 case 的 EnergyPlus exit code 为 `0`，fallback count 为 `0`，`TES_Set` echo mismatch 为 `0`，`Chiller_T_Set` echo mismatch 为 `0`。
+- `io_coupled_mpc` 和 `io_coupled_measured_mpc` 均能实际写入 `Chiller_T_Set`，说明 MPC 输出已绑定到 EnergyPlus actuator。
+- I/O safety filter 有触发：例如 spring `io_coupled_mpc` 触发 `1671` 次 safety override，其中 `1603` 次阻止 TES 充冷。
+- 成本口径相对 `no_mpc` 仍有下降，但所有 MPC rows 的 `cost_comparison_valid=false`，因为温度 degree-hours 或 `zone_temp_max_c` 均相对同季节 `no_mpc` 恶化。
+- 结论边界：本版本证明 `TES_Set + Chiller_T_Set` I/O 耦合可运行且 echo 正确，但当前控制面仍不足以形成温度安全的论文主收益结论。
+
+### Parallel Execution Note
+
+- 本机实际尝试 `--workers 8` 后，剩余 case 被补齐，但 EnergyPlus 并发启动期间出现过 `SQLite database failed to open` 与 Windows Runtime API 异常 `0xe06d7363`。
+- 因此 `--workers 8` 可作为加速尝试，但正式复现实验建议使用 `--workers 2` 或分批运行，并通过 audit 判断结果是否完整有效。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本轮形成了 EnergyPlus actuator I/O 绑定和矩阵诊断结果，但所有成本比较均因温度恶化而无效，不能作为论文主控制收益结论。
+
+### Known Limitations
+
+- 第一版只控制 `TES_Set` 与 `Chiller_T_Set`；仍不控制 chiller availability、pump、fan 或 CRAH。
+- `Chiller_T_Set` 当前由启发式离散选择和温度 safety filter 决定，还不是完整嵌入 MILP 的热舒适约束。
+- `cost_comparison_valid=false` 表明当前控制面仍需扩展或加入更强温度/供冷约束后才能用于论文收益结论。
+- 高并发 EnergyPlus Runtime API 存在 SQLite/runtime 稳定性风险。
+
 ## v0.6.3-kim-lite-review-hardening - 2026-05-09
 
 ### Git

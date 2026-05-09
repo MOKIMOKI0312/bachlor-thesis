@@ -1,0 +1,25 @@
+{
+  "controller": "no_mpc",
+  "max_steps": 2880,
+  "record_start_step": 26208,
+  "raw_output_dir": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\Nanjing-DataCenter-TES-EnergyPlus\\out\\energyplus_io_coupling_matrix_20260509\\autumn_no_mpc",
+  "selected_output_dir": "results\\energyplus_mpc_io_coupling_matrix_20260509\\autumn_no_mpc",
+  "model": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+  "weather": "C:\\Users\\18430\\Desktop\\\u6bd5\u4e1a\u8bbe\u8ba1\u4ee3\u7801\\Nanjing-DataCenter-TES-EnergyPlus\\weather\\CHN_JS_Nanjing.582380_TMYx.2009-2023.epw",
+  "params": {
+    "model_path": "Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+    "model_unmodified": true
+  },
+  "mode_integrality": "relaxed",
+  "load_forecast": "baseline",
+  "sampling_profile": {},
+  "exit_code": 0,
+  "matrix_case_id": "autumn_no_mpc",
+  "matrix_season": "autumn",
+  "matrix_controller": "no_mpc",
+  "model_source": "none",
+  "prediction_model_path": "",
+  "control_surface": "",
+  "matrix_days": 30,
+  "smoke": false
+}

@@ -1,0 +1,17 @@
+case_id,season,month,controller,model_source,prediction_model_path,control_surface,record_start_step,max_steps,days,smoke
+winter_no_mpc,winter,January,no_mpc,none,,,0,2880,30,False
+winter_tes_only_mpc,winter,January,tes_only_mpc,default_proxy,,tes_set,0,2880,30,False
+winter_io_coupled_mpc,winter,January,io_coupled_mpc,default_proxy,,"tes_set,chiller_t_set",0,2880,30,False
+winter_io_coupled_measured_mpc,winter,January,io_coupled_measured_mpc,measured_sampling,C:\Users\18430\Desktop\毕业设计代码\results\energyplus_mpc_sampling_20260507\prediction_models.yaml,"tes_set,chiller_t_set",0,2880,30,False
+spring_no_mpc,spring,April,no_mpc,none,,,8640,2880,30,False
+spring_tes_only_mpc,spring,April,tes_only_mpc,default_proxy,,tes_set,8640,2880,30,False
+spring_io_coupled_mpc,spring,April,io_coupled_mpc,default_proxy,,"tes_set,chiller_t_set",8640,2880,30,False
+spring_io_coupled_measured_mpc,spring,April,io_coupled_measured_mpc,measured_sampling,C:\Users\18430\Desktop\毕业设计代码\results\energyplus_mpc_sampling_20260507\prediction_models.yaml,"tes_set,chiller_t_set",8640,2880,30,False
+summer_no_mpc,summer,July,no_mpc,none,,,17376,2880,30,False
+summer_tes_only_mpc,summer,July,tes_only_mpc,default_proxy,,tes_set,17376,2880,30,False
+summer_io_coupled_mpc,summer,July,io_coupled_mpc,default_proxy,,"tes_set,chiller_t_set",17376,2880,30,False
+summer_io_coupled_measured_mpc,summer,July,io_coupled_measured_mpc,measured_sampling,C:\Users\18430\Desktop\毕业设计代码\results\energyplus_mpc_sampling_20260507\prediction_models.yaml,"tes_set,chiller_t_set",17376,2880,30,False
+autumn_no_mpc,autumn,October,no_mpc,none,,,26208,2880,30,False
+autumn_tes_only_mpc,autumn,October,tes_only_mpc,default_proxy,,tes_set,26208,2880,30,False
+autumn_io_coupled_mpc,autumn,October,io_coupled_mpc,default_proxy,,"tes_set,chiller_t_set",26208,2880,30,False
+autumn_io_coupled_measured_mpc,autumn,October,io_coupled_measured_mpc,measured_sampling,C:\Users\18430\Desktop\毕业设计代码\results\energyplus_mpc_sampling_20260507\prediction_models.yaml,"tes_set,chiller_t_set",26208,2880,30,False

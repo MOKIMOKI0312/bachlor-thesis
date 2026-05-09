@@ -2,3 +2,7 @@ results/energyplus_mpc_sampling_20260507/samples_15min.csv filter=lfs diff=lfs m
 results/energyplus_mpc_sampling_20260507/*/monitor.csv filter=lfs diff=lfs merge=lfs -text
 results/energyplus_mpc_sampling_20260507/*/observation.csv filter=lfs diff=lfs merge=lfs -text
 results/energyplus_mpc_sampling_20260507/*/mpc_action.csv filter=lfs diff=lfs merge=lfs -text
+results/energyplus_mpc_io_coupling_matrix_20260509/*/monitor.csv filter=lfs diff=lfs merge=lfs -text
+results/energyplus_mpc_io_coupling_matrix_20260509/*/observation.csv filter=lfs diff=lfs merge=lfs -text
+results/energyplus_mpc_io_coupling_matrix_20260509/*/mpc_action.csv filter=lfs diff=lfs merge=lfs -text
+results/energyplus_mpc_io_coupling_matrix_20260509/*/solver_log.csv filter=lfs diff=lfs merge=lfs -text

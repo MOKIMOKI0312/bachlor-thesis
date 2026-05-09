@@ -54,6 +54,9 @@ def build_monitor(controller: str, inputs: KimLiteInputs, solution: KimLiteSolut
             "strict_success": solution.strict_success,
             "fallback_reason": solution.fallback_reason,
             "mode_fractionality_max": solution.mode_fractionality_max,
+            "mode_fractionality_mean": solution.mode_fractionality_mean,
+            "mode_fractionality_count": solution.mode_fractionality_count,
+            "mode_fractionality_hours": solution.mode_fractionality_hours,
             "solver_message": solution.solver_message,
             "plant_tracking_error_kw_th": tracking_error,
             "objective_value": solution.objective_value,
@@ -130,6 +133,9 @@ def summarize_monitor(monitor: pd.DataFrame, cfg: KimLiteConfig, case_id: str, c
         "strict_success": bool(monitor["strict_success"].iloc[0]),
         "fallback_reason": str(monitor["fallback_reason"].iloc[0]),
         "mode_fractionality_max": float(monitor["mode_fractionality_max"].max()),
+        "mode_fractionality_mean": float(monitor["mode_fractionality_mean"].mean()),
+        "mode_fractionality_count": int(monitor["mode_fractionality_count"].max()),
+        "mode_fractionality_hours": float(monitor["mode_fractionality_hours"].max()),
         "solver_message": str(monitor["solver_message"].iloc[0]),
         "max_signed_du": float(monitor["signed_du"].abs().max()),
         "signed_valve_violation_count": int((monitor["signed_du"].abs() > cfg.signed_du_max + 1e-8).sum()),
@@ -158,6 +164,7 @@ def write_case_outputs(
     monitor.to_csv(run_dir / "monitor.csv", index=False)
     pd.DataFrame([summary]).to_csv(run_dir / "summary.csv", index=False)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    (run_dir / "episode_summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     effective = {
         "kim_lite_config": {
             "dt_hours": cfg.dt_hours,
@@ -200,18 +207,18 @@ def attribution_table(summary: pd.DataFrame) -> pd.DataFrame:
         },
         {
             "metric": "TES_value",
-            "formula": "cost(mpc_no_tes) - cost(paper_like_mpc_tes)",
-            "value": costs.get("mpc_no_tes", np.nan) - costs.get("paper_like_mpc_tes", np.nan),
+            "formula": "cost(mpc_no_tes) - cost(paper_like_mpc_tes_relaxed)",
+            "value": costs.get("mpc_no_tes", np.nan) - costs.get("paper_like_mpc_tes_relaxed", np.nan),
         },
         {
             "metric": "RBC_gap_non_neutral",
-            "formula": "cost(storage_priority_tes) - cost(paper_like_mpc_tes)",
-            "value": costs.get("storage_priority_tes", np.nan) - costs.get("paper_like_mpc_tes", np.nan),
+            "formula": "cost(storage_priority_tes) - cost(paper_like_mpc_tes_relaxed)",
+            "value": costs.get("storage_priority_tes", np.nan) - costs.get("paper_like_mpc_tes_relaxed", np.nan),
         },
         {
             "metric": "RBC_gap_neutral",
-            "formula": "cost(storage_priority_neutral_tes) - cost(paper_like_mpc_tes)",
-            "value": costs.get("storage_priority_neutral_tes", np.nan) - costs.get("paper_like_mpc_tes", np.nan),
+            "formula": "cost(storage_priority_neutral_tes) - cost(paper_like_mpc_tes_relaxed)",
+            "value": costs.get("storage_priority_neutral_tes", np.nan) - costs.get("paper_like_mpc_tes_relaxed", np.nan),
         },
     ]
     return pd.DataFrame(rows)

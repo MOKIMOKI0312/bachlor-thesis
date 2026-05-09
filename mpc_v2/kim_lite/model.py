@@ -54,6 +54,9 @@ class KimLiteSolution:
     strict_success: bool = True
     fallback_reason: str = ""
     mode_fractionality_max: float = 0.0
+    mode_fractionality_mean: float = 0.0
+    mode_fractionality_count: int = 0
+    mode_fractionality_hours: float = 0.0
     solver_message: str = ""
     plant_tracking_error_kw_th: np.ndarray | None = None
 
@@ -237,7 +240,7 @@ def solve_paper_like_mpc(
         raise RuntimeError(f"Kim-lite MILP infeasible or failed: {result.message}")
     x = np.asarray(result.x)
     status = "optimal_relaxed_modes" if relax_mode_binaries else "optimal"
-    fractionality = _mode_fractionality(idx, x)
+    fractionality = _mode_fractionality_stats(idx, x, cfg.dt_hours)
     return _solution_from_x(
         cfg,
         inputs,
@@ -247,7 +250,7 @@ def solve_paper_like_mpc(
         float(result.fun),
         solver_time,
         mode_integrality=mode_integrality,
-        mode_fractionality_max=fractionality,
+        mode_fractionality_stats=fractionality,
         solver_message=str(result.message),
     )
 
@@ -299,7 +302,7 @@ def _solution_from_x(
     objective_value: float,
     solver_time_s: float,
     mode_integrality: str,
-    mode_fractionality_max: float,
+    mode_fractionality_stats: dict[str, float],
     solver_message: str,
 ) -> KimLiteSolution:
     n = idx.n
@@ -339,17 +342,27 @@ def _solution_from_x(
         mode_integrality=mode_integrality,
         strict_success=mode_integrality == "strict",
         fallback_reason="",
-        mode_fractionality_max=mode_fractionality_max,
+        mode_fractionality_max=float(mode_fractionality_stats["max"]),
+        mode_fractionality_mean=float(mode_fractionality_stats["mean"]),
+        mode_fractionality_count=int(mode_fractionality_stats["count"]),
+        mode_fractionality_hours=float(mode_fractionality_stats["hours"]),
         solver_message=solver_message,
     )
 
 
-def _mode_fractionality(idx: "_Index", x: np.ndarray) -> float:
-    values = [float(x[idx.s(j, k)]) for j in range(idx.m) for k in range(idx.n)]
-    if not values:
-        return 0.0
-    arr = np.asarray(values, dtype=float)
-    return float(np.minimum(np.abs(arr), np.abs(arr - 1.0)).max())
+def _mode_fractionality_stats(idx: "_Index", x: np.ndarray, dt_hours: float) -> dict[str, float]:
+    if idx.m == 0 or idx.n == 0:
+        return {"max": 0.0, "mean": 0.0, "count": 0.0, "hours": 0.0}
+    arr = np.asarray([[float(x[idx.s(j, k)]) for j in range(idx.m)] for k in range(idx.n)], dtype=float)
+    frac = np.minimum(np.abs(arr), np.abs(arr - 1.0))
+    fractional_steps = np.any(frac > 1e-6, axis=1)
+    count = int(fractional_steps.sum())
+    return {
+        "max": float(frac.max()),
+        "mean": float(frac.mean()),
+        "count": float(count),
+        "hours": float(count * dt_hours),
+    }
 
 
 def _add_signed_ramp_constraints(

@@ -108,16 +108,43 @@ def _audit_summaries(root: Path, manifest: pd.DataFrame, issues: list[str]) -> N
     if len(comparison) != expected_comparisons:
         issues.append(f"comparison_summary rows {len(comparison)} != expected {expected_comparisons}")
     required_comparison_cols = {
+        "result_role",
         "cost_saving",
+        "cost_saving_claim",
         "grid_saving_kwh",
         "peak_grid_reduction_kw",
         "temp_violation_delta_vs_no_mpc",
         "zone_temp_max_delta_vs_no_mpc",
         "cost_comparison_valid",
+        "io_success_flag",
+        "tes_set_echo_ok",
+        "chiller_t_set_echo_ok",
+        "temperature_safe_flag",
     }
     missing_cols = required_comparison_cols - set(comparison.columns)
     if missing_cols:
         issues.append(f"comparison_summary missing columns: {sorted(missing_cols)}")
+    required_summary_cols = {
+        "result_role",
+        "io_success_flag",
+        "tes_set_echo_ok",
+        "chiller_t_set_echo_ok",
+        "temperature_safe_flag",
+    }
+    missing_summary_cols = required_summary_cols - set(summary.columns)
+    if missing_summary_cols:
+        issues.append(f"season_summary missing columns: {sorted(missing_summary_cols)}")
+    if "cost_saving_claim" in comparison.columns and "cost_comparison_valid" in comparison.columns:
+        invalid_claims = comparison[
+            (comparison["cost_comparison_valid"].astype(str).str.lower() == "false")
+            & comparison["cost_saving_claim"].fillna("").astype(str).str.strip().ne("")
+        ]
+        if not invalid_claims.empty:
+            issues.append("comparison_summary has cost_saving_claim for invalid rows")
+    if "result_role" in comparison.columns:
+        bad_roles = set(comparison["result_role"].astype(str)) - {"io_coupling_diagnostic"}
+        if bad_roles:
+            issues.append(f"comparison_summary has unexpected result_role values: {sorted(bad_roles)}")
     for season, group in summary.groupby("season"):
         if group["record_start_step"].nunique() != 1:
             issues.append(f"{season}: record_start_step not identical across controllers")

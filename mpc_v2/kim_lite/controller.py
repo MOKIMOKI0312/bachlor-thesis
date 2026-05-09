@@ -39,7 +39,7 @@ def run_controller_case(
             peak_cap_kw=peak_cap_kw,
             mode_integrality=mode_integrality,
         )
-    elif normalized in {"paper_like_mpc", "paper_like_mpc_tes"}:
+    elif normalized in {"paper_like_mpc", "paper_like_mpc_tes", "paper_like_mpc_tes_relaxed"}:
         solution = solve_paper_like_mpc(
             cfg,
             inputs,
@@ -48,7 +48,10 @@ def run_controller_case(
             enforce_signed_ramp=enforce_signed_ramp,
             mode_integrality=mode_integrality,
         )
-        normalized = "paper_like_mpc_tes" if normalized.endswith("_tes") else "paper_like_mpc"
+        if normalized in {"paper_like_mpc_tes", "paper_like_mpc_tes_relaxed"}:
+            normalized = "paper_like_mpc_tes_relaxed"
+        else:
+            normalized = "paper_like_mpc"
     else:
         raise ValueError(f"unsupported Kim-lite controller: {controller}")
     monitor = build_monitor(normalized, inputs, solution, cfg)

@@ -30,8 +30,13 @@ def test_summary_reports_objective_split_and_cp_behavior(tmp_path):
         "TES_charge_during_valley_kwh_th",
         "grid_reduction_during_cp_kwh",
         "cp_hours",
+        "mode_fractionality_max",
+        "mode_fractionality_mean",
+        "mode_fractionality_count",
+        "mode_fractionality_hours",
     ]:
         assert column in summary
+    assert summary["controller"] == "paper_like_mpc_tes_relaxed"
     assert summary["energy_cost"] == summary["cost_total"]
     assert summary["peak_slack_penalty_cost"] >= 0.0
     assert summary["cp_hours"] > 0.0

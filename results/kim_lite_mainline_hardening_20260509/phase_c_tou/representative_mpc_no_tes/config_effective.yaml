@@ -53,4 +53,4 @@ extra:
   controller: mpc_no_tes
   peak_cap_kw: null
   enforce_signed_ramp: false
-  mode_integrality: strict
+  mode_integrality: relaxed

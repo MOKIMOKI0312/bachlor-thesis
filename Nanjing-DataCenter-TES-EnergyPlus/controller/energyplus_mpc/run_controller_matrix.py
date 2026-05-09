@@ -129,6 +129,7 @@ def _write_summaries(root: Path, manifest: pd.DataFrame) -> None:
         row = pd.read_csv(summary_path).iloc[0].to_dict()
         _ensure_temperature_kpis(root / item["case_id"], row)
         row.update({k: item[k] for k in ["case_id", "season", "month", "controller", "model_source"]})
+        _add_diagnostic_role(row)
         rows.append(row)
     summary = pd.DataFrame(rows)
     summary.to_csv(root / "season_summary.csv", index=False)
@@ -149,24 +150,33 @@ def _write_summaries(root: Path, manifest: pd.DataFrame) -> None:
             row = current.iloc[0]
             temp_delta = float(row["temp_violation_degree_hours_27c"] - base["temp_violation_degree_hours_27c"])
             temp_max_delta = float(row["zone_temp_max_c"] - base["zone_temp_max_c"])
+            comparison_valid = bool(temp_delta <= 1e-6 and temp_max_delta <= 1e-6)
             comparisons.append(
                 {
                     "season": season,
                     "controller": controller,
+                    "result_role": "io_coupling_diagnostic",
                     "cost_saving": float(base["pv_adjusted_cost"] - row["pv_adjusted_cost"]),
                     "cost_saving_pct": _pct(base["pv_adjusted_cost"] - row["pv_adjusted_cost"], base["pv_adjusted_cost"]),
+                    "cost_saving_claim": ""
+                    if not comparison_valid
+                    else f"{float(base['pv_adjusted_cost'] - row['pv_adjusted_cost']):.6g}",
                     "grid_saving_kwh": float(base["pv_adjusted_grid_kwh"] - row["pv_adjusted_grid_kwh"]),
                     "grid_saving_pct": _pct(base["pv_adjusted_grid_kwh"] - row["pv_adjusted_grid_kwh"], base["pv_adjusted_grid_kwh"]),
                     "peak_grid_reduction_kw": float(base["peak_grid_kw"] - row["peak_grid_kw"]),
                     "peak_grid_reduction_pct": _pct(base["peak_grid_kw"] - row["peak_grid_kw"], base["peak_grid_kw"]),
                     "fallback_count": int(row.get("fallback_count", 0)),
+                    "io_success_flag": bool(row.get("io_success_flag", False)),
+                    "tes_set_echo_ok": bool(row.get("tes_set_echo_ok", False)),
+                    "chiller_t_set_echo_ok": bool(row.get("chiller_t_set_echo_ok", False)),
+                    "temperature_safe_flag": bool(row.get("temperature_safe_flag", False)),
                     "soc_min": float(row["soc_min"]),
                     "soc_final": float(row["soc_final"]),
                     "zone_temp_max_c": float(row["zone_temp_max_c"]),
                     "temp_violation_degree_hours_27c": float(row["temp_violation_degree_hours_27c"]),
                     "temp_violation_delta_vs_no_mpc": temp_delta,
                     "zone_temp_max_delta_vs_no_mpc": temp_max_delta,
-                    "cost_comparison_valid": bool(temp_delta <= 1e-6 and temp_max_delta <= 1e-6),
+                    "cost_comparison_valid": comparison_valid,
                 }
             )
     pd.DataFrame(comparisons).to_csv(root / "comparison_summary.csv", index=False)
@@ -174,6 +184,22 @@ def _write_summaries(root: Path, manifest: pd.DataFrame) -> None:
 
 def _pct(delta: float, base: float) -> float:
     return float(delta / base * 100.0) if abs(base) > 1e-9 else 0.0
+
+
+def _add_diagnostic_role(row: dict[str, Any]) -> None:
+    row["result_role"] = "io_coupling_diagnostic"
+    row["tes_set_echo_ok"] = int(row.get("tes_set_mismatch_count", -1)) == 0
+    if "chiller_t_set_mismatch_count" in row:
+        row["chiller_t_set_echo_ok"] = int(row.get("chiller_t_set_mismatch_count", -1)) == 0
+    else:
+        row["chiller_t_set_echo_ok"] = True
+    row["temperature_safe_flag"] = bool(row.get("valid_comfort_flag", False))
+    row["io_success_flag"] = (
+        int(row.get("exit_code", -1)) == 0
+        and int(row.get("fallback_count", 0)) == 0
+        and bool(row["tes_set_echo_ok"])
+        and bool(row["chiller_t_set_echo_ok"])
+    )
 
 
 def _ensure_temperature_kpis(case_dir: Path, row: dict[str, Any]) -> None:
@@ -209,6 +235,7 @@ def _write_report(root: Path, manifest: pd.DataFrame) -> None:
                 f"- Result root: `{root}`",
                 f"- Matrix cases expected: `{len(manifest)}`",
                 f"- Matrix cases completed: `{len(summary)}`",
+                "- Result role: `io_coupling_diagnostic`; these rows verify I/O coupling and temperature risk, not final saving claims.",
                 "- Controllers: " + ", ".join(f"`{item}`" for item in sorted(manifest["controller"].unique())),
                 "- This matrix compares four seasonal month windows and is not a full-year saving claim.",
                 "- Cost saving rows are valid as control-benefit evidence only when `cost_comparison_valid=true`; current EnergyPlus online results are otherwise coupling feasibility plus temperature-safety diagnostics.",

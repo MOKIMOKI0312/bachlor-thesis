@@ -18,6 +18,10 @@ from mpc_v2.kim_lite.model import build_inputs
 from mpc_v2.kim_lite.plotting import plot_representative_dispatch, plot_summary_bar, plot_xy
 
 
+PAPER_LIKE_TES_INPUT = "paper_like_mpc_tes"
+PAPER_LIKE_TES_RELAXED = "paper_like_mpc_tes_relaxed"
+
+
 def run_matrix(
     phase: str = "all",
     config_path: str = "mpc_v2/config/kim_lite_base.yaml",
@@ -72,13 +76,15 @@ def _run_phase_b(cfg, phase_cfg, root: Path) -> None:
     inputs = build_inputs(cfg, int(phase_cfg["steps"]))
     rows = []
     for controller in phase_cfg["controllers"]:
+        case_id = _case_label(controller)
         _, summary = run_controller_case(
             cfg,
             inputs,
             controller,
-            controller,
+            case_id,
             phase_dir,
             enforce_signed_ramp=_enforce_mainline_signed_ramp(controller),
+            mode_integrality=_mode_integrality_for_mainline(controller),
         )
         rows.append(summary)
     summary = pd.DataFrame(rows)
@@ -86,7 +92,7 @@ def _run_phase_b(cfg, phase_cfg, root: Path) -> None:
     table = attribution_table(summary)
     table.to_csv(phase_dir / "attribution_table.csv", index=False)
     (phase_dir / "attribution_table.md").write_text(table.to_markdown(index=False), encoding="utf-8")
-    plot_summary_bar(phase_dir / "summary.csv", root / "figures" / "fig_phase_b_cost_by_controller.png", "controller", "cost_total", "Phase B controller cost")
+    plot_summary_bar(phase_dir / "summary.csv", root / "figures" / "fig_phase_b_cost_by_controller.png", "controller", "cost_total", "Phase B cost - relaxed plant dispatch mainline")
 
 
 def _run_phase_c(cfg, phase_cfg, root: Path) -> None:
@@ -100,7 +106,8 @@ def _run_phase_c(cfg, phase_cfg, root: Path) -> None:
             cp_uplift=float(scenario["critical_peak_uplift"]),
         )
         for controller in phase_cfg["controllers"]:
-            case_id = f"{scenario['name']}_{controller}"
+            label = _case_label(controller)
+            case_id = f"{scenario['name']}_{label}"
             run_dir, summary = run_controller_case(
                 cfg,
                 inputs,
@@ -108,18 +115,18 @@ def _run_phase_c(cfg, phase_cfg, root: Path) -> None:
                 case_id,
                 phase_dir,
                 enforce_signed_ramp=_enforce_mainline_signed_ramp(controller),
-                mode_integrality=_mode_integrality_for_phase_c(controller),
+                mode_integrality=_mode_integrality_for_mainline(controller),
             )
             summary["scenario"] = scenario["name"]
             summary["spread_gamma"] = float(scenario["spread_gamma"])
             summary["critical_peak_uplift"] = float(scenario["critical_peak_uplift"])
             rows.append(summary)
-            if scenario["name"] == "base_cp20" and controller == "paper_like_mpc_tes":
-                plot_representative_dispatch(run_dir / "monitor.csv", root / "figures" / "fig_tou_representative_day_dispatch.png", "TOU representative dispatch")
+            if scenario["name"] == "base_cp20" and _is_paper_like_tes(controller):
+                plot_representative_dispatch(run_dir / "monitor.csv", root / "figures" / "fig_tou_representative_day_dispatch.png", "TOU dispatch - relaxed plant dispatch")
     rep = next(s for s in phase_cfg["scenarios"] if s["name"] == "base_cp20")
     inputs = build_inputs(cfg, int(phase_cfg["steps"]), tariff_gamma=float(rep["spread_gamma"]), cp_uplift=float(rep["critical_peak_uplift"]))
     for controller in phase_cfg["representative_controllers"]:
-        case_id = f"representative_{controller}"
+        case_id = f"representative_{_case_label(controller)}"
         _, summary = run_controller_case(
             cfg,
             inputs,
@@ -127,7 +134,7 @@ def _run_phase_c(cfg, phase_cfg, root: Path) -> None:
             case_id,
             phase_dir,
             enforce_signed_ramp=_enforce_mainline_signed_ramp(controller),
-            mode_integrality=_mode_integrality_for_phase_c(controller),
+            mode_integrality=_mode_integrality_for_mainline(controller),
         )
         summary["scenario"] = "representative_base_cp20"
         summary["spread_gamma"] = float(rep["spread_gamma"])
@@ -135,8 +142,8 @@ def _run_phase_c(cfg, phase_cfg, root: Path) -> None:
         rows.append(summary)
     summary = pd.DataFrame(rows)
     summary.to_csv(phase_dir / "summary.csv", index=False)
-    plot_xy(phase_dir / "summary.csv", root / "figures" / "fig_tou_cost_vs_gamma.png", "spread_gamma", "cost_total", "TOU cost vs gamma")
-    plot_xy(phase_dir / "summary.csv", root / "figures" / "fig_tou_arbitrage_spread_vs_gamma.png", "spread_gamma", "TES_arbitrage_spread", "TOU arbitrage spread vs gamma")
+    plot_xy(phase_dir / "summary.csv", root / "figures" / "fig_tou_cost_vs_gamma.png", "spread_gamma", "cost_total", "TOU cost vs gamma - relaxed plant dispatch")
+    plot_xy(phase_dir / "summary.csv", root / "figures" / "fig_tou_arbitrage_spread_vs_gamma.png", "spread_gamma", "TES_arbitrage_spread", "TOU arbitrage spread vs gamma - relaxed plant dispatch")
 
 
 def _run_phase_d(cfg, phase_cfg, root: Path) -> None:
@@ -148,15 +155,16 @@ def _run_phase_d(cfg, phase_cfg, root: Path) -> None:
         "mpc_no_tes",
         "mpc_no_tes_no_cap_reference",
         phase_dir,
-        mode_integrality="strict",
+        mode_integrality="relaxed",
     )
     reference_peak = float(base_summary["peak_grid_kw"])
     rows = []
     for ratio in phase_cfg["cap_ratios"]:
         cap = reference_peak * float(ratio)
         for controller in phase_cfg["controllers"]:
-            for mode_integrality in ["strict", "relaxed"]:
-                case_id = f"{mode_integrality}_cap_{str(ratio).replace('.', 'p')}_{controller}"
+            for mode_integrality in [_mode_integrality_for_mainline(controller)]:
+                label = _case_label(controller)
+                case_id = f"{mode_integrality}_cap_{str(ratio).replace('.', 'p')}_{label}"
                 try:
                     run_dir, summary = run_controller_case(
                         cfg,
@@ -172,12 +180,12 @@ def _run_phase_d(cfg, phase_cfg, root: Path) -> None:
                     if (
                         mode_integrality == "strict"
                         and float(ratio) == 0.97
-                        and controller == "paper_like_mpc_tes"
+                        and _is_paper_like_tes(controller)
                     ):
                         plot_representative_dispatch(
                             run_dir / "monitor.csv",
                             root / "figures" / "fig_peak_window_dispatch.png",
-                            "Peak-cap representative dispatch",
+                            "Peak-cap dispatch - relaxed plant dispatch",
                         )
                 except RuntimeError as exc:
                     summary = _phase_d_diagnostic(
@@ -195,7 +203,7 @@ def _run_phase_d(cfg, phase_cfg, root: Path) -> None:
                 rows.append(summary)
     summary = _add_phase_d_help_fields(pd.DataFrame(rows))
     summary.to_csv(phase_dir / "summary.csv", index=False)
-    plot_xy(phase_dir / "summary.csv", root / "figures" / "fig_peak_reduction_cost_tradeoff.png", "peak_reduction_kw", "cost_increase_vs_no_cap", "Peak reduction cost tradeoff")
+    plot_xy(phase_dir / "summary.csv", root / "figures" / "fig_peak_reduction_cost_tradeoff.png", "peak_reduction_kw", "cost_increase_vs_no_cap", "Peak-cap slack tradeoff - relaxed plant dispatch")
 
 
 def _with_phase_d_fields(
@@ -236,7 +244,7 @@ def _add_phase_d_help_fields(summary: pd.DataFrame) -> pd.DataFrame:
         mask = (
             (summary["cap_ratio"] == keys[0])
             & (summary["phase_d_track"] == keys[1])
-            & (summary["controller"] == "paper_like_mpc_tes")
+            & (summary["controller"] == PAPER_LIKE_TES_RELAXED)
         )
         summary.loc[mask, "TES_peak_cap_help_kwh"] = ref_kwh - summary.loc[mask, "peak_slack_kwh"].astype(float)
         summary.loc[mask, "TES_peak_cap_help_max_kw"] = ref_max - summary.loc[mask, "peak_slack_max_kw"].astype(float)
@@ -289,6 +297,9 @@ def _phase_d_diagnostic(
         "strict_success": False,
         "fallback_reason": str(exc),
         "mode_fractionality_max": float("nan"),
+        "mode_fractionality_mean": float("nan"),
+        "mode_fractionality_count": float("nan"),
+        "mode_fractionality_hours": float("nan"),
         "solver_message": str(exc),
         "max_signed_du": float("nan"),
         "signed_valve_violation_count": -1,
@@ -316,11 +327,12 @@ def _run_phase_e(cfg, phase_cfg, root: Path) -> None:
     inputs = build_inputs(cfg, int(phase_cfg["steps"]))
     rows = []
     for controller in phase_cfg["controllers"]:
+        case_id = _case_label(controller)
         run_dir, summary = run_controller_case(
             cfg,
             inputs,
             controller,
-            controller,
+            case_id,
             phase_dir,
             enforce_signed_ramp=bool(phase_cfg.get("enforce_signed_ramp", True)),
         )
@@ -359,11 +371,19 @@ def _write_storyboard(root: Path) -> None:
 
 
 def _enforce_mainline_signed_ramp(controller: str) -> bool:
-    return controller.strip().lower() in {"paper_like_mpc", "paper_like_mpc_tes"}
+    return controller.strip().lower() in {"paper_like_mpc", PAPER_LIKE_TES_INPUT, PAPER_LIKE_TES_RELAXED}
 
 
-def _mode_integrality_for_phase_c(controller: str) -> str:
-    if _enforce_mainline_signed_ramp(controller):
+def _is_paper_like_tes(controller: str) -> bool:
+    return controller.strip().lower() in {PAPER_LIKE_TES_INPUT, PAPER_LIKE_TES_RELAXED}
+
+
+def _case_label(controller: str) -> str:
+    return PAPER_LIKE_TES_RELAXED if _is_paper_like_tes(controller) else controller
+
+
+def _mode_integrality_for_mainline(controller: str) -> str:
+    if controller.strip().lower() in {"mpc_no_tes", PAPER_LIKE_TES_INPUT, PAPER_LIKE_TES_RELAXED}:
         return "relaxed"
     return "strict"
 

@@ -148,6 +148,7 @@ def _write_report(root: Path, manifest: pd.DataFrame) -> None:
                 f"- Result root: `{root}`",
                 f"- Matrix cases expected: `{len(manifest)}`",
                 f"- Matrix cases completed: `{len(summary)}`",
+                "- Result role: `io_coupling_diagnostic`; these rows verify actuator I/O and temperature risk, not final cost-saving evidence.",
                 "- Controllers: `no_mpc`, `tes_only_mpc`, `io_coupled_mpc`, `io_coupled_measured_mpc`",
                 "- Control surface: `TES_Set` for TES-only MPC; `TES_Set,Chiller_T_Set` for I/O-coupled MPC.",
                 "- `ITE_Set` remains an identification input and is not written by normal MPC controllers.",

@@ -51,6 +51,6 @@ kim_lite_config:
       - 17.0
 extra:
   controller: mpc_no_tes
-  peak_cap_kw: 17832.414815999997
+  peak_cap_kw: 17770.571495999997
   enforce_signed_ramp: false
   mode_integrality: relaxed

@@ -14,6 +14,9 @@ import pandas as pd
 from mpc_v2.kim_lite.config import load_config
 
 
+PAPER_LIKE_TES_RELAXED = "paper_like_mpc_tes_relaxed"
+
+
 def audit_root(root: str | Path, config_path: str = "mpc_v2/config/kim_lite_base.yaml") -> list[str]:
     cfg = load_config(config_path)
     result_root = Path(root)
@@ -42,6 +45,11 @@ def _audit_phase_b(root: Path, cfg, issues: list[str]) -> None:
             "soc_violation_count",
             "grid_balance_violation_count",
             "signed_valve_violation_count",
+            "mode_integrality",
+            "mode_fractionality_max",
+            "mode_fractionality_mean",
+            "mode_fractionality_count",
+            "mode_fractionality_hours",
             "TES_discharge_during_cp_kwh_th",
             "TES_charge_during_valley_kwh_th",
             "grid_reduction_during_cp_kwh",
@@ -86,6 +94,9 @@ def _audit_phase_d(root: Path, cfg, issues: list[str]) -> None:
             "strict_success",
             "fallback_reason",
             "mode_fractionality_max",
+            "mode_fractionality_mean",
+            "mode_fractionality_count",
+            "mode_fractionality_hours",
             "cap_ratio",
             "peak_cap_kw",
             "peak_grid_kw",
@@ -100,6 +111,11 @@ def _audit_phase_d(root: Path, cfg, issues: list[str]) -> None:
             "soc_violation_count",
             "grid_balance_violation_count",
             "signed_valve_violation_count",
+            "mode_integrality",
+            "mode_fractionality_max",
+            "mode_fractionality_mean",
+            "mode_fractionality_count",
+            "mode_fractionality_hours",
         ],
     )
     if issues:
@@ -178,7 +194,7 @@ def _audit_signed_ramp_mainline(summary: pd.DataFrame, issues: list[str], contex
     if "signed_valve_violation_count" not in summary:
         return
     mainline = summary[
-        (summary["controller"] == "paper_like_mpc_tes")
+        (summary["controller"] == PAPER_LIKE_TES_RELAXED)
         & (summary.get("solver_status", pd.Series("", index=summary.index)).astype(str) != "failed")
     ]
     for _, row in mainline.iterrows():

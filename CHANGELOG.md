@@ -17,6 +17,80 @@
   - 是否影响论文
   - 已知限制
 
+## v0.6.6-kim-lite-relaxed-mainline-summary - 2026-05-09
+
+### Git
+
+- Commit: `8fec1e84`
+- Baseline: `c6c2beaa`，来自 `codex/kim-lite-mainline-hardening`。
+- Branch: `codex/kim-lite-mainline-hardening`
+
+### Scope
+
+本版本按阶段评审意见收束论文和代码口径：Kim-lite 主结果明确采用 relaxed continuous plant dispatch，不再暗示 strict binary chiller-mode MILP；EnergyPlus 在线结果降级为 `io_coupling_diagnostic`，仅用于执行器 I/O、fallback 和温度风险诊断，不作为最终节能收益证据。
+
+### Code And Document Changes
+
+- 新增 `docs/kim_lite_modeling_assumptions.md`，明确 Kim-lite proxy、relaxed plant dispatch、peak-cap slack 口径和 EnergyPlus diagnostic 边界。
+- 主结果 controller 标签改为 `paper_like_mpc_tes_relaxed`，旧 `paper_like_mpc_tes` 结果目录从本阶段结果树移除。
+- Kim-lite summary / monitor 新增并保留 `mode_fractionality_mean`、`mode_fractionality_count`、`mode_fractionality_hours`，与既有 `mode_integrality`、`mode_fractionality_max` 一起报告 relaxed dispatch 诊断。
+- Phase B/C/D 的 `mpc_no_tes` 与 `paper_like_mpc_tes_relaxed` 使用 relaxed plant dispatch；Phase D 本阶段不再混入 strict-track 主结果。
+- EnergyPlus `season_summary.csv` 和 `comparison_summary.csv` 新增 `result_role`、`io_success_flag`、`tes_set_echo_ok`、`chiller_t_set_echo_ok`、`temperature_safe_flag` 和 gated `cost_saving_claim`。
+- 更新 `README.md`、`docs/kim_lite_mainline_hardening_report_20260509.md` 和 `docs/project_management/毕业设计论文/thesis_draft.tex`，同步 relaxed 主线和 EnergyPlus diagnostic 口径。
+- `.gitignore` 增加 `_review_packages/`，本地审查包不入库。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_b_attribution --output-root results/kim_lite_mainline_hardening_20260509
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_c_tou --output-root results/kim_lite_mainline_hardening_20260509
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_d_peakcap --output-root results/kim_lite_mainline_hardening_20260509
+python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_e_signed_valve --output-root results/kim_lite_mainline_hardening_20260509
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_io_coupling_matrix --output-root results/energyplus_mpc_io_coupling_matrix_20260509 --seasons winter,spring,summer,autumn --days 30
+python -m pytest -q
+python -m mpc_v2.scripts.audit_kim_lite_results --root results/kim_lite_mainline_hardening_20260509
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.audit_controller_matrix --root results/energyplus_mpc_io_coupling_matrix_20260509
+git diff --check
+```
+
+Result:
+
+```text
+Kim-lite Phase B/C/D/E generation -> completed
+EnergyPlus I/O matrix summary regeneration -> completed from existing case outputs
+pytest -> 51 passed
+Kim-lite audit -> passed
+EnergyPlus I/O matrix audit -> passed
+git diff --check -> passed, CRLF warnings only
+```
+
+### 运行结果位置
+
+- `results/kim_lite_mainline_hardening_20260509/`
+- `results/energyplus_mpc_io_coupling_matrix_20260509/`
+- `docs/kim_lite_mainline_hardening_report_20260509.md`
+- `docs/kim_lite_modeling_assumptions.md`
+
+### 运行结果简述
+
+- Phase B `paper_like_mpc_tes_relaxed`：`cost_total = 38672.60`，`mode_integrality = relaxed`，`mode_fractionality_hours = 13.25`，`signed_valve_violation_count = 0`，相对 relaxed `mpc_no_tes` 节省 `231.07` CNY。
+- Phase C high-spread 场景：`paper_like_mpc_tes_relaxed` 相对 relaxed `mpc_no_tes` 节省约 `454.61` CNY；`base_cp20` 的 CP 窗口放冷量为 `1274.31 kWh_th`。
+- Phase D relaxed peak-cap：TES 在 `0.99/0.97/0.95` cap 下均降低 peak slack energy；结果解释限定为 relaxed proxy sensitivity，不声明 strict binary 削峰成功。
+- EnergyPlus I/O matrix：`TES_Set` 和 `Chiller_T_Set` echo mismatch 为 0，fallback 为 0，`io_success_flag=true`；MPC rows 的 `temperature_safe_flag=false` 且 `cost_comparison_valid=false`，因此不生成有效 cost-saving claim。
+
+### Thesis Impact
+
+- 已更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`，因为本版本没有新增引用。
+
+### Known Limitations
+
+- relaxed plant dispatch 可能低估固定开机功率、平滑冷站运行并高估经济性；相关 fractionality 字段必须随结果一起报告。
+- EnergyPlus 在线控制仍未达到 temperature-safe economic control，当前只能作为 I/O coupling diagnostic。
+- 严格 binary chiller-mode optimization、完整 EnergyPlus 在线节能验证和更强 comfort-aware control 均保留为后续工作。
+
 ## v0.6.5-kim-lite-mainline-hardening - 2026-05-09
 
 ### Git

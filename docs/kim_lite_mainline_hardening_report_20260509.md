@@ -1,4 +1,4 @@
-# Kim-lite Mainline Hardening Report
+# Kim-lite Relaxed Mainline Report
 
 Date: 2026-05-09  
 Branch: `codex/kim-lite-mainline-hardening`  
@@ -6,132 +6,109 @@ Result root: `results/kim_lite_mainline_hardening_20260509/`
 
 ## Summary
 
-This run promotes signed valve ramp control into the Kim-lite proxy mainline. Phase B/C/D `paper_like_mpc_tes` cases now enforce the signed ramp constraint, and Phase D peak-cap evaluation is reported with slack-first metrics rather than energy cost alone.
+This report fixes the thesis-facing interpretation of the Kim-lite work. The main paper result is now explicitly:
 
-EnergyPlus online results remain a feasibility and risk diagnostic layer. The existing I/O-coupling matrix proves `TES_Set` and `Chiller_T_Set` can be written with zero echo mismatch, but it still fails the temperature-safety criterion and is not used as a thesis-grade energy-saving result.
+```text
+paper_like_mpc_tes_relaxed
+```
+
+The main Kim-lite experiments use LP-relaxed plant dispatch to represent an aggregated continuously modulating chiller plant. These results are suitable for explaining TES scheduling mechanisms under TOU, critical peak, signed valve ramp, and peak-cap scenarios. They are not strict binary chiller-start/stop MILP results.
+
+EnergyPlus online results are retained as I/O coupling diagnostics. They verify `TES_Set` and `Chiller_T_Set` actuator writes and echo checks, but they are not final energy-saving evidence because current MPC rows fail the temperature-safety comparison.
 
 ## Validation
 
 Commands executed:
 
 ```powershell
-python -m pytest -q
 python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_b_attribution --output-root results/kim_lite_mainline_hardening_20260509
 python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_c_tou --output-root results/kim_lite_mainline_hardening_20260509
 python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_d_peakcap --output-root results/kim_lite_mainline_hardening_20260509
 python -m mpc_v2.scripts.run_kim_lite_matrix --phase phase_e_signed_valve --output-root results/kim_lite_mainline_hardening_20260509
-python -m mpc_v2.scripts.audit_kim_lite_results --root results/kim_lite_mainline_hardening_20260509
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_io_coupling_matrix --output-root results/energyplus_mpc_io_coupling_matrix_20260509 --seasons winter,spring,summer,autumn --days 30
 ```
 
-Result:
-
-```text
-pytest -> 51 passed
-Phase B/C/D/E generation -> completed
-Kim-lite audit -> passed
-```
+Final validation status is recorded in `CHANGELOG.md`.
 
 ## Phase B Attribution
 
-| Controller | Cost | Signed ramp violations | Max signed du | TES arbitrage spread |
-| --- | ---: | ---: | ---: | ---: |
-| direct_no_tes | 39049.67 | 0 | 0.00 | 0.000 |
-| mpc_no_tes | 39049.67 | 0 | 0.00 | 0.000 |
-| storage_priority_tes | 38666.16 | 8 | 1.00 | 0.117 |
-| storage_priority_neutral_tes | 38734.12 | 11 | 1.00 | 0.101 |
-| paper_like_mpc_tes | 38712.05 | 0 | 0.25 | 0.064 |
+| Controller | Cost | Mode integrality | Fractionality hours | Signed ramp violations | Max signed du | TES arbitrage spread |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| direct_no_tes | 39049.67 | fixed | 0.00 | 0 | 0.00 | 0.000 |
+| mpc_no_tes | 38903.67 | relaxed | 24.00 | 0 | 0.00 | 0.000 |
+| storage_priority_tes | 38666.16 | fixed | 0.00 | 8 | 1.00 | 0.117 |
+| storage_priority_neutral_tes | 38734.12 | fixed | 0.00 | 11 | 1.00 | 0.101 |
+| paper_like_mpc_tes_relaxed | 38672.60 | relaxed | 13.25 | 0 | 0.25 | 0.064 |
 
 Interpretation:
 
-- The Kim-lite proxy still shows TES value under the external-load boundary.
-- Signed ramp is now enforced in the `paper_like_mpc_tes` mainline.
-- The rule baselines remain useful diagnostics, but they violate the signed valve ramp limit and should not be described as actuator-smooth MPC-equivalent controls.
+- `paper_like_mpc_tes_relaxed` produces `231.07` CNY saving relative to relaxed `mpc_no_tes`.
+- Signed ramp is part of the main method and has zero violations.
+- The relaxed fractionality diagnostics are intentionally reported because they bound the interpretation: results represent continuous plant dispatch, not strict unit commitment.
 
 ## Phase C TOU / Critical Peak
 
-The Phase C `paper_like_mpc_tes` rows use relaxed single-mode optimization because the horizon's feasible chiller-output range makes only one plant mode reachable. Signed ramp remains enforced and all `paper_like_mpc_tes` rows have zero ramp violations.
-
-| Scenario | no-TES cost | TES-MPC cost | TES saving | TES arbitrage spread | TES discharge during CP |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| flat | 39092.39 | 38947.76 | 144.62 | ~0.000 | 0.00 |
-| base | 39049.67 | 38672.60 | 377.07 | 0.064 | 578.59 |
-| base_cp20 | 39558.14 | 39181.83 | 376.32 | 0.064 | 1274.31 |
-| high_spread | 40517.53 | 39911.94 | 605.59 | 0.125 | 578.59 |
-| high_spread_cp20 | 40903.85 | 40297.18 | 606.67 | 0.128 | 613.13 |
+| Scenario | no-TES relaxed cost | TES-MPC relaxed cost | TES saving | TES arbitrage spread | TES discharge during CP | Fractionality hours |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| flat | 38945.74 | 38947.76 | -2.02 | ~0.000 | 0.00 | 21.50 |
+| base | 38903.67 | 38672.60 | 231.07 | 0.064 | 578.59 | 13.25 |
+| base_cp20 | 39410.09 | 39181.83 | 228.26 | 0.064 | 1274.31 | 13.50 |
+| high_spread | 40366.55 | 39911.94 | 454.61 | 0.125 | 578.59 | 6.75 |
+| high_spread_cp20 | 40751.33 | 40297.18 | 454.15 | 0.128 | 613.13 | 7.00 |
 
 Interpretation:
 
-- Larger TOU spread increases TES value.
-- Critical peak uplift changes dispatch behavior: `base_cp20` roughly doubles CP-window TES discharge compared with `base`.
-- The CP uplift does not strongly increase total saving because the configured CP window is short and TES also arbitrages broader TOU differences.
+- TES value increases when TOU spread increases.
+- `base_cp20` increases CP-window discharge relative to `base`, but total saving changes little because the configured CP window is short and broader TOU arbitrage already dominates dispatch.
+- The flat case has near-zero arbitrage spread, so the relaxed TES-MPC result should not be described as economically beneficial there.
 
 ## Phase D Peak-Cap
 
-Peak-cap success is now evaluated by slack:
+Peak-cap success is evaluated by slack, not by energy cost:
 
 ```text
 peak_cap_success_flag = peak_slack_max_kw <= 1e-6
-TES_peak_cap_help_kwh = peak_slack_kwh(mpc_no_tes) - peak_slack_kwh(paper_like_mpc_tes)
+TES_peak_cap_help_kwh = peak_slack_kwh(mpc_no_tes) - peak_slack_kwh(paper_like_mpc_tes_relaxed)
 ```
 
-Strict-track result:
-
-| Cap ratio | no-TES slack kWh | TES slack kWh | TES help kWh | no-TES max slack | TES max slack | TES max help |
+| Cap ratio | no-TES slack kWh | TES relaxed slack kWh | TES help kWh | no-TES max slack | TES max slack | TES max help |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
-| 0.99 | 1910.37 | 119.22 | 1791.14 | 183.84 | 106.55 | 77.29 |
-| 0.97 | 6773.37 | 3589.54 | 3183.83 | 551.52 | 973.33 | -421.82 |
-| 0.95 | 12110.52 | 8868.05 | 3242.47 | 919.20 | 1407.45 | -488.25 |
+| 0.99 | 1887.23 | 31.64 | 1855.60 | 183.20 | 99.71 | 83.50 |
+| 0.97 | 6726.95 | 4157.36 | 2569.59 | 549.61 | 543.40 | 6.21 |
+| 0.95 | 12035.20 | 9468.50 | 2566.70 | 916.01 | 911.85 | 4.16 |
 
 Interpretation:
 
-- TES helps reduce total slack energy under all tight strict caps shown above.
-- TES reduces max slack for the mild 0.99 cap.
-- Under tighter 0.97 and 0.95 caps, TES lowers total slack energy but worsens max slack. This should be reported as a tradeoff, not a universal peak-cap success.
-- Energy cost remains a secondary metric and must not be used alone to claim peak-cap success.
+- Under relaxed dispatch, TES reduces both slack energy and max slack in the shown cap cases.
+- These results still do not prove strict binary peak-cap success.
+- Peak-cap conclusions should be written as relaxed proxy sensitivity results.
 
-## EnergyPlus I/O Coupling Position
+## EnergyPlus I/O Coupling Diagnostic
 
-The existing EnergyPlus I/O matrix remains useful for interface verification:
+The EnergyPlus I/O matrix has:
+
+```text
+result_role = io_coupling_diagnostic
+```
+
+Observed diagnostic status:
 
 - `TES_Set` echo mismatch: 0
 - `Chiller_T_Set` echo mismatch: 0
 - `fallback_count`: 0
-- 16/16 cases completed
+- `io_success_flag`: true for all controller rows
+- `temperature_safe_flag`: false for MPC rows
+- `cost_comparison_valid`: false for MPC rows
 
-However, all MPC rows still have:
-
-```text
-cost_comparison_valid = false
-```
-
-because temperature degree-hours or maximum zone temperature worsen relative to same-season `no_mpc`. Therefore, EnergyPlus online results should be described as:
+Therefore EnergyPlus online rows should only be used to state:
 
 ```text
-I/O coupling feasibility and temperature-risk diagnostic.
+I/O coupling works, but the current online control surface is not yet temperature-safe economic control.
 ```
 
-They should not be described as:
-
-```text
-validated EnergyPlus online MPC energy-saving results.
-```
+They should not be used to claim validated online MPC cost saving.
 
 ## Thesis Impact
 
-No thesis draft or bibliography file was updated in this run.
-
-Recommended thesis positioning after user approval:
-
-- Main result layer: Kim-lite proxy, signed-ramp TES-MPC, TOU sensitivity, and peak-cap slack diagnostics.
-- Verification layer: EnergyPlus Runtime API I/O coupling feasibility plus unresolved comfort-safety limitation.
-
-## Review Package
-
-The GPT Pro review package generated for this run is:
-
-```text
-_review_packages/kim_lite_mainline_hardening_review_20260509.zip
-```
-
-It includes complete Kim-lite source/config/tests/results and EnergyPlus summary-level I/O coupling artifacts. It intentionally excludes EnergyPlus timestep-level `monitor.csv`, `observation.csv`, `mpc_action.csv`, and `solver_log.csv`.
+The thesis draft was updated in this stage because the relaxed plant dispatch and EnergyPlus diagnostic role affect the method and result interpretation. Bibliography was not updated because no new citation was added.

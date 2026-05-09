@@ -1,5 +1,5 @@
 metric,formula,value
-MPC_value,cost(direct_no_tes) - cost(mpc_no_tes),0.0
-TES_value,cost(mpc_no_tes) - cost(paper_like_mpc_tes),337.6183780291103
-RBC_gap_non_neutral,cost(storage_priority_tes) - cost(paper_like_mpc_tes),-45.89165258016874
-RBC_gap_neutral,cost(storage_priority_neutral_tes) - cost(paper_like_mpc_tes),22.06611533864634
+MPC_value,cost(direct_no_tes) - cost(mpc_no_tes),146.00201803191158
+TES_value,cost(mpc_no_tes) - cost(paper_like_mpc_tes_relaxed),231.0665588100237
+RBC_gap_non_neutral,cost(storage_priority_tes) - cost(paper_like_mpc_tes_relaxed),-6.4414537673437735
+RBC_gap_neutral,cost(storage_priority_neutral_tes) - cost(paper_like_mpc_tes_relaxed),61.516314151471306

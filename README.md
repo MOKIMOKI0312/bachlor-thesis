@@ -4,6 +4,20 @@ This repository is organized around a minimal, validated Nanjing data center
 EnergyPlus package plus a deterministic chiller+TES-PV-TOU MILP-MPC controller
 package.
 
+## Current Thesis Result Positioning
+
+Main paper results should use the Kim-lite relaxed proxy model under
+`mpc_v2/`, especially the controller label
+`paper_like_mpc_tes_relaxed`. This is a continuous-dispatch,
+control-oriented chiller+TES MPC used to analyze TES scheduling under TOU,
+critical peak, signed-valve ramp, and peak-cap scenarios.
+
+Supplementary diagnostics use EnergyPlus Runtime API I/O coupling under
+`Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/`. Those results
+verify `TES_Set` and `Chiller_T_Set` actuator writes, echo checks, fallback
+status, and temperature risk. They are not final cost-saving evidence unless
+`cost_comparison_valid=true`.
+
 ## Active Entry Point
 
 - `Nanjing-DataCenter-TES-EnergyPlus/`

@@ -277,7 +277,13 @@ class EnergyPlusMpcRunner:
         if self.controller in {"mpc", "default_mpc", "measured_data_mpc"}:
             forecast = self.forecast.horizon(simulation_step, timestamp, self.load_forecast)
             try:
-                result = solve_energyplus_mpc_action(self.params, forecast, observation["soc"], self.mode_integrality)
+                result = solve_energyplus_mpc_action(
+                    self.params,
+                    forecast,
+                    observation["soc"],
+                    self.mode_integrality,
+                    previous_u_signed=-float(self._last_tes_set),
+                )
                 base.update(result)
             except Exception as exc:  # noqa: BLE001 - controller diagnostics must capture solver errors
                 base["fallback"] = True
@@ -426,6 +432,9 @@ def _summarize_monitor(monitor: pd.DataFrame, controller: str, exit_code: int, e
     if monitor.empty:
         return {"controller": controller, "steps": 0, "exit_code": exit_code, "elapsed_s": elapsed_s}
     fallback_count = int(monitor.get("fallback", pd.Series(dtype=bool)).fillna(False).sum())
+    dt_hours = 0.25
+    temp_threshold_c = 27.0
+    temp_degree_hours = float(((monitor["zone_temp_c"] - temp_threshold_c).clip(lower=0.0) * dt_hours).sum())
     return {
         "controller": controller,
         "steps": int(len(monitor)),
@@ -435,18 +444,18 @@ def _summarize_monitor(monitor: pd.DataFrame, controller: str, exit_code: int, e
         "exit_code": int(exit_code),
         "elapsed_s": float(elapsed_s),
         "fallback_count": fallback_count,
-        "facility_energy_kwh": float((monitor["facility_electricity_kw"] * 0.25).sum()),
-        "pv_adjusted_grid_kwh": float((monitor["grid_import_kw"] * 0.25).sum()),
+        "facility_energy_kwh": float((monitor["facility_electricity_kw"] * dt_hours).sum()),
+        "pv_adjusted_grid_kwh": float((monitor["grid_import_kw"] * dt_hours).sum()),
         "pv_adjusted_cost": float(monitor["pv_adjusted_cost"].sum()),
         "peak_facility_kw": float(monitor["facility_electricity_kw"].max()),
         "peak_grid_kw": float(monitor["grid_import_kw"].max()),
         "tes_charge_energy_kwh_th": float(
-            (monitor.loc[monitor.get("tes_set_written", 0.0) < -0.01, "tes_source_side_kw"].abs() * 0.25).sum()
+            (monitor.loc[monitor.get("tes_set_written", 0.0) < -0.01, "tes_source_side_kw"].abs() * dt_hours).sum()
         )
         if "tes_set_written" in monitor
         else 0.0,
         "tes_discharge_energy_kwh_th": float(
-            (monitor.loc[monitor.get("tes_set_written", 0.0) > 0.01, "tes_use_side_kw"].abs() * 0.25).sum()
+            (monitor.loc[monitor.get("tes_set_written", 0.0) > 0.01, "tes_use_side_kw"].abs() * dt_hours).sum()
         )
         if "tes_set_written" in monitor
         else 0.0,
@@ -455,6 +464,9 @@ def _summarize_monitor(monitor: pd.DataFrame, controller: str, exit_code: int, e
         "soc_final": float(monitor["soc"].iloc[-1]),
         "zone_temp_min_c": float(monitor["zone_temp_c"].min()),
         "zone_temp_max_c": float(monitor["zone_temp_c"].max()),
+        "temp_violation_threshold_c": temp_threshold_c,
+        "temp_violation_degree_hours_27c": temp_degree_hours,
+        "valid_comfort_flag": bool(temp_degree_hours <= 1e-9),
         "tes_set_mismatch_count": int((monitor["tes_set_echo"].sub(monitor["tes_set_written"]).abs() > 1e-6).sum())
         if "tes_set_written" in monitor
         else -1,

@@ -54,6 +54,7 @@ class KimLiteSolution:
     fallback_reason: str = ""
     mode_fractionality_max: float = 0.0
     solver_message: str = ""
+    plant_tracking_error_kw_th: np.ndarray | None = None
 
 
 def build_inputs(
@@ -69,7 +70,8 @@ def build_inputs(
     timestamps = [start + timedelta(minutes=15 * i) for i in range(steps)]
     pv = _take_cyclic(_load_hourly_series(cfg.pv_csv), timestamps) * float(pv_scale or cfg.pv_scale)
     base_price = _take_cyclic(_load_hourly_series(cfg.price_csv), timestamps)
-    price, cp_flag = _apply_tou_transform(base_price, cfg.alpha_float, tariff_gamma, cp_uplift)
+    cp_flag = _critical_peak_flags(timestamps, cfg.critical_peak.months, cfg.critical_peak.windows)
+    price, cp_flag = _apply_tou_transform(base_price, cfg.alpha_float, tariff_gamma, cp_uplift, cp_flag)
     hours = np.asarray([t.hour + t.minute / 60.0 for t in timestamps], dtype=float)
     load_shape = 1.0 + cfg.q_load_daily_amp_frac * np.sin(2.0 * np.pi * (hours - 14.0) / 24.0)
     q_load = np.maximum(0.0, cfg.q_load_kw_th * load_shape)
@@ -93,6 +95,7 @@ def solve_paper_like_mpc(
     peak_cap_kw: float | None = None,
     enforce_signed_ramp: bool = False,
     mode_integrality: str = "strict",
+    previous_u_signed: float = 0.0,
 ) -> KimLiteSolution:
     """Solve the Kim-like cold plant + signed-net-TES MILP."""
 
@@ -100,6 +103,8 @@ def solve_paper_like_mpc(
     m = len(cfg.modes)
     if mode_integrality not in {"strict", "relaxed"}:
         raise ValueError("mode_integrality must be 'strict' or 'relaxed'")
+    if mode_integrality == "relaxed" and m > 1:
+        raise RuntimeError("relaxed mode is only allowed for single-mode proxy tests")
     relax_mode_binaries = mode_integrality == "relaxed"
     idx = _Index(n=n, m=m, peak_cap=peak_cap_kw is not None)
     c = np.zeros(idx.nvar)
@@ -113,11 +118,8 @@ def solve_paper_like_mpc(
             ub[idx.s(j, k)] = 1.0
             ub[idx.nu(j, k)] = cfg.modes[j].q_max_kw_th
     for k in range(n + 1):
-        ub[idx.soc(k)] = 1.0
-        ub[idx.soc_slack_low(k)] = 0.0
-        ub[idx.soc_slack_high(k)] = 0.0
-        c[idx.soc_slack_low(k)] = cfg.objective.w_soc
-        c[idx.soc_slack_high(k)] = cfg.objective.w_soc
+        lb[idx.soc(k)] = cfg.tes.soc_min
+        ub[idx.soc(k)] = cfg.tes.soc_max
     for k in range(n):
         c[idx.grid(k)] = inputs.price_cny_per_kwh[k] * cfg.dt_hours
         c[idx.spill(k)] = cfg.objective.w_spill * cfg.dt_hours
@@ -186,16 +188,6 @@ def solve_paper_like_mpc(
             row[idx.soc(k)] = 1.0
             add(row, cfg.tes.initial_soc, cfg.tes.initial_soc)
 
-    for k in range(n + 1):
-        row = np.zeros(idx.nvar)
-        row[idx.soc(k)] = -1.0
-        row[idx.soc_slack_low(k)] = -1.0
-        add(row, -np.inf, -cfg.tes.soc_min)
-        row = np.zeros(idx.nvar)
-        row[idx.soc(k)] = 1.0
-        row[idx.soc_slack_high(k)] = -1.0
-        add(row, -np.inf, cfg.tes.soc_max)
-
     row = np.zeros(idx.nvar)
     row[idx.soc(n)] = 1.0
     row[idx.term_pos()] = -1.0
@@ -227,7 +219,7 @@ def solve_paper_like_mpc(
             add(row, -np.inf, float(peak_cap_kw))
 
     if enforce_signed_ramp:
-        _add_signed_ramp_constraints(rows, lower, upper, idx, cfg, inputs)
+        _add_signed_ramp_constraints(rows, lower, upper, idx, cfg, inputs, previous_u_signed)
 
     start = time.perf_counter()
     result = milp(
@@ -343,8 +335,18 @@ def _add_signed_ramp_constraints(
     idx: "_Index",
     cfg: KimLiteConfig,
     inputs: KimLiteInputs,
+    previous_u_signed: float,
 ) -> None:
     q_abs = cfg.tes.q_abs_max_kw_th
+    row = np.zeros(idx.nvar)
+    for j in range(idx.m):
+        row[idx.nu(j, 0)] = 1.0 / q_abs
+    rows.append(row)
+    lower.append(-np.inf)
+    upper.append(cfg.signed_du_max + float(previous_u_signed) + inputs.q_load_kw_th[0] / q_abs)
+    rows.append(-row)
+    lower.append(-np.inf)
+    upper.append(cfg.signed_du_max - float(previous_u_signed) - inputs.q_load_kw_th[0] / q_abs)
     for k in range(1, idx.n):
         row = np.zeros(idx.nvar)
         for j in range(idx.m):
@@ -376,9 +378,7 @@ def _load_hourly_series(path: str) -> pd.Series:
 
 
 def _take_cyclic(series: pd.Series, timestamps: list[datetime]) -> np.ndarray:
-    by_key = {(ts.month, ts.day, ts.hour, ts.minute): float(v) for ts, v in series.items()}
-    fallback = float(series.iloc[0])
-    return np.asarray([by_key.get((ts.month, ts.day, ts.hour, ts.minute), fallback) for ts in timestamps], dtype=float)
+    return _resample_cyclic_to_timestamps(series, timestamps)
 
 
 def _apply_tou_transform(
@@ -386,15 +386,48 @@ def _apply_tou_transform(
     alpha_float: float,
     gamma: float,
     cp_uplift: float,
+    cp_flag: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     price_all_in = np.asarray(price_all_in, dtype=float)
-    p_float = alpha_float * price_all_in
-    p_nonfloat = (1.0 - alpha_float) * price_all_in
-    mean_float = float(p_float.mean())
-    cp_flag = (price_all_in >= np.quantile(price_all_in, 0.90)).astype(int)
-    transformed_float = mean_float + float(gamma) * (p_float - mean_float)
+    cp_flag = np.asarray(cp_flag, dtype=int)
+    p_float_base = float(alpha_float) * price_all_in
+    p_nonfloat_const = (1.0 - float(alpha_float)) * float(price_all_in.mean())
+    mean_float = float(p_float_base.mean())
+    transformed_float = mean_float + float(gamma) * (p_float_base - mean_float)
     transformed_float = transformed_float * (1.0 + float(cp_uplift) * cp_flag)
-    return np.maximum(0.0, p_nonfloat + transformed_float), cp_flag
+    return np.maximum(0.0, p_nonfloat_const + transformed_float), cp_flag
+
+
+def _critical_peak_flags(
+    timestamps: list[datetime],
+    months: tuple[int, ...],
+    windows: tuple[tuple[float, float], ...],
+) -> np.ndarray:
+    month_set = set(months)
+    flags: list[int] = []
+    for ts in timestamps:
+        hour = ts.hour + ts.minute / 60.0
+        active = ts.month in month_set and any(start <= hour < end for start, end in windows)
+        flags.append(1 if active else 0)
+    return np.asarray(flags, dtype=int)
+
+
+def _resample_cyclic_to_timestamps(series: pd.Series, timestamps: list[datetime]) -> np.ndarray:
+    if len(series) == 0:
+        raise ValueError("series must not be empty")
+    cleaned = pd.Series(pd.to_numeric(series, errors="raise").astype(float).to_numpy(), index=_reference_index(series.index))
+    cleaned = cleaned.sort_index()
+    cleaned = cleaned[~cleaned.index.duplicated(keep="last")]
+    resampled = cleaned.resample("15min").ffill()
+    target_index = _reference_index(pd.DatetimeIndex(timestamps))
+    values = resampled.reindex(target_index, method="ffill")
+    if values.isna().any():
+        values = values.fillna(float(resampled.iloc[-1]))
+    return values.to_numpy(dtype=float)
+
+
+def _reference_index(index: pd.Index) -> pd.DatetimeIndex:
+    return pd.DatetimeIndex([pd.Timestamp(ts).replace(year=2000) for ts in index])
 
 
 def _clean(values: np.ndarray) -> np.ndarray:
@@ -426,16 +459,8 @@ class _Index:
         return self.base_grid + self.n
 
     @property
-    def base_slack_low(self) -> int:
-        return self.base_spill + self.n + 1
-
-    @property
-    def base_slack_high(self) -> int:
-        return self.base_slack_low + self.n + 1
-
-    @property
     def base_tail(self) -> int:
-        return self.base_slack_high + self.n + 1
+        return self.base_spill + self.n + 1
 
     @property
     def nvar(self) -> int:
@@ -458,12 +483,6 @@ class _Index:
 
     def d_peak(self) -> int:
         return self.base_spill + self.n
-
-    def soc_slack_low(self, k: int) -> int:
-        return self.base_slack_low + k
-
-    def soc_slack_high(self, k: int) -> int:
-        return self.base_slack_high + k
 
     def term_pos(self) -> int:
         return self.base_tail

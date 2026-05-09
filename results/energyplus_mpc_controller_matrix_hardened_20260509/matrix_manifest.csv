@@ -1,0 +1,4 @@
+case_id,season,month,controller,model_source,record_start_step,max_steps,days,smoke
+smoke_winter_no_mpc,winter,January,no_mpc,none,0,96,1,True
+smoke_winter_default_mpc,winter,January,default_mpc,default_proxy,0,96,1,True
+smoke_winter_measured_data_mpc,winter,January,measured_data_mpc,measured_sampling,0,96,1,True

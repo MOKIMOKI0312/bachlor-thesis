@@ -1,0 +1,56 @@
+kim_lite_config:
+  dt_hours: 0.25
+  horizon_steps: 96
+  default_steps: 96
+  start_timestamp: '2025-07-01 00:00:00'
+  pv_csv: Nanjing-DataCenter-TES-EnergyPlus/inputs/CHN_Nanjing_PV_6MWp_hourly.csv
+  price_csv: Nanjing-DataCenter-TES-EnergyPlus/inputs/Jiangsu_TOU_2025_hourly.csv
+  output_root: results/kim_lite_repro_20260507
+  q_load_kw_th: 2160.0
+  q_load_daily_amp_frac: 0.08
+  p_nonplant_kw: 18000.0
+  pv_scale: 1.0
+  wet_bulb_base_c: 25.0
+  wet_bulb_amp_c: 4.0
+  alpha_float: 0.8
+  signed_du_max: 0.25
+  solver_time_limit_s: 20.0
+  tes:
+    capacity_kwh_th: 18000.0
+    q_ch_max_kw_th: 4500.0
+    q_dis_max_kw_th: 4500.0
+    initial_soc: 0.5
+    soc_min: 0.15
+    soc_max: 0.85
+    soc_target: 0.5
+    loss_per_h: 0.002
+  objective:
+    w_peak: 0.0
+    w_terminal: 80000.0
+    w_spill: 0.001
+    w_peak_slack: 100000.0
+  modes:
+  - q_min_kw_th: 0.0
+    q_max_kw_th: 8000.0
+    a_kw_per_kwth: 0.126
+    b_kw: 90.0
+    c_kw_per_c: 0.0
+  - q_min_kw_th: 8000.0
+    q_max_kw_th: 16000.0
+    a_kw_per_kwth: 0.122
+    b_kw: 300.0
+    c_kw_per_c: 3.0
+  critical_peak:
+    months:
+    - 7
+    - 8
+    windows:
+    - - 11.0
+      - 13.0
+    - - 16.0
+      - 17.0
+extra:
+  controller: mpc_no_tes
+  peak_cap_kw: 17464.736159999997
+  enforce_signed_ramp: false
+  mode_integrality: strict

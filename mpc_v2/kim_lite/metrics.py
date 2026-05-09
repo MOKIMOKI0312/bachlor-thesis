@@ -22,6 +22,9 @@ def build_monitor(controller: str, inputs: KimLiteInputs, solution: KimLiteSolut
     signed_du = np.zeros_like(u_signed)
     if len(signed_du) > 1:
         signed_du[1:] = np.diff(u_signed)
+    tracking_error = solution.plant_tracking_error_kw_th
+    if tracking_error is None:
+        tracking_error = np.zeros(len(inputs.timestamps), dtype=float)
     return pd.DataFrame(
         {
             "timestamp": [ts.isoformat(sep=" ") for ts in inputs.timestamps],
@@ -52,6 +55,7 @@ def build_monitor(controller: str, inputs: KimLiteInputs, solution: KimLiteSolut
             "fallback_reason": solution.fallback_reason,
             "mode_fractionality_max": solution.mode_fractionality_max,
             "solver_message": solution.solver_message,
+            "plant_tracking_error_kw_th": tracking_error,
         }
     )
 
@@ -117,6 +121,7 @@ def summarize_monitor(monitor: pd.DataFrame, cfg: KimLiteConfig, case_id: str, c
                 > 1e-5
             ).sum()
         ),
+        "plant_tracking_error_abs_max_kw_th": float(monitor["plant_tracking_error_kw_th"].abs().max()),
     }
     return summary
 
@@ -153,6 +158,10 @@ def write_case_outputs(
             "tes": cfg.tes.__dict__,
             "objective": cfg.objective.__dict__,
             "modes": [m.__dict__ for m in cfg.modes],
+            "critical_peak": {
+                "months": list(cfg.critical_peak.months),
+                "windows": [list(item) for item in cfg.critical_peak.windows],
+            },
         },
         "extra": extra_config or {},
     }

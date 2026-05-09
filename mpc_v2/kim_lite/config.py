@@ -37,10 +37,15 @@ class TESConfig:
 @dataclass(frozen=True)
 class ObjectiveConfig:
     w_peak: float
-    w_soc: float
     w_terminal: float
     w_spill: float
     w_peak_slack: float
+
+
+@dataclass(frozen=True)
+class CriticalPeakConfig:
+    months: tuple[int, ...]
+    windows: tuple[tuple[float, float], ...]
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,7 @@ class KimLiteConfig:
     modes: tuple[ModeConfig, ...]
     objective: ObjectiveConfig
     alpha_float: float
+    critical_peak: CriticalPeakConfig
     signed_du_max: float
     solver_time_limit_s: float
 
@@ -78,7 +84,9 @@ def load_config(path: str | Path = "mpc_v2/config/kim_lite_base.yaml") -> KimLit
     inputs = raw["inputs"]
     tes = raw["tes"]
     objective = raw["objective"]
+    tariff = raw.get("tariff", {})
     modes = tuple(ModeConfig(**mode) for mode in raw["plant"]["modes"])
+    critical_peak = _load_critical_peak(tariff)
     cfg = KimLiteConfig(
         dt_hours=float(time["dt_hours"]),
         horizon_steps=int(time["horizon_steps"]),
@@ -95,8 +103,14 @@ def load_config(path: str | Path = "mpc_v2/config/kim_lite_base.yaml") -> KimLit
         wet_bulb_amp_c=float(inputs.get("wet_bulb_amp_c", 4.0)),
         tes=TESConfig(**{k: float(v) for k, v in tes.items()}),
         modes=modes,
-        objective=ObjectiveConfig(**{k: float(v) for k, v in objective.items()}),
-        alpha_float=float(raw.get("tariff", {}).get("alpha_float", 0.8)),
+        objective=ObjectiveConfig(
+            w_peak=float(objective["w_peak"]),
+            w_terminal=float(objective["w_terminal"]),
+            w_spill=float(objective["w_spill"]),
+            w_peak_slack=float(objective["w_peak_slack"]),
+        ),
+        alpha_float=float(tariff.get("alpha_float", 0.8)),
+        critical_peak=critical_peak,
         signed_du_max=float(raw.get("signed_valve", {}).get("du_max_per_step", 1.0)),
         solver_time_limit_s=float(raw.get("solver", {}).get("time_limit_s", 20.0)),
     )
@@ -122,6 +136,19 @@ def validate_config(cfg: KimLiteConfig) -> None:
         raise ValueError("TES capacity and power limits must be positive")
     if not 0.0 <= cfg.alpha_float <= 1.0:
         raise ValueError("alpha_float must be in [0, 1]")
+    for month in cfg.critical_peak.months:
+        if month < 1 or month > 12:
+            raise ValueError(f"critical peak month out of range: {month}")
+    for start, end in cfg.critical_peak.windows:
+        if start < 0.0 or end > 24.0 or start >= end:
+            raise ValueError(f"invalid critical peak window: {(start, end)}")
+
+
+def _load_critical_peak(tariff: dict[str, Any]) -> CriticalPeakConfig:
+    raw = tariff.get("critical_peak", {})
+    months = tuple(int(item) for item in raw.get("months", [7, 8]))
+    windows = tuple((float(start), float(end)) for start, end in raw.get("windows", [[11, 13], [16, 17]]))
+    return CriticalPeakConfig(months=months, windows=windows)
 
 
 def load_yaml_mapping(path: str | Path) -> dict[str, Any]:

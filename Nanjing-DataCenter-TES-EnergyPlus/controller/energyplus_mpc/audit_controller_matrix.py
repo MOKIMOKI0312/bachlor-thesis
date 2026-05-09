@@ -60,6 +60,8 @@ def _audit_case(case_dir: Path, manifest_row: dict, issues: list[str]) -> None:
         issues.append(f"{case_dir.name}: severe errors in EnergyPlus output")
     if int(summary.get("tes_set_mismatch_count", -1)) != 0:
         issues.append(f"{case_dir.name}: TES_Set echo mismatch")
+    if "temp_violation_degree_hours_27c" not in summary:
+        issues.append(f"{case_dir.name}: missing temp_violation_degree_hours_27c")
     if monitor["soc"].min() < -1e-6 or monitor["soc"].max() > 1.0 + 1e-6:
         issues.append(f"{case_dir.name}: SOC outside physical [0, 1] range")
     if monitor["zone_temp_c"].min() < 5.0 or monitor["zone_temp_c"].max() > 40.0:
@@ -92,7 +94,14 @@ def _audit_summaries(root: Path, manifest: pd.DataFrame, issues: list[str]) -> N
     expected_comparisons = int(manifest["season"].nunique()) * 2
     if len(comparison) != expected_comparisons:
         issues.append(f"comparison_summary rows {len(comparison)} != expected {expected_comparisons}")
-    required_comparison_cols = {"cost_saving", "grid_saving_kwh", "peak_grid_reduction_kw"}
+    required_comparison_cols = {
+        "cost_saving",
+        "grid_saving_kwh",
+        "peak_grid_reduction_kw",
+        "temp_violation_delta_vs_no_mpc",
+        "zone_temp_max_delta_vs_no_mpc",
+        "cost_comparison_valid",
+    }
     missing_cols = required_comparison_cols - set(comparison.columns)
     if missing_cols:
         issues.append(f"comparison_summary missing columns: {sorted(missing_cols)}")

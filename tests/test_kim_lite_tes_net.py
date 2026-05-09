@@ -15,3 +15,18 @@ def test_q_tes_net_definition_and_soc_direction():
             assert solution.soc[k + 1] >= solution.soc[k] - 1e-3
         if q < -1e-6:
             assert solution.soc[k + 1] <= solution.soc[k] + 1e-3
+
+
+def test_signed_ramp_constrains_first_step_from_previous_action():
+    cfg = load_config("mpc_v2/config/kim_lite_base.yaml")
+    inputs = build_inputs(cfg, steps=8)
+
+    solution = solve_paper_like_mpc(
+        cfg,
+        inputs,
+        enforce_signed_ramp=True,
+        previous_u_signed=1.0,
+    )
+    first_u = solution.q_tes_net_kw_th[0] / cfg.tes.q_abs_max_kw_th
+
+    assert abs(first_u - 1.0) <= cfg.signed_du_max + 1e-6

@@ -143,3 +143,34 @@ def test_controller_matrix_manifest_and_audit_missing_case(tmp_path):
     manifest.to_csv(tmp_path / "matrix_manifest.csv", index=False)
     issues = audit_matrix_mod.audit_matrix_root(tmp_path)
     assert any("missing case directory" in issue for issue in issues)
+
+
+def test_controller_matrix_comparison_invalidates_cost_when_temperature_worsens(tmp_path):
+    manifest = matrix_mod.build_matrix_manifest(["winter"], days=1, smoke=True)
+    for row in manifest.to_dict("records"):
+        case_dir = tmp_path / row["case_id"]
+        case_dir.mkdir()
+        is_baseline = row["controller"] == "no_mpc"
+        pd.DataFrame(
+            [
+                {
+                    "controller": row["controller"],
+                    "record_start_step": row["record_start_step"],
+                    "steps": row["max_steps"],
+                    "pv_adjusted_cost": 100.0 if is_baseline else 90.0,
+                    "pv_adjusted_grid_kwh": 1000.0 if is_baseline else 900.0,
+                    "peak_grid_kw": 10.0 if is_baseline else 12.0,
+                    "fallback_count": 0,
+                    "soc_min": 0.5,
+                    "soc_final": 0.5,
+                    "zone_temp_max_c": 25.0 if is_baseline else 28.0,
+                    "temp_violation_degree_hours_27c": 0.0 if is_baseline else 1.0,
+                }
+            ]
+        ).to_csv(case_dir / "summary.csv", index=False)
+    matrix_mod._write_summaries(tmp_path, manifest)
+
+    comparison = pd.read_csv(tmp_path / "comparison_summary.csv")
+    assert comparison["cost_saving"].gt(0.0).all()
+    assert comparison["cost_comparison_valid"].eq(False).all()
+    assert comparison["temp_violation_delta_vs_no_mpc"].gt(0.0).all()

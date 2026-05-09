@@ -66,9 +66,21 @@ def load_external_series(price_csv: str | Path = DEFAULT_PRICE, pv_csv: str | Pa
 
 
 def cyclic_lookup(series: pd.Series, timestamps: list[datetime]) -> np.ndarray:
-    by_key = {(ts.month, ts.day, ts.hour, ts.minute): float(value) for ts, value in series.items()}
-    fallback = float(series.iloc[0])
-    return np.asarray([by_key.get((ts.month, ts.day, ts.hour, ts.minute), fallback) for ts in timestamps], dtype=float)
+    if len(series) == 0:
+        raise ValueError("series must not be empty")
+    cleaned = pd.Series(pd.to_numeric(series, errors="raise").astype(float).to_numpy(), index=_reference_index(series.index))
+    cleaned = cleaned.sort_index()
+    cleaned = cleaned[~cleaned.index.duplicated(keep="last")]
+    resampled = cleaned.resample("15min").ffill()
+    target_index = _reference_index(pd.DatetimeIndex(timestamps))
+    values = resampled.reindex(target_index, method="ffill")
+    if values.isna().any():
+        values = values.fillna(float(resampled.iloc[-1]))
+    return values.to_numpy(dtype=float)
+
+
+def _reference_index(index: pd.Index) -> pd.DatetimeIndex:
+    return pd.DatetimeIndex([pd.Timestamp(ts).replace(year=2000) for ts in index])
 
 
 def load_baseline_timeseries(path: str | Path = DEFAULT_BASELINE_TIMESERIES) -> pd.DataFrame:

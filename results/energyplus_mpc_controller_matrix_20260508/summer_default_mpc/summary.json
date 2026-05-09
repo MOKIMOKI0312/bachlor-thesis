@@ -23,5 +23,8 @@
   "ite_set_mismatch_count": 0,
   "chiller_t_set_mismatch_count": 0,
   "tes_use_response_count": 329,
-  "tes_source_response_count": 2551
+  "tes_source_response_count": 2551,
+  "temp_violation_threshold_c": 27.0,
+  "temp_violation_degree_hours_27c": 509.6937037421637,
+  "valid_comfort_flag": false
 }

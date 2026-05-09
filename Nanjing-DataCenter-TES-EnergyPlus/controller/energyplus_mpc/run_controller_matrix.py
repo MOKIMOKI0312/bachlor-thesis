@@ -17,7 +17,8 @@ from .run_energyplus_mpc import EnergyPlusMpcRunner
 DEFAULT_MATRIX_ROOT = DEFAULT_SELECTED_ROOT.parent / "energyplus_mpc_controller_matrix_20260508"
 DEFAULT_PREDICTION_MODEL = DEFAULT_SELECTED_ROOT.parent / "energyplus_mpc_sampling_20260507" / "prediction_models.yaml"
 DEFAULT_SAMPLES = DEFAULT_SELECTED_ROOT.parent / "energyplus_mpc_sampling_20260507" / "samples_15min.csv"
-REPORT_PATH = DEFAULT_SELECTED_ROOT.parents[1] / "docs" / "energyplus_mpc_controller_matrix_report_20260508.md"
+DEFAULT_REPORT_PATH = DEFAULT_SELECTED_ROOT.parents[1] / "docs" / "energyplus_mpc_controller_matrix_report_20260508.md"
+HARDENED_REPORT_PATH = DEFAULT_SELECTED_ROOT.parents[1] / "docs" / "energyplus_mpc_controller_matrix_hardening_report_20260509.md"
 
 SEASON_WINDOWS = {
     "winter": {"month": "January", "record_start_step": 0},
@@ -126,6 +127,7 @@ def _write_summaries(root: Path, manifest: pd.DataFrame) -> None:
         if not summary_path.exists():
             continue
         row = pd.read_csv(summary_path).iloc[0].to_dict()
+        _ensure_temperature_kpis(root / item["case_id"], row)
         row.update({k: item[k] for k in ["case_id", "season", "month", "controller", "model_source"]})
         rows.append(row)
     summary = pd.DataFrame(rows)
@@ -144,6 +146,8 @@ def _write_summaries(root: Path, manifest: pd.DataFrame) -> None:
             if current.empty:
                 continue
             row = current.iloc[0]
+            temp_delta = float(row["temp_violation_degree_hours_27c"] - base["temp_violation_degree_hours_27c"])
+            temp_max_delta = float(row["zone_temp_max_c"] - base["zone_temp_max_c"])
             comparisons.append(
                 {
                     "season": season,
@@ -158,6 +162,10 @@ def _write_summaries(root: Path, manifest: pd.DataFrame) -> None:
                     "soc_min": float(row["soc_min"]),
                     "soc_final": float(row["soc_final"]),
                     "zone_temp_max_c": float(row["zone_temp_max_c"]),
+                    "temp_violation_degree_hours_27c": float(row["temp_violation_degree_hours_27c"]),
+                    "temp_violation_delta_vs_no_mpc": temp_delta,
+                    "zone_temp_max_delta_vs_no_mpc": temp_max_delta,
+                    "cost_comparison_valid": bool(temp_delta <= 1e-6 and temp_max_delta <= 1e-6),
                 }
             )
     pd.DataFrame(comparisons).to_csv(root / "comparison_summary.csv", index=False)
@@ -167,14 +175,33 @@ def _pct(delta: float, base: float) -> float:
     return float(delta / base * 100.0) if abs(base) > 1e-9 else 0.0
 
 
+def _ensure_temperature_kpis(case_dir: Path, row: dict[str, Any]) -> None:
+    if "temp_violation_degree_hours_27c" in row and "valid_comfort_flag" in row:
+        return
+    monitor_path = case_dir / "monitor.csv"
+    if not monitor_path.exists():
+        row.setdefault("temp_violation_threshold_c", 27.0)
+        row.setdefault("temp_violation_degree_hours_27c", float("nan"))
+        row.setdefault("valid_comfort_flag", False)
+        return
+    monitor = pd.read_csv(monitor_path, usecols=["zone_temp_c"])
+    threshold = 27.0
+    degree_hours = float(((monitor["zone_temp_c"] - threshold).clip(lower=0.0) * 0.25).sum())
+    row["temp_violation_threshold_c"] = threshold
+    row["temp_violation_degree_hours_27c"] = degree_hours
+    row["valid_comfort_flag"] = bool(degree_hours <= 1e-9)
+
+
 def _write_report(root: Path, manifest: pd.DataFrame) -> None:
     summary = pd.read_csv(root / "season_summary.csv") if (root / "season_summary.csv").exists() else pd.DataFrame()
     comparison = pd.read_csv(root / "comparison_summary.csv") if (root / "comparison_summary.csv").exists() else pd.DataFrame()
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text(
+    report_path = _report_path_for_root(root)
+    report_date = "2026-05-09" if "hardened_20260509" in root.name else "2026-05-08"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
         "\n".join(
             [
-                "# EnergyPlus-MPC Controller Matrix Report 2026-05-08",
+                f"# EnergyPlus-MPC Controller Matrix Report {report_date}",
                 "",
                 "## Summary",
                 "",
@@ -183,6 +210,7 @@ def _write_report(root: Path, manifest: pd.DataFrame) -> None:
                 f"- Matrix cases completed: `{len(summary)}`",
                 "- Controllers: `no_mpc`, `default_mpc`, `measured_data_mpc`",
                 "- This matrix compares four seasonal month windows and is not a full-year saving claim.",
+                "- Cost saving rows are valid as control-benefit evidence only when `cost_comparison_valid=true`; current EnergyPlus online results are otherwise coupling feasibility plus temperature-safety diagnostics.",
                 "",
                 "## Season Summary",
                 "",
@@ -200,6 +228,12 @@ def _write_report(root: Path, manifest: pd.DataFrame) -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+def _report_path_for_root(root: Path) -> Path:
+    if "hardened_20260509" in root.name:
+        return HARDENED_REPORT_PATH
+    return DEFAULT_REPORT_PATH
 
 
 def _frame_to_markdown(frame: pd.DataFrame) -> str:
@@ -232,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError(f"unknown seasons: {unknown}")
     root = run_matrix(args.output_root, seasons, args.days, args.smoke, args.overwrite, args.prediction_model, args.samples)
     print(root)
-    print(REPORT_PATH)
+    print(_report_path_for_root(Path(root)))
     return 0
 
 

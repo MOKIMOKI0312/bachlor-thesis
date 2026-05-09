@@ -42,13 +42,17 @@ plant:
 
 objective:
   w_peak: 0.0
-  w_soc: 100000.0
   w_terminal: 80000.0
   w_spill: 0.001
   w_peak_slack: 100000.0
 
 tariff:
   alpha_float: 0.8
+  critical_peak:
+    months: [7, 8]
+    windows:
+      - [11, 13]
+      - [16, 17]
 
 signed_valve:
   du_max_per_step: 0.25

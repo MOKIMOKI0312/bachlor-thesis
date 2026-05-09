@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from mpc_v2.kim_lite.config import KimLiteConfig, ModeConfig, ObjectiveConfig, TESConfig
+from mpc_v2.kim_lite.config import CriticalPeakConfig, KimLiteConfig, ModeConfig, ObjectiveConfig, TESConfig
 from mpc_v2.kim_lite.model import KimLiteInputs, solve_paper_like_mpc
 
 from .common import read_yaml, tes_set_from_q_tes_net
@@ -49,8 +49,9 @@ def build_kim_config(params: dict[str, Any], initial_soc: float, horizon_steps: 
             loss_per_h=0.002,
         ),
         modes=tuple(ModeConfig(**mode) for mode in mode_specs),
-        objective=ObjectiveConfig(w_peak=0.0, w_soc=100000.0, w_terminal=80000.0, w_spill=0.001, w_peak_slack=100000.0),
+        objective=ObjectiveConfig(w_peak=0.0, w_terminal=80000.0, w_spill=0.001, w_peak_slack=100000.0),
         alpha_float=0.8,
+        critical_peak=CriticalPeakConfig(months=(7, 8), windows=((11.0, 13.0), (16.0, 17.0))),
         signed_du_max=0.25,
         solver_time_limit_s=5.0,
     )
@@ -115,6 +116,7 @@ def solve_energyplus_mpc_action(
     forecast: dict[str, Any],
     current_soc: float,
     mode_integrality: str = "relaxed",
+    previous_u_signed: float = 0.0,
 ) -> dict[str, float | str]:
     cfg = build_kim_config(params, current_soc, len(forecast["timestamps"]))
     inputs = KimLiteInputs(
@@ -126,7 +128,14 @@ def solve_energyplus_mpc_action(
         price_cny_per_kwh=np.asarray(forecast["price_per_kwh"], dtype=float),
         cp_flag=np.zeros(len(forecast["timestamps"]), dtype=int),
     )
-    solution = solve_paper_like_mpc(cfg, inputs, tes_enabled=True, mode_integrality=mode_integrality)
+    solution = solve_paper_like_mpc(
+        cfg,
+        inputs,
+        tes_enabled=True,
+        enforce_signed_ramp=True,
+        mode_integrality=mode_integrality,
+        previous_u_signed=previous_u_signed,
+    )
     q_net = float(solution.q_tes_net_kw_th[0])
     return {
         "tes_set": tes_set_from_q_tes_net(q_net, cfg.tes.q_abs_max_kw_th),

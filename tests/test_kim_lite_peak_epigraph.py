@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from mpc_v2.kim_lite.config import load_config
 from mpc_v2.kim_lite.model import build_inputs, solve_paper_like_mpc
 
@@ -17,6 +19,7 @@ def test_peak_epigraph_and_peak_cap_slack_are_valid():
 
 def test_peak_cap_relaxed_modes_are_explicit():
     cfg = load_config("mpc_v2/config/kim_lite_base.yaml")
+    cfg = replace(cfg, modes=(cfg.modes[0],))
     inputs = build_inputs(cfg, steps=16)
     base = solve_paper_like_mpc(cfg, inputs, tes_enabled=False)
     relaxed = solve_paper_like_mpc(

@@ -13,14 +13,14 @@ from mpc_v2.kim_lite.model import KimLiteInputs, KimLiteSolution, plant_dispatch
 def direct_no_tes(cfg: KimLiteConfig, inputs: KimLiteInputs) -> KimLiteSolution:
     """Direct-load no-storage baseline."""
 
-    return _fixed_dispatch_solution(cfg, inputs, inputs.q_load_kw_th, "direct_no_tes")
+    return _direct_no_tes_solution(cfg, inputs)
 
 
 def storage_priority(cfg: KimLiteConfig, inputs: KimLiteInputs) -> KimLiteSolution:
     """Charge TES in low-price periods and discharge in high-price periods."""
 
-    q_chiller, soc, solver_time = _storage_priority_dispatch(cfg, inputs)
-    return _fixed_dispatch_solution(cfg, inputs, q_chiller, "storage_priority", soc, solver_time)
+    q_chiller, _, solver_time = _storage_priority_dispatch(cfg, inputs)
+    return _fixed_dispatch_solution(cfg, inputs, q_chiller, "storage_priority", solver_time_s=solver_time)
 
 
 def storage_priority_neutral(cfg: KimLiteConfig, inputs: KimLiteInputs) -> KimLiteSolution:
@@ -29,14 +29,48 @@ def storage_priority_neutral(cfg: KimLiteConfig, inputs: KimLiteInputs) -> KimLi
     q_chiller, _, solver_time = _storage_priority_dispatch(cfg, inputs)
     q_net = q_chiller - inputs.q_load_kw_th
     q_net = _neutralize_q_net(cfg, inputs, q_net)
-    soc = _roll_soc(cfg, q_net)
-    return _fixed_dispatch_solution(
-        cfg,
-        inputs,
-        inputs.q_load_kw_th + q_net,
-        "storage_priority_neutral",
-        soc,
-        solver_time,
+    requested = inputs.q_load_kw_th + q_net
+    for _ in range(3):
+        final_q = _dispatch_chiller(requested, cfg, inputs)[0]
+        final_net = final_q - inputs.q_load_kw_th
+        final_soc = _roll_soc(cfg, final_net)
+        if abs(float(final_soc[-1]) - cfg.tes.soc_target) <= 1e-5:
+            break
+        q_net = _neutralize_q_net(cfg, inputs, final_net)
+        requested = inputs.q_load_kw_th + q_net
+    return _fixed_dispatch_solution(cfg, inputs, requested, "storage_priority_neutral", solver_time_s=solver_time)
+
+
+def _direct_no_tes_solution(cfg: KimLiteConfig, inputs: KimLiteInputs) -> KimLiteSolution:
+    start = time.perf_counter()
+    n = len(inputs.timestamps)
+    q_chiller = np.asarray(inputs.q_load_kw_th, dtype=float).copy()
+    p_plant = np.zeros(n)
+    mode_index = np.full(n, -1, dtype=int)
+    tracking_error = np.zeros(n)
+    for k, q in enumerate(q_chiller):
+        p, mode, error = _exact_load_plant_power(float(q), cfg, float(inputs.t_wb_c[k]))
+        p_plant[k] = p
+        mode_index[k] = mode
+        tracking_error[k] = error
+    soc = np.full(n + 1, cfg.tes.initial_soc, dtype=float)
+    grid = np.maximum(0.0, inputs.p_nonplant_kw + p_plant - inputs.p_pv_kw)
+    spill = np.maximum(0.0, inputs.p_pv_kw - inputs.p_nonplant_kw - p_plant)
+    objective = float(np.sum(grid * inputs.price_cny_per_kwh * cfg.dt_hours))
+    return KimLiteSolution(
+        status="direct_no_tes",
+        objective_value=objective,
+        solver_time_s=time.perf_counter() - start,
+        q_chiller_kw_th=q_chiller,
+        q_tes_net_kw_th=np.zeros(n),
+        soc=soc,
+        p_plant_kw=p_plant,
+        p_grid_pos_kw=grid,
+        p_spill_kw=spill,
+        d_peak_kw=float(grid.max()) if len(grid) else 0.0,
+        mode_index=mode_index,
+        peak_slack_kw=np.zeros(n),
+        plant_tracking_error_kw_th=tracking_error,
     )
 
 
@@ -136,6 +170,36 @@ def _roll_soc(cfg: KimLiteConfig, q_net: np.ndarray) -> np.ndarray:
     return soc
 
 
+def _dispatch_chiller(
+    requested_q_chiller: np.ndarray,
+    cfg: KimLiteConfig,
+    inputs: KimLiteInputs,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    n = len(inputs.timestamps)
+    q_chiller = np.zeros(n)
+    p_plant = np.zeros(n)
+    mode_index = np.full(n, -1, dtype=int)
+    tracking_error = np.zeros(n)
+    for k in range(n):
+        requested = float(requested_q_chiller[k])
+        q, p, mode = plant_dispatch(requested, cfg, float(inputs.t_wb_c[k]))
+        q_chiller[k] = q
+        p_plant[k] = p
+        mode_index[k] = mode
+        tracking_error[k] = q - requested
+    return q_chiller, p_plant, mode_index, tracking_error
+
+
+def _exact_load_plant_power(q_chiller_kw_th: float, cfg: KimLiteConfig, t_wb_c: float) -> tuple[float, int, float]:
+    if q_chiller_kw_th <= 1e-7:
+        return 0.0, -1, 0.0
+    for idx, mode in sorted(enumerate(cfg.modes), key=lambda item: item[1].q_max_kw_th):
+        if mode.q_min_kw_th - 1e-9 <= q_chiller_kw_th <= mode.q_max_kw_th + 1e-9:
+            return mode.a_kw_per_kwth * q_chiller_kw_th + mode.b_kw + mode.c_kw_per_c * t_wb_c, idx, 0.0
+    q_dispatch, p_plant, mode_idx = plant_dispatch(q_chiller_kw_th, cfg, t_wb_c)
+    return p_plant, mode_idx, q_dispatch - q_chiller_kw_th
+
+
 def _q_net_bounds(cfg: KimLiteConfig, inputs: KimLiteInputs, step: int) -> tuple[float, float]:
     max_chiller = max(mode.q_max_kw_th for mode in cfg.modes)
     lower = -min(cfg.tes.q_dis_max_kw_th, float(inputs.q_load_kw_th[step]))
@@ -148,22 +212,13 @@ def _fixed_dispatch_solution(
     inputs: KimLiteInputs,
     requested_q_chiller: np.ndarray,
     status: str,
-    soc_override: np.ndarray | None = None,
     solver_time_s: float = 0.0,
 ) -> KimLiteSolution:
     start = time.perf_counter()
     n = len(inputs.timestamps)
-    q_chiller = np.zeros(n)
-    p_plant = np.zeros(n)
-    mode_index = np.full(n, -1, dtype=int)
-    for k in range(n):
-        q, p, mode = plant_dispatch(float(requested_q_chiller[k]), cfg, float(inputs.t_wb_c[k]))
-        q_chiller[k] = q
-        p_plant[k] = p
-        mode_index[k] = mode
+    q_chiller, p_plant, mode_index, tracking_error = _dispatch_chiller(requested_q_chiller, cfg, inputs)
     q_net = q_chiller - inputs.q_load_kw_th
-    if soc_override is None:
-        soc_override = np.full(n + 1, cfg.tes.initial_soc, dtype=float)
+    soc = _roll_soc(cfg, q_net)
     grid = np.maximum(0.0, inputs.p_nonplant_kw + p_plant - inputs.p_pv_kw)
     spill = np.maximum(0.0, inputs.p_pv_kw - inputs.p_nonplant_kw - p_plant)
     objective = float(np.sum(grid * inputs.price_cny_per_kwh * cfg.dt_hours))
@@ -173,11 +228,12 @@ def _fixed_dispatch_solution(
         solver_time_s=solver_time_s or (time.perf_counter() - start),
         q_chiller_kw_th=q_chiller,
         q_tes_net_kw_th=q_net,
-        soc=soc_override,
+        soc=soc,
         p_plant_kw=p_plant,
         p_grid_pos_kw=grid,
         p_spill_kw=spill,
         d_peak_kw=float(grid.max()) if len(grid) else 0.0,
         mode_index=mode_index,
         peak_slack_kw=np.zeros(n),
+        plant_tracking_error_kw_th=tracking_error,
     )

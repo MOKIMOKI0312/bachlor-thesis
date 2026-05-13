@@ -1,0 +1,16 @@
+{
+  "controller": "mpc",
+  "max_steps": 35040,
+  "record_start_step": 0,
+  "raw_output_dir": "Nanjing-DataCenter-TES-EnergyPlus\\out\\energyplus_mpc_mpc_annual_20260513",
+  "selected_output_dir": "results\\energyplus_mpc_annual_20260513\\mpc",
+  "model": "C:\\Users\\18430\\Desktop\\epmpc_a484\\Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+  "weather": "C:\\Users\\18430\\Desktop\\epmpc_a484\\Nanjing-DataCenter-TES-EnergyPlus\\weather\\CHN_JS_Nanjing.582380_TMYx.2009-2023.epw",
+  "params": {
+    "model_path": "Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+    "model_unmodified": true
+  },
+  "mode_integrality": "relaxed",
+  "load_forecast": "baseline",
+  "exit_code": 0
+}

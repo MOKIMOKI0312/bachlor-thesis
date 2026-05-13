@@ -26,6 +26,18 @@ actuators:
     component_type: Schedule:Constant
     control_type: Schedule Value
     key: TES_Set
+  crah_fan_set:
+    component_type: Schedule:Constant
+    control_type: Schedule Value
+    key: CRAH_Fan_Set
+  crah_t_set:
+    component_type: Schedule:Constant
+    control_type: Schedule Value
+    key: CRAH_T_Set
+  chiller_t_set:
+    component_type: Schedule:Constant
+    control_type: Schedule Value
+    key: Chiller_T_Set
 variables:
   tes_set_echo:
     variable_name: Schedule Value

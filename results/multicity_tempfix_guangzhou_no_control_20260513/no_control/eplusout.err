@@ -1,0 +1,57 @@
+﻿Program Version,EnergyPlus, Version 23.1.0-87ed9199d4, YMD=2026.05.13 21:22,
+   ************* Beginning Zone Sizing Calculations
+   ** Warning ** Weather file location will be used rather than entered (IDF) Location object.
+   **   ~~~   ** ..Location object=NANJING JS CHN SRC-TMYX 582380
+   **   ~~~   ** ..Weather File Location=Guangzhou GD CHN SRC-TMYx WMO#=592870
+   **   ~~~   ** ..due to location differences, Latitude difference=[8.72] degrees, Longitude difference=[5.42] degrees.
+   **   ~~~   ** ..Time Zone difference=[0.0] hour(s), Elevation difference=[2.01] percent, [0.30] meters.
+   ** Warning ** Calculated design heating load for zone=DATACENTER ZN is zero.
+   **   ~~~   ** Check Sizing:Zone and ZoneControl:Thermostat inputs.
+   ************* Beginning System Sizing Calculations
+   ************* Beginning Plant Sizing Calculations
+   ************* Testing Individual Branch Integrity
+   ************* All Branches passed integrity testing
+   ************* Testing Individual Supply Air Path Integrity
+   ************* All Supply Air Paths passed integrity testing
+   ************* Testing Individual Return Air Path Integrity
+   ************* All Return Air Paths passed integrity testing
+   ************* No node connection errors were found.
+   ************* Beginning Simulation
+   ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Inlet air wet-bulb temperature is outside model boundaries at 32.65.
+   **   ~~~   **  ...Valid range = -34.40 to 32.00. Occurrence info = RUN PERIOD 1, 06/21 18:45 - 19:00
+   **   ~~~   **  ...Inlet air wet-bulb temperature passed to the model = 32.000000
+   **   ~~~   **  ...Wet-bulb temperatures outside model boundaries may not adversely affect tower performance.
+   ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Inlet air wet-bulb temperature is outside model boundaries at 32.41.
+   **   ~~~   **  ...Valid range = -34.40 to 32.00. Occurrence info = RUN PERIOD 1, 06/21 19:00 - 19:15
+   **   ~~~   **  ...Inlet air wet-bulb temperature passed to the model = 32.000000
+   **   ~~~   **  ...Wet-bulb temperatures outside model boundaries may not adversely affect tower performance.
+   ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Inlet air wet-bulb temperature is outside model boundaries at 32.17.
+   **   ~~~   **  ...Valid range = -34.40 to 32.00. Occurrence info = RUN PERIOD 1, 06/21 19:15 - 19:30
+   **   ~~~   **  ...Inlet air wet-bulb temperature passed to the model = 32.000000
+   **   ~~~   **  ...Wet-bulb temperatures outside model boundaries may not adversely affect tower performance.
+   ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Inlet air wet-bulb temperature is outside model boundaries at 32.07.
+   **   ~~~   **  ...Valid range = -34.40 to 32.00. Occurrence info = RUN PERIOD 1, 07/22 18:45 - 19:00
+   **   ~~~   **  ...Inlet air wet-bulb temperature passed to the model = 32.000000
+   **   ~~~   **  ...Wet-bulb temperatures outside model boundaries may not adversely affect tower performance.
+   ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Inlet air wet-bulb temperature is outside model boundaries at 32.03.
+   **   ~~~   **  ...Valid range = -34.40 to 32.00. Occurrence info = RUN PERIOD 1, 07/22 19:00 - 19:15
+   **   ~~~   **  ...Inlet air wet-bulb temperature passed to the model = 32.000000
+   **   ~~~   **  ...Wet-bulb temperatures outside model boundaries may not adversely affect tower performance.
+   ************* Simulation Error Summary *************
+   ************* There are 7 unused schedules in input.
+   ************* There are 7 unused week schedules in input.
+   ************* There are 8 unused day schedules in input.
+   ************* Use Output:Diagnostics,DisplayUnusedSchedules; to see them.
+   *************
+   ************* ===== Recurring Error Summary =====
+   ************* The following recurring error messages occurred.
+   *************
+   *************  ** Warning ** CoolingTower:VariableSpeed "CENTRIFUGAL FAN CYCLING OPEN COOLING TOWER 40.2 GPM/HP" - Inlet air wet-bulb temperature is out of range error continues...
+   *************  **   ~~~   **   This error occurred 5 total times;
+   *************  **   ~~~   **   during Warmup 0 times;
+   *************  **   ~~~   **   during Sizing 0 times.
+   *************  **   ~~~   **   Max=33.173065  Min=32.235650
+   *************
+   ************* EnergyPlus Warmup Error Summary. During Warmup: 0 Warning; 0 Severe Errors.
+   ************* EnergyPlus Sizing Error Summary. During Sizing: 2 Warning; 0 Severe Errors.
+   ************* EnergyPlus Completed Successfully-- 12 Warning; 0 Severe Errors; Elapsed Time=00hr 18min 21.41sec

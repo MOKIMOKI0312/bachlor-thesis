@@ -1,0 +1,5 @@
+step,simulation_step,timestamp,controller,price_per_kwh,pv_kw,soc,tes_set,q_tes_net_kw_th_pred,q_chiller_kw_th_pred,solver_status,solver_time_s,fallback,fallback_reason,q_tes_net_kw_th
+0,0,2024-01-01 00:00:00,mpc,0.029,0.0,1.0,-0.0,0.0,0.0,optimal_relaxed_modes,0.0031193000031635165,False,,0.0
+1,1,2024-01-01 00:15:00,mpc,0.029,0.0,1.0,-0.0,0.0,0.0,optimal_relaxed_modes,0.0012234000023454428,False,,0.0
+2,2,2024-01-01 00:30:00,mpc,0.029,0.0,1.0,-0.0,0.0,0.0,optimal_relaxed_modes,0.0011858000652864575,False,,0.0
+3,3,2024-01-01 00:45:00,mpc,0.029,0.0,1.0,-0.0,0.0,0.0,optimal_relaxed_modes,0.0012467000633478165,False,,0.0

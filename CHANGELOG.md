@@ -17,6 +17,230 @@
   - 是否影响论文
   - 已知限制
 
+## v0.6.3-energyplus-mpc-multicity-weather-validation - 2026-05-13
+
+### Git
+
+- Commit: `待提交后回填`。
+- 工作区：`C:\Users\18430\Desktop\epmpc_a484`。
+- 分支：`codex/fix-energyplus-mpc-temp-safety`。
+- 分支或合并状态：准备推送并合并到 `master`。
+
+### Scope
+
+在 `v0.6.2-energyplus-mpc-temp-safety-fix` 的温度安全修复基础上，新增北京和广州 EPW 天气输入，并运行两地全年 `no_control` 与 `mpc` 在线 EnergyPlus 仿真。每个城市先用自身 EPW 跑 `no_control`，再由该城市 `no_control` monitor 生成 15 分钟 baseline forecast CSV，供同城市 MPC 年度运行使用。
+
+### Code and Data Changes
+
+- 新增天气文件：`Nanjing-DataCenter-TES-EnergyPlus/weather/CHN_BJ_Beijing-Capital.Intl.AP.545110_TMYx.2009-2023.epw`。
+- 新增天气文件：`Nanjing-DataCenter-TES-EnergyPlus/weather/CHN_GD_Guangzhou.592870_TMYx.2009-2023.epw`。
+- 更新 `Nanjing-DataCenter-TES-EnergyPlus/docs/model_manifest.md`，记录北京/广州 EPW 作为多天气验证输入。
+- 新增 `Nanjing-DataCenter-TES-EnergyPlus/docs/multicity_weather_validation_20260513.md`，记录天气来源、运行命令、结果和结论边界。
+- 更新 `.gitignore`，忽略 `results/**/_run_logs/` 运行期进程日志。
+- 新增北京/广州 no-control baseline forecast：`results/multicity_tempfix_baselines_20260513/`。
+- 新增北京/广州年度运行结果：`results/multicity_tempfix_beijing_no_control_20260513/`、`results/multicity_tempfix_beijing_mpc_20260513/`、`results/multicity_tempfix_guangzhou_no_control_20260513/`、`results/multicity_tempfix_guangzhou_mpc_20260513/`。
+
+### Weather Source
+
+- Beijing: Climate.OneBuilding China TMYx 2009-2023，`Beijing-Capital.Intl.AP`，WMO `545110`。
+- Guangzhou: Climate.OneBuilding China TMYx 2009-2023，`Guangzhou`，WMO `592870`。
+- 下载日期：2026-05-13。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller no_control --max-steps 35040 --record-start-step 0 --weather Nanjing-DataCenter-TES-EnergyPlus/weather/CHN_BJ_Beijing-Capital.Intl.AP.545110_TMYx.2009-2023.epw --selected-output-root results/multicity_tempfix_beijing_no_control_20260513 --raw-output-dir Nanjing-DataCenter-TES-EnergyPlus/out/multicity_tempfix_beijing_no_control_20260513
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller mpc --max-steps 35040 --record-start-step 0 --weather Nanjing-DataCenter-TES-EnergyPlus/weather/CHN_BJ_Beijing-Capital.Intl.AP.545110_TMYx.2009-2023.epw --baseline-timeseries results/multicity_tempfix_baselines_20260513/beijing_no_control_timeseries_15min.csv --selected-output-root results/multicity_tempfix_beijing_mpc_20260513 --raw-output-dir Nanjing-DataCenter-TES-EnergyPlus/out/multicity_tempfix_beijing_mpc_20260513
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller no_control --max-steps 35040 --record-start-step 0 --weather Nanjing-DataCenter-TES-EnergyPlus/weather/CHN_GD_Guangzhou.592870_TMYx.2009-2023.epw --selected-output-root results/multicity_tempfix_guangzhou_no_control_20260513 --raw-output-dir Nanjing-DataCenter-TES-EnergyPlus/out/multicity_tempfix_guangzhou_no_control_20260513
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller mpc --max-steps 35040 --record-start-step 0 --weather Nanjing-DataCenter-TES-EnergyPlus/weather/CHN_GD_Guangzhou.592870_TMYx.2009-2023.epw --baseline-timeseries results/multicity_tempfix_baselines_20260513/guangzhou_no_control_timeseries_15min.csv --selected-output-root results/multicity_tempfix_guangzhou_mpc_20260513 --raw-output-dir Nanjing-DataCenter-TES-EnergyPlus/out/multicity_tempfix_guangzhou_mpc_20260513
+```
+
+Result:
+
+```text
+Beijing no_control -> completed, 35040 rows, exit_code=0, severe_errors=0
+Beijing mpc -> completed, 35040 rows, exit_code=0, fallback_count=0, severe_errors=0
+Guangzhou no_control -> completed, 35040 rows, exit_code=0, severe_errors=0
+Guangzhou mpc -> completed, 35040 rows, exit_code=0, fallback_count=0, severe_errors=0
+```
+
+### 运行结果位置
+
+- Beijing no-control selected output: `results/multicity_tempfix_beijing_no_control_20260513/no_control/`
+- Beijing MPC selected output: `results/multicity_tempfix_beijing_mpc_20260513/mpc/`
+- Guangzhou no-control selected output: `results/multicity_tempfix_guangzhou_no_control_20260513/no_control/`
+- Guangzhou MPC selected output: `results/multicity_tempfix_guangzhou_mpc_20260513/mpc/`
+- City-specific MPC baseline forecasts: `results/multicity_tempfix_baselines_20260513/`
+- Raw EnergyPlus outputs: `Nanjing-DataCenter-TES-EnergyPlus/out/multicity_tempfix_*_20260513/`
+
+### 运行结果简述
+
+| City | Controller | Facility GWh | Max zone temp C | >27C ratio | >27C hours | >30C hours | Warnings |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Beijing | no_control | 79.513 | 29.188 | 10.705% | 937.75 | 0.00 | 4 |
+| Beijing | mpc | 79.472 | 29.643 | 0.731% | 64.00 | 0.00 | 22 |
+| Guangzhou | no_control | 87.923 | 29.152 | 8.405% | 736.25 | 0.00 | 8 |
+| Guangzhou | mpc | 88.205 | 29.470 | 1.652% | 144.75 | 0.00 | 25 |
+
+结论：北京和广州 MPC 全年结果均满足当前温度安全验收口径，即全年 `>27C` timestep 比例低于 `5%`，且 `>30C` 为 `0 h`。广州全年能耗高于北京，符合更热湿天气边界下数据中心冷却能耗更高的方向性判断。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本次新增的是多天气鲁棒性验证和温度安全证据；虽然可作为后续论文补充实验候选，但当前仍使用南京/江苏 PV 与电价输入，且未形成城市级 PV/电价同源经济结论，因此暂不直接写入论文正文。
+
+### Known Limitations
+
+- 北京/广州运行只切换 EPW，建筑模型仍是南京数据中心模型。
+- 外部 PV 和电价仍沿用南京/江苏输入，不支持城市级经济收益结论。
+- MPC 温度保护层仍是优化外层 safety guard，不是优化问题内部显式温度约束。
+- MPC 运行仍存在 cooling tower warning：北京 `cooling_tower_air_flow_ratio_failed=3`、`tower_range_out_of_range=3`；广州 `cooling_tower_air_flow_ratio_failed=8`、`tower_range_out_of_range=3`。
+
+## v0.6.2-energyplus-mpc-temp-safety-fix - 2026-05-13
+
+### Git
+
+- Base commit: `a484c5a9f6127fa284aea09c48359928f1cc4f22`。
+- Commit: `待提交后回填`。
+- 工作区：`C:\Users\18430\Desktop\epmpc_a484`。
+- 分支：`codex/fix-energyplus-mpc-temp-safety`。
+- 分支或合并状态：本地修复与年度验证，准备随 `v0.6.3` 提交。
+
+### Scope
+
+修复恢复版 `v0.6.0-energyplus-mpc-coupling` 在全年 MPC+EnergyPlus 在线耦合中温度安全失败的问题。修复前年度诊断结果 `zone_temp_max_c=33.42`，`>27°C` 超温比例约 `30.71%`；根因是 EnergyPlus EMS 把 `TES_Set > 0` 解释为 TES 放冷并同时强制关闭 chiller，而 MPC proxy 只把 TES 当作辅助冷源，没有感知 chiller 被切除这一副作用。
+
+### Code Changes
+
+- 修改 `Nanjing-DataCenter-TES-EnergyPlus/model/Nanjing_DataCenter_TES.epJSON`：TES 放冷时不再强制关闭 chiller branch/component，不再把 chiller leaving setpoint 放宽到 `30.0°C`，并恢复 chiller flow 与 bypass availability，避免 `TES_Set > 0` 变成“TES 替代冷机”的控制语义。
+- 修改 `Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/config/energyplus_mpc_params.yaml`：新增 Runtime API actuator 映射 `CRAH_Fan_Set`、`CRAH_T_Set`、`Chiller_T_Set`。
+- 修改 `Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/run_energyplus_mpc.py`：新增温度保护层，记录 `tes_set_before_safety`、`safety_override`、`safety_reason`，在接近温度上限时提高 CRAH fan/冷却 setpoint 控制强度、阻止继续充冷、必要时强制 TES 放冷；同时新增 `>27°C` 和 `>30°C` 超温统计。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m py_compile Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/run_energyplus_mpc.py
+python -m json.tool Nanjing-DataCenter-TES-EnergyPlus/model/Nanjing_DataCenter_TES.epJSON
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller mpc --max-steps 4 --record-start-step 0 --selected-output-root results/tempfix_hvac_smoke_20260513 --raw-output-dir Nanjing-DataCenter-TES-EnergyPlus/out/tempfix_hvac_smoke_20260513
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller mpc --max-steps 12000 --record-start-step 0 --selected-output-root results/tempfix_hvac_pilot_12000_20260513 --raw-output-dir Nanjing-DataCenter-TES-EnergyPlus/out/tempfix_hvac_pilot_12000_20260513
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller mpc --max-steps 35040 --record-start-step 0 --selected-output-root results/tempfix_hvac_annual_20260513 --raw-output-dir Nanjing-DataCenter-TES-EnergyPlus/out/tempfix_hvac_annual_20260513
+```
+
+Result:
+
+```text
+py_compile -> passed
+epJSON json.tool -> passed
+4-step smoke -> completed, exit_code=0, fallback_count=0, severe_errors=0
+12000-step pilot -> completed, >27°C ratio=0.0070, max_temp=28.28°C, >30°C hours=0
+Annual MPC+EnergyPlus run -> completed, exit_code=0, 35040 rows, fallback_count=0, severe_errors=0
+```
+
+### 运行结果位置
+
+- Selected annual results: `results/tempfix_hvac_annual_20260513/mpc/`
+- Raw EnergyPlus output: `Nanjing-DataCenter-TES-EnergyPlus/out/tempfix_hvac_annual_20260513/`
+- Run logs: `results/tempfix_hvac_annual_20260513/_run_logs/`
+
+### 运行结果简述
+
+- 时间范围：`2024-01-01 00:00:00` 到 `2024-12-31 23:45:00`。
+- 步数：`35040`，15 min timestep，`record_start_step=0`。
+- `exit_code=0`，`fallback_count=0`，`TES_Set` echo mismatch count `0`。
+- `zone_temp_max_c=28.54`。
+- `>27°C`：`386` 个 timestep，`96.5 h`，全年比例 `1.1016%`，满足“超温控制在 5% 以下”的当前验收目标。
+- `>30°C`：`0` 个 timestep，`0 h`。
+- `safety_override_count=1485`，`crah_fan_assist_count=14208`。
+- Warning summary：`severe_errors=0`，`total_warning=19`，`cooling_tower_air_flow_ratio_failed=3`，`tower_range_out_of_range=3`。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本次是在恢复版工作区中修复并验证温度安全 bug，结果证明在线耦合链路可通过当前温度安全目标；但尚未形成同版本同口径 `no_control`/`rbc` 年度对照和节能收益结论，且 cooling tower warning 仍需单独排查，因此暂不直接写入论文正文。
+
+### Known Limitations
+
+- 本次只验证 `mpc` 单 case 的温度安全修复，不包含年度 `no_control`/`rbc` 对照，不能据此声明节能率。
+- 温度保护层是 MPC 外层安全 guard，不是 MPC 优化问题内部显式温度约束；后续若要论文级控制律，应把温度约束纳入优化模型或明确说明 safety override。
+- 年度输出仍有 cooling tower warning：`cooling_tower_air_flow_ratio_failed=3`，`tower_range_out_of_range=3`。
+
+## v0.6.1-energyplus-mpc-annual-diagnostic - 2026-05-13
+
+### Git
+
+- Commit: `a484c5a9f6127fa284aea09c48359928f1cc4f22`。
+- 工作区：`C:\Users\18430\Desktop\epmpc_a484`，detached HEAD 恢复 `v0.6.0-energyplus-mpc-coupling` 实现。
+- 分支或合并状态：未新建提交；本条目记录本地年度诊断运行。
+
+### Scope
+
+本次不修改 EnergyPlus 模型、controller 代码或输入 CSV，仅在恢复版上运行一次全年 `mpc` + EnergyPlus Runtime API 在线耦合仿真。由于 `out/energyplus_nanjing/timeseries_15min.csv` 未随 `a484c5a9` 入库，本次将当前本机已有同模型基准输出复制到恢复版默认路径，作为 `ForecastProvider` 的 baseline forecast 输入。
+
+### Code Changes
+
+- 无代码变更。
+- 新增本地 baseline forecast 文件：`Nanjing-DataCenter-TES-EnergyPlus/out/energyplus_nanjing/timeseries_15min.csv`。
+- 新增 smoke 结果：`results/energyplus_mpc_smoke_20260513/`。
+- 新增全年 MPC+EnergyPlus 结果：`results/energyplus_mpc_annual_20260513/`。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller mpc --max-steps 4 --record-start-step 0 --selected-output-root results/energyplus_mpc_smoke_20260513 --raw-output-dir Nanjing-DataCenter-TES-EnergyPlus/out/energyplus_mpc_mpc_smoke_20260513
+python -m Nanjing-DataCenter-TES-EnergyPlus.controller.energyplus_mpc.run_energyplus_mpc --controller mpc --max-steps 35040 --record-start-step 0 --selected-output-root results/energyplus_mpc_annual_20260513 --raw-output-dir Nanjing-DataCenter-TES-EnergyPlus/out/energyplus_mpc_mpc_annual_20260513
+```
+
+Result:
+
+```text
+4-step smoke -> completed, exit_code=0, fallback_count=0, severe_errors=0
+Annual MPC+EnergyPlus run -> completed, exit_code=0, 35040 rows, fallback_count=0, severe_errors=0
+```
+
+### 运行结果位置
+
+- Selected results: `results/energyplus_mpc_annual_20260513/mpc/`
+- Raw EnergyPlus output: `Nanjing-DataCenter-TES-EnergyPlus/out/energyplus_mpc_mpc_annual_20260513/`
+- Run logs: `results/energyplus_mpc_annual_20260513/_run_logs/`
+
+### 运行结果简述
+
+- 时间范围：`2024-01-01 00:00:00` 到 `2024-12-31 23:45:00`。
+- 步数：`35040`，15 min timestep，`record_start_step=0`。
+- EnergyPlus elapsed：`1407.09 s`，EnergyPlus log runtime 约 `00hr 23min 27.09sec`。
+- `facility_energy_kwh=80551590.40`。
+- `pv_adjusted_grid_kwh=78765752.42`。
+- `pv_adjusted_cost=3265989.14`。
+- `peak_facility_kw=10895.75`，`peak_grid_kw=10895.75`。
+- `fallback_count=0`。
+- `TES_Set` echo mismatch count `0`。
+- `tes_use_response_count=8375`，`tes_source_response_count=24049`。
+- `soc_min=0.0`，`soc_max=1.0`，`soc_final=0.9497`。
+- `zone_temp_max_c=33.42`，未满足温度安全结论口径。
+- Warning summary：`severe_errors=0`，`total_warning=12`，`cooling_tower_air_flow_ratio_failed=2`，`tower_range_out_of_range=3`。
+
+### Thesis Impact
+
+- 未更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本次为恢复版年度在线耦合诊断运行，证明 `a484c5a9` 的 MPC+EnergyPlus runtime chain 可跑完整年；但只包含 `mpc` 单 case，没有同版本同口径 `no_control`/`rbc` 年度对照，且温度安全和 cooling tower warning 仍未通过最终结论口径，因此不应直接作为论文节能收益结论。
+
+### Known Limitations
+
+- 年度结果是 `mpc` 单 case，不包含同年度 no-control baseline 对照，不能计算可信节能率。
+- MPC 优化层仍是 Kim-lite proxy，EnergyPlus 是物理响应模型；这不是完整白盒 plant MPC。
+- 当前 controller 只直接写 `TES_Set`，不控制 chiller availability、pump mass flow、CRAH fan 或 setpoint。
+- `zone_temp_max_c=33.42`，说明全年在线控制仍有温度安全风险。
+- `tower_range_out_of_range=3`，年度输出存在冷却塔 warning，需要后续单独排查。
+
 ## v0.6.0-energyplus-mpc-coupling - 2026-05-07
 
 ### Git

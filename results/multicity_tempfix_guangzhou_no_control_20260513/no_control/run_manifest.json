@@ -1,0 +1,16 @@
+{
+  "controller": "no_control",
+  "max_steps": 35040,
+  "record_start_step": 0,
+  "raw_output_dir": "Nanjing-DataCenter-TES-EnergyPlus\\out\\multicity_tempfix_guangzhou_no_control_20260513",
+  "selected_output_dir": "results\\multicity_tempfix_guangzhou_no_control_20260513\\no_control",
+  "model": "C:\\Users\\18430\\Desktop\\epmpc_a484\\Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+  "weather": "Nanjing-DataCenter-TES-EnergyPlus\\weather\\CHN_GD_Guangzhou.592870_TMYx.2009-2023.epw",
+  "params": {
+    "model_path": "Nanjing-DataCenter-TES-EnergyPlus\\model\\Nanjing_DataCenter_TES.epJSON",
+    "model_unmodified": true
+  },
+  "mode_integrality": "relaxed",
+  "load_forecast": "baseline",
+  "exit_code": 0
+}

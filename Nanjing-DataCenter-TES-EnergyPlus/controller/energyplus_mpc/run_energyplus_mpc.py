@@ -34,6 +34,16 @@ from .forecast import ForecastProvider
 from .mpc_adapter import rbc_action, solve_energyplus_mpc_action
 
 
+TEMP_CHARGE_BLOCK_C = 26.0
+TEMP_ASSIST_C = 26.5
+TEMP_HARD_C = 26.8
+TEMP_FAN_ASSIST_C = 25.2
+TEMP_FAN_PREP_C = 24.8
+TEMP_SOC_MIN_FOR_DISCHARGE = 0.18
+TEMP_SOC_ASSIST_RESERVE = 0.25
+TEMP_VIOLATION_THRESHOLD_C = 27.0
+
+
 class EnergyPlusMpcRunner:
     def __init__(
         self,
@@ -120,6 +130,7 @@ class EnergyPlusMpcRunner:
             observation = self._read_observation(exchange, current_state, step, simulation_step, timestamp)
             action = self._choose_action(observation, step, simulation_step, timestamp)
             self._set_tes(exchange, current_state, float(action["tes_set"]))
+            self._set_hvac_controls(exchange, current_state, action)
             action["tes_set_written"] = float(action["tes_set"])
             self.action_rows.append(action)
 
@@ -240,6 +251,12 @@ class EnergyPlusMpcRunner:
             "solver_time_s": 0.0,
             "fallback": False,
             "fallback_reason": "",
+            "tes_set_before_safety": 0.0,
+            "safety_override": False,
+            "safety_reason": "",
+            "crah_fan_set": 0.0,
+            "crah_t_set": 0.0,
+            "chiller_t_set": 0.0,
         }
         if self.controller == "no_control":
             return base
@@ -261,9 +278,61 @@ class EnergyPlusMpcRunner:
                 base["fallback_reason"] = str(exc)
                 self.solver_rows.append(dict(base))
                 raise
+            self._apply_temperature_guard(base, observation)
             self.solver_rows.append(dict(base))
             return base
         raise ValueError(f"unsupported controller: {self.controller}")
+
+    def _apply_temperature_guard(self, action: dict[str, Any], observation: dict[str, Any]) -> None:
+        action["tes_set_before_safety"] = float(action["tes_set"])
+        action["safety_override"] = False
+        action["safety_reason"] = ""
+        zone_temp = float(observation.get("zone_temp_c", np.nan))
+        soc = float(observation.get("soc", np.nan))
+        if not np.isfinite(zone_temp):
+            return
+
+        guarded_tes_set = float(action["tes_set"])
+        reason = ""
+        if zone_temp >= TEMP_FAN_ASSIST_C:
+            action["crah_fan_set"] = 1.0
+            action["crah_t_set"] = 0.0
+            action["chiller_t_set"] = 0.0
+        elif zone_temp >= TEMP_FAN_PREP_C:
+            action["crah_fan_set"] = 0.75
+            action["crah_t_set"] = 0.0
+            action["chiller_t_set"] = 0.0
+
+        if zone_temp >= TEMP_HARD_C:
+            if np.isfinite(soc) and soc > TEMP_SOC_MIN_FOR_DISCHARGE:
+                guarded_tes_set = max(guarded_tes_set, 1.0)
+                reason = "hard_temperature_discharge"
+            else:
+                guarded_tes_set = max(guarded_tes_set, 0.0)
+                reason = "hard_temperature_charge_block"
+        elif zone_temp >= TEMP_ASSIST_C:
+            if np.isfinite(soc) and soc > TEMP_SOC_ASSIST_RESERVE:
+                guarded_tes_set = max(guarded_tes_set, 0.75)
+                reason = "warm_temperature_assist"
+            elif guarded_tes_set < 0.0:
+                guarded_tes_set = 0.0
+                reason = "warm_temperature_charge_block"
+        elif zone_temp >= TEMP_CHARGE_BLOCK_C and guarded_tes_set < 0.0:
+            guarded_tes_set = 0.0
+            reason = "charge_block_near_temperature_limit"
+
+        guarded_tes_set = float(np.clip(guarded_tes_set, -1.0, 1.0))
+        if abs(guarded_tes_set - float(action["tes_set"])) > 1e-9:
+            action["tes_set"] = guarded_tes_set
+            action["safety_override"] = True
+            action["safety_reason"] = reason
+
+    def _set_hvac_controls(self, exchange, state, action: dict[str, Any]) -> None:
+        for name in ("crah_fan_set", "crah_t_set", "chiller_t_set"):
+            handle = self._actuator_handles.get(name)
+            if handle is None or handle < 0:
+                continue
+            exchange.set_actuator_value(state, handle, float(np.clip(action.get(name, 0.0), 0.0, 1.0)))
 
     def _read_observation(self, exchange, state, step: int, simulation_step: int, timestamp: datetime) -> dict[str, Any]:
         values = {name: exchange.get_variable_value(state, handle) for name, handle in self._var_handles.items()}
@@ -354,6 +423,10 @@ def _summarize_monitor(monitor: pd.DataFrame, controller: str, exit_code: int, e
     if monitor.empty:
         return {"controller": controller, "steps": 0, "exit_code": exit_code, "elapsed_s": elapsed_s}
     fallback_count = int(monitor.get("fallback", pd.Series(dtype=bool)).fillna(False).sum())
+    temp_above_27 = monitor["zone_temp_c"].sub(TEMP_VIOLATION_THRESHOLD_C).clip(lower=0.0)
+    temp_above_30 = monitor["zone_temp_c"].sub(30.0).clip(lower=0.0)
+    safety_override_count = int(monitor.get("safety_override", pd.Series(dtype=bool)).fillna(False).sum())
+    crah_fan_assist_count = int((monitor.get("crah_fan_set", pd.Series(dtype=float)).fillna(0.0) > 0.5).sum())
     return {
         "controller": controller,
         "steps": int(len(monitor)),
@@ -363,6 +436,8 @@ def _summarize_monitor(monitor: pd.DataFrame, controller: str, exit_code: int, e
         "exit_code": int(exit_code),
         "elapsed_s": float(elapsed_s),
         "fallback_count": fallback_count,
+        "safety_override_count": safety_override_count,
+        "crah_fan_assist_count": crah_fan_assist_count,
         "facility_energy_kwh": float((monitor["facility_electricity_kw"] * 0.25).sum()),
         "pv_adjusted_grid_kwh": float((monitor["grid_import_kw"] * 0.25).sum()),
         "pv_adjusted_cost": float(monitor["pv_adjusted_cost"].sum()),
@@ -373,6 +448,15 @@ def _summarize_monitor(monitor: pd.DataFrame, controller: str, exit_code: int, e
         "soc_final": float(monitor["soc"].iloc[-1]),
         "zone_temp_min_c": float(monitor["zone_temp_c"].min()),
         "zone_temp_max_c": float(monitor["zone_temp_c"].max()),
+        "temp_violation_threshold_c": TEMP_VIOLATION_THRESHOLD_C,
+        "temp_violation_count_gt27c": int((monitor["zone_temp_c"] > TEMP_VIOLATION_THRESHOLD_C).sum()),
+        "temp_violation_hours_gt27c": float((monitor["zone_temp_c"] > TEMP_VIOLATION_THRESHOLD_C).sum() * 0.25),
+        "temp_violation_ratio_gt27c": float((monitor["zone_temp_c"] > TEMP_VIOLATION_THRESHOLD_C).mean()),
+        "temp_violation_degree_hours_gt27c": float((temp_above_27 * 0.25).sum()),
+        "temp_violation_count_gt30c": int((monitor["zone_temp_c"] > 30.0).sum()),
+        "temp_violation_hours_gt30c": float((monitor["zone_temp_c"] > 30.0).sum() * 0.25),
+        "temp_violation_ratio_gt30c": float((monitor["zone_temp_c"] > 30.0).mean()),
+        "temp_violation_degree_hours_gt30c": float((temp_above_30 * 0.25).sum()),
         "tes_set_mismatch_count": int((monitor["tes_set_echo"].sub(monitor["tes_set_written"]).abs() > 1e-6).sum())
         if "tes_set_written" in monitor
         else -1,

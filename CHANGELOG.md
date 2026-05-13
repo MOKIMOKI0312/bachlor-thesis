@@ -21,7 +21,7 @@
 
 ### Git
 
-- Commit: `待提交后回填`。
+- Commit: `8a91d6e11dbe214f54f2bcbe04413a1c6ede9c4e`。
 - 工作区：`C:\Users\18430\Desktop\epmpc_a484`。
 - 分支：`codex/fix-energyplus-mpc-temp-safety`。
 - 分支或合并状态：准备推送并合并到 `master`。
@@ -104,7 +104,7 @@ Guangzhou mpc -> completed, 35040 rows, exit_code=0, fallback_count=0, severe_er
 ### Git
 
 - Base commit: `a484c5a9f6127fa284aea09c48359928f1cc4f22`。
-- Commit: `待提交后回填`。
+- Commit: `8a91d6e11dbe214f54f2bcbe04413a1c6ede9c4e`。
 - 工作区：`C:\Users\18430\Desktop\epmpc_a484`。
 - 分支：`codex/fix-energyplus-mpc-temp-safety`。
 - 分支或合并状态：本地修复与年度验证，准备随 `v0.6.3` 提交。

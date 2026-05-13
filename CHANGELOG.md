@@ -21,7 +21,7 @@
 
 ### Git
 
-- Commit: `TBD-after-commit`。
+- Commit: `af47542ac3ddb0803135ad463822117436e3970b`（Phase 3 code/data/results commit）。
 - 工作区：`C:\Users\18430\Desktop\毕业设计代码`。
 - 分支：`codex/phase3-mpc-ep-real-weather-pvgis`。
 - 分支或合并状态：准备推送并合并到 `master`。

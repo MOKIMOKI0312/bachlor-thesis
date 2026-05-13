@@ -1,0 +1,36 @@
+locations:
+  - id: nanjing
+    label: Nanjing
+    role: baseline_east_china
+    weather_profile: data/locations/nanjing/weather_energyplus_2025.csv
+    load_profile: data/locations/nanjing/load_energyplus_2025.csv
+    pv_profile_20mwp: Nanjing-DataCenter-TES-EnergyPlus/inputs/pvgis/processed/CHN_Nanjing_PVGIS_20MWp_2025_local.csv
+    price_profile: Nanjing-DataCenter-TES-EnergyPlus/inputs/Jiangsu_TOU_2025_hourly.csv
+    epw_path: Nanjing-DataCenter-TES-EnergyPlus/weather/CHN_JS_Nanjing.582380_TMYx.2009-2023.epw
+    energyplus_baseline_timeseries: Nanjing-DataCenter-TES-EnergyPlus/out/energyplus_nanjing/timeseries_15min.csv
+    pue_offset: 0
+    data_boundary: EnergyPlus no-control annual boundary + PVGIS 20 MWp PV + Jiangsu TOU price
+
+  - id: guangzhou
+    label: Guangzhou
+    role: hot_humid_south_china
+    weather_profile: data/locations/guangzhou/weather_energyplus_2025.csv
+    load_profile: data/locations/guangzhou/load_energyplus_2025.csv
+    pv_profile_20mwp: Nanjing-DataCenter-TES-EnergyPlus/inputs/pvgis/processed/CHN_Guangzhou_PVGIS_20MWp_2025_local.csv
+    price_profile: Nanjing-DataCenter-TES-EnergyPlus/inputs/Jiangsu_TOU_2025_hourly.csv
+    epw_path: Nanjing-DataCenter-TES-EnergyPlus/weather/CHN_GD_Guangzhou.592870_TMYx.2009-2023.epw
+    energyplus_baseline_timeseries: results/multicity_tempfix_guangzhou_no_control_20260513/no_control/observation.csv
+    pue_offset: 0.015
+    data_boundary: EnergyPlus no-control annual boundary + PVGIS 20 MWp PV + Jiangsu TOU price
+
+  - id: beijing
+    label: Beijing
+    role: north_china_policy_relevance
+    weather_profile: data/locations/beijing/weather_energyplus_2025.csv
+    load_profile: data/locations/beijing/load_energyplus_2025.csv
+    pv_profile_20mwp: Nanjing-DataCenter-TES-EnergyPlus/inputs/pvgis/processed/CHN_Beijing_PVGIS_20MWp_2025_local.csv
+    price_profile: Nanjing-DataCenter-TES-EnergyPlus/inputs/Jiangsu_TOU_2025_hourly.csv
+    epw_path: Nanjing-DataCenter-TES-EnergyPlus/weather/CHN_BJ_Beijing-Capital.Intl.AP.545110_TMYx.2009-2023.epw
+    energyplus_baseline_timeseries: results/multicity_tempfix_beijing_no_control_20260513/no_control/observation.csv
+    pue_offset: -0.005
+    data_boundary: EnergyPlus no-control annual boundary + PVGIS 20 MWp PV + Jiangsu TOU price

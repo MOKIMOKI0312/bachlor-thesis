@@ -30,3 +30,4 @@ _archive/runtime/agent_comms/_poll.log
 _archive/runtime/agent_comms/_new_task_for_codex.flag
 _archive/runtime/agent_comms/_last_seen_turn.txt
 results/**/_run_logs/
+results/phase3_pv_tes_sizing/**/runs/

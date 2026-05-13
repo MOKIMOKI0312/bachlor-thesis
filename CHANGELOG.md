@@ -17,6 +17,86 @@
   - 是否影响论文
   - 已知限制
 
+## v0.7.0-phase3-real-epw-pvgis-sizing-matrix - 2026-05-13
+
+### Git
+
+- Commit: `TBD-after-commit`。
+- 工作区：`C:\Users\18430\Desktop\毕业设计代码`。
+- 分支：`codex/phase3-mpc-ep-real-weather-pvgis`。
+- 分支或合并状态：准备推送并合并到 `master`。
+
+### Scope
+
+执行 Phase 3 PV--TES 技术容量推荐任务，将原先缺失的地点 profile 改为真实三地点输入：南京、广州、北京 EPW 对应的 EnergyPlus 年度 no-control 负荷/天气边界，PVGIS v5.3 20 MWp 光伏曲线，以及江苏 2025 TOU 电价。完成 `3 locations × 5 PV × 5 TES × 2 CP uplift = 150` 个全年矩阵场景，并生成审计、图表和推荐容量文档。
+
+### Code, Data, and Docs Changes
+
+- 新增 `mpc_v2/scripts/prepare_phase3_real_inputs.py`，可复现生成三地点 EnergyPlus-derived load/weather profile、下载/标准化 PVGIS 原始 JSON 与 20 MWp 本地时间 PV CSV，并写入输入 manifest。
+- 更新 `mpc_v2/config/phase3_locations.yaml`，指向真实 EPW、EnergyPlus baseline、PVGIS 20 MWp 曲线和江苏 TOU 电价。
+- 更新 `mpc_v2/scripts/run_phase3_pv_tes_matrix.py`，支持 `base_facility_kw`、`chiller_cooling_kw`、湿球温度和 zone temperature 等 EnergyPlus-derived profile 字段，并加入基线峰值保护、峰值高负荷放冷和 72 h terminal SOC 恢复逻辑。
+- 更新 `mpc_v2/phase3_sizing/recommendation.py`，对年度峰值削减接近零的 EnergyPlus 边界给出明确推荐说明，避免把近零峰值指标误判为容量结论失败。
+- 新增真实输入数据：`data/locations/{nanjing,guangzhou,beijing}/`，`Nanjing-DataCenter-TES-EnergyPlus/inputs/pvgis/raw/`，`Nanjing-DataCenter-TES-EnergyPlus/inputs/pvgis/processed/`。
+- 更新 `docs/phase3_pv_tes_sizing_assumptions.md`，记录真实 EPW、PVGIS API 参数、江苏 TOU 电价和 EnergyPlus-derived matrix 边界。
+- 更新论文草稿 `docs/project_management/毕业设计论文/thesis_draft.tex`，加入三地点全年 PV--TES 技术容量矩阵、核心结论和边界说明。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m mpc_v2.scripts.prepare_phase3_real_inputs --force-download
+python -m pytest -q tests/test_phase3_pv_scaling.py tests/test_phase3_tes_scaling.py tests/test_phase3_cp_metrics.py tests/test_phase3_recommendation.py tests/test_phase3_matrix_builder.py
+python -m mpc_v2.scripts.run_phase3_pv_tes_matrix --config mpc_v2/config/phase3_pv_tes_sizing.yaml --locations mpc_v2/config/phase3_locations.yaml --location-filter nanjing --output-root results/phase3_pv_tes_sizing/pilot_nanjing_real_ep_pvgis
+python -m mpc_v2.scripts.audit_phase3_pv_tes_results --summary results/phase3_pv_tes_sizing/pilot_nanjing_real_ep_pvgis/summary/phase3_summary.csv --output results/phase3_pv_tes_sizing/pilot_nanjing_real_ep_pvgis/summary/audit_report.md
+python -m mpc_v2.scripts.run_phase3_pv_tes_matrix --config mpc_v2/config/phase3_pv_tes_sizing_full_year.yaml --locations mpc_v2/config/phase3_locations.yaml --output-root results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis --parallel 4
+python -m mpc_v2.scripts.audit_phase3_pv_tes_results --summary results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/summary/phase3_summary.csv --output results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/summary/audit_report.md
+python -m mpc_v2.scripts.plot_phase3_pv_tes_results --summary results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/summary/phase3_summary.csv --output-dir results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/figures
+```
+
+Result:
+
+```text
+pytest Phase 3 tests -> 12 passed
+pilot_nanjing_real_ep_pvgis -> 50/50 scenarios completed, audit P0=0
+full_matrix_real_ep_pvgis -> 150/150 scenarios completed, audit P0=0, P1=1
+figures -> 5 PNG files generated
+```
+
+### 运行结果位置
+
+- Pilot results: `results/phase3_pv_tes_sizing/pilot_nanjing_real_ep_pvgis/`
+- Full matrix results: `results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/`
+- Full matrix summary: `results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/summary/phase3_summary.csv`
+- Recommendations: `results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/summary/phase3_capacity_recommendations.csv`
+- Audit report: `results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/summary/audit_report.md`
+- Figures: `results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/figures/`
+- Generated result docs: `results/phase3_pv_tes_sizing/full_matrix_real_ep_pvgis/docs/`
+
+### 运行结果简述
+
+| Location | Recommended PV MWp | Recommended TES MWh_th | Max CP suppression | Recommended CP suppression | Recommended PV self-consumption | Max peak reduction |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Beijing | 20 | 72 | 0.587 | 0.439 | 0.829 | 0.000 |
+| Guangzhou | 20 | 72 | 0.528 | 0.365 | 0.947 | 0.014 |
+| Nanjing | 20 | 72 | 0.482 | 0.352 | 0.912 | 0.001 |
+
+结论：在当前 EnergyPlus-derived 边界下，20 MWp PV 与 36--72 MWh_th TES 可作为运行层面的 technical recommended capacity range。72 MWh_th 在三地均更接近最大尖峰抑制效果；但年度绝对峰值削减接近零，说明主收益来自尖峰窗口购电抑制和 PV 自消纳改善，而不是年度峰值迁移。全量审计唯一 P1 为 15 个 `TES=9 MWh_th` 场景出现轻微负 `critical_peak_suppression_ratio`，该现象保留为弱容量/回充惩罚边界，不隐藏。
+
+### Thesis Impact
+
+- 已更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本次新增真实 EPW/PVGIS/江苏 TOU 下的三地点全年容量矩阵，影响论文实验设计、结果、容量推荐和结论边界；未新增 BibTeX 引用。
+
+### Known Limitations
+
+- Phase 3 主矩阵是 EnergyPlus-derived 技术 sizing：EnergyPlus 提供年度负荷/天气边界，MPC-style TES dispatch 在该边界上回放；不是 150 个容量组合全部 EnergyPlus online co-simulation。
+- 三地点仍共用南京数据中心建筑模型和江苏电价，不能解释为城市真实电价经济最优。
+- 推荐是 technical recommended capacity range，不是 CAPEX/LCOE/NPV 经济最优。
+- 年度峰值削减接近零；如论文需要削峰结论，应引入 demand charge、peak-cap 或更明确的峰值窗口定义。
+- `TES=9 MWh_th` 小容量在部分场景中出现负尖峰抑制，说明容量过小可能被回充惩罚抵消。
+
 ## v0.6.3-energyplus-mpc-multicity-weather-validation - 2026-05-13
 
 ### Git

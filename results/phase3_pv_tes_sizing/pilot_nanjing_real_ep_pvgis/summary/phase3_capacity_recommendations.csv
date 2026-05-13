@@ -1,0 +1,2 @@
+location_id,recommended_pv_mwp,recommended_tes_mwh_th,rule_name,cp_suppression_ratio,peak_reduction_ratio,pv_self_consumption_ratio,pv_facility_load_coverage_ratio,max_cp_suppression_ratio,max_peak_reduction_ratio,max_pv_facility_load_coverage_ratio,threshold_gap_score,notes
+nanjing,20.0,72.0,minimum_capacity_best_available,0.22093821395695168,0.0,0.9623539170974877,0.29971079214711616,0.34354521754232714,0.0,0.44378419601142916,0.08825248183114276,best available: no case met all thresholds

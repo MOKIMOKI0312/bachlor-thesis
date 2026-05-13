@@ -169,11 +169,11 @@ def add_relative_metrics(summary: pd.DataFrame) -> pd.DataFrame:
             continue
         impact_ref = float(no_tes_now.iloc[0]["total_cost"] - no_tes_cp0.iloc[0]["total_cost"])
         impact_case = float(row["total_cost"] - row["total_cost_cp0"])
-        if impact_ref > 0:
-            frame.at[idx, "critical_peak_suppression_ratio"] = 1.0 - impact_case / impact_ref
-        frame.at[idx, "critical_peak_grid_reduction_kwh"] = float(no_tes_now.iloc[0]["critical_peak_grid_kwh"]) - float(
-            row["critical_peak_grid_kwh"]
-        )
+        grid_ref = float(no_tes_now.iloc[0]["critical_peak_grid_kwh"])
+        grid_reduction = grid_ref - float(row["critical_peak_grid_kwh"])
+        frame.at[idx, "critical_peak_grid_reduction_kwh"] = grid_reduction
+        if grid_ref > 0:
+            frame.at[idx, "critical_peak_suppression_ratio"] = grid_reduction / grid_ref
 
     return frame.drop(columns=["total_cost_cp0"])
 

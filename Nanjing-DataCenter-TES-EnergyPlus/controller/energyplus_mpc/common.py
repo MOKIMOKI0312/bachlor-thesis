@@ -52,17 +52,34 @@ def load_external_series(price_csv: str | Path = DEFAULT_PRICE, pv_csv: str | Pa
     pv_frame = pd.read_csv(pv_csv)
     price_col = [c for c in price_frame.columns if c != "timestamp"][0]
     pv_col = [c for c in pv_frame.columns if c != "timestamp"][0]
-    price = pd.Series(
+    price = _as_15min_series(pd.Series(
         pd.to_numeric(price_frame[price_col], errors="raise").astype(float).to_numpy(),
         index=pd.to_datetime(price_frame["timestamp"]),
-    ).sort_index()
+    ).sort_index())
     if "mwh" in price_col.lower():
         price = price / 1000.0
-    pv = pd.Series(
+    pv = _as_15min_series(pd.Series(
         pd.to_numeric(pv_frame[pv_col], errors="raise").astype(float).to_numpy(),
         index=pd.to_datetime(pv_frame["timestamp"]),
-    ).sort_index()
+    ).sort_index())
     return ExternalSeries(price_per_kwh=price, pv_kw=pv)
+
+
+def _as_15min_series(series: pd.Series) -> pd.Series:
+    series = series[~series.index.duplicated(keep="last")].sort_index()
+    if len(series) < 2:
+        return series
+    deltas = series.index.to_series().diff().dropna()
+    median_minutes = float(deltas.median().total_seconds() / 60.0)
+    if median_minutes <= 0.0:
+        return series
+    extension_minutes = max(0.0, median_minutes - 15.0)
+    index = pd.date_range(
+        series.index.min(),
+        series.index.max() + pd.Timedelta(minutes=extension_minutes),
+        freq="15min",
+    )
+    return series.reindex(index).ffill()
 
 
 def cyclic_lookup(series: pd.Series, timestamps: list[datetime]) -> np.ndarray:
@@ -74,7 +91,10 @@ def cyclic_lookup(series: pd.Series, timestamps: list[datetime]) -> np.ndarray:
 def load_baseline_timeseries(path: str | Path = DEFAULT_BASELINE_TIMESERIES) -> pd.DataFrame:
     frame = pd.read_csv(path)
     frame["timestamp"] = pd.to_datetime(frame["timestamp"])
-    frame["interval_start"] = pd.to_datetime(frame["interval_start"])
+    if "interval_start" in frame.columns:
+        frame["interval_start"] = pd.to_datetime(frame["interval_start"])
+    else:
+        frame["interval_start"] = frame["timestamp"]
     return frame
 
 

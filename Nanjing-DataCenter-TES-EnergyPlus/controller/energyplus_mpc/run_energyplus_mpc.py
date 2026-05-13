@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import sys
 import time
+from copy import deepcopy
 from typing import Any
 
 import numpy as np
@@ -62,13 +63,22 @@ class EnergyPlusMpcRunner:
         mode_integrality: str = "relaxed",
         load_forecast: str = "baseline",
         record_start_step: str | int = "auto",
+        max_signed_du: float = 1.0,
+        tes_capacity_mwh_th: float | None = None,
+        tes_q_abs_max_kw_th: float | None = None,
+        scenario_id: str = "",
+        case_metadata: dict[str, Any] | None = None,
     ):
         self.controller = controller
         self.max_steps = int(max_steps)
         self.eplus_root = ensure_path(eplus_root, "EnergyPlus install", file=False)
         self.model = ensure_path(model, "EnergyPlus model")
         self.weather = ensure_path(weather, "EnergyPlus weather")
-        self.params = read_yaml(params_path)
+        self.params = self._apply_runtime_overrides(
+            read_yaml(params_path),
+            tes_capacity_mwh_th=tes_capacity_mwh_th,
+            tes_q_abs_max_kw_th=tes_q_abs_max_kw_th,
+        )
         self.baseline_timeseries = ensure_path(baseline_timeseries, "baseline timeseries")
         self.price_csv = ensure_path(price_csv, "price CSV")
         self.pv_csv = ensure_path(pv_csv, "PV CSV")
@@ -77,6 +87,16 @@ class EnergyPlusMpcRunner:
         self.horizon_steps = int(horizon_steps)
         self.mode_integrality = mode_integrality
         self.load_forecast = load_forecast
+        self.max_signed_du = float(max_signed_du)
+        self.scenario_id = scenario_id
+        self.case_metadata = dict(case_metadata or {})
+        self.critical_peak_windows = self.case_metadata.get("critical_peak_windows", [])
+        self.critical_peak_uplift = float(self.case_metadata.get("critical_peak_uplift", 0.0) or 0.0)
+        self.reserve_tes_for_critical_peak = bool(self.case_metadata.get("reserve_tes_for_critical_peak", False))
+        self.tes_enabled = (
+            float(self.params.get("tes", {}).get("capacity_kwh_th_proxy", 0.0)) > 0.0
+            and float(self.params.get("tes", {}).get("q_abs_max_kw_th_proxy", 0.0)) > 0.0
+        )
         self.forecast = ForecastProvider(
             str(self.baseline_timeseries),
             str(self.price_csv),
@@ -96,6 +116,29 @@ class EnergyPlusMpcRunner:
         self._actuator_handles: dict[str, int] = {}
         self._last_tes_set = 0.0
         self._simulation_step = 0
+
+    def _apply_runtime_overrides(
+        self,
+        params: dict[str, Any],
+        tes_capacity_mwh_th: float | None,
+        tes_q_abs_max_kw_th: float | None,
+    ) -> dict[str, Any]:
+        out = deepcopy(params)
+        tes = out.setdefault("tes", {})
+        if tes_capacity_mwh_th is not None:
+            capacity = float(tes_capacity_mwh_th)
+            if capacity < 0:
+                raise ValueError("tes_capacity_mwh_th must be non-negative")
+            tes["capacity_kwh_th_proxy"] = capacity * 1000.0
+            tes["runtime_capacity_mwh_th"] = capacity
+            if capacity == 0:
+                tes["q_abs_max_kw_th_proxy"] = 0.0
+        if tes_q_abs_max_kw_th is not None and float(tes.get("capacity_kwh_th_proxy", 0.0)) > 0.0:
+            q_abs = float(tes_q_abs_max_kw_th)
+            if q_abs < 0:
+                raise ValueError("tes_q_abs_max_kw_th must be non-negative")
+            tes["q_abs_max_kw_th_proxy"] = q_abs
+        return out
 
     def run(self) -> Path:
         api = self._load_api()
@@ -129,6 +172,7 @@ class EnergyPlusMpcRunner:
             timestamp = self._timestamp_for_step(simulation_step)
             observation = self._read_observation(exchange, current_state, step, simulation_step, timestamp)
             action = self._choose_action(observation, step, simulation_step, timestamp)
+            self._apply_rate_limit(action)
             self._set_tes(exchange, current_state, float(action["tes_set"]))
             self._set_hvac_controls(exchange, current_state, action)
             action["tes_set_written"] = float(action["tes_set"])
@@ -254,6 +298,10 @@ class EnergyPlusMpcRunner:
             "tes_set_before_safety": 0.0,
             "safety_override": False,
             "safety_reason": "",
+            "tes_set_before_peak_reserve": 0.0,
+            "peak_reserve_override": False,
+            "tes_set_before_rate_limit": 0.0,
+            "rate_limit_override": False,
             "crah_fan_set": 0.0,
             "crah_t_set": 0.0,
             "chiller_t_set": 0.0,
@@ -279,6 +327,7 @@ class EnergyPlusMpcRunner:
                 self.solver_rows.append(dict(base))
                 raise
             self._apply_temperature_guard(base, observation)
+            self._apply_peak_reserve_guard(base, timestamp)
             self.solver_rows.append(dict(base))
             return base
         raise ValueError(f"unsupported controller: {self.controller}")
@@ -303,7 +352,11 @@ class EnergyPlusMpcRunner:
             action["crah_t_set"] = 0.0
             action["chiller_t_set"] = 0.0
 
-        if zone_temp >= TEMP_HARD_C:
+        if not self.tes_enabled:
+            if guarded_tes_set != 0.0:
+                guarded_tes_set = 0.0
+                reason = "tes_disabled"
+        elif zone_temp >= TEMP_HARD_C:
             if np.isfinite(soc) and soc > TEMP_SOC_MIN_FOR_DISCHARGE:
                 guarded_tes_set = max(guarded_tes_set, 1.0)
                 reason = "hard_temperature_discharge"
@@ -326,6 +379,42 @@ class EnergyPlusMpcRunner:
             action["tes_set"] = guarded_tes_set
             action["safety_override"] = True
             action["safety_reason"] = reason
+
+    def _apply_peak_reserve_guard(self, action: dict[str, Any], timestamp: datetime) -> None:
+        action["tes_set_before_peak_reserve"] = float(action["tes_set"])
+        action["peak_reserve_override"] = False
+        if not self.reserve_tes_for_critical_peak or self.critical_peak_uplift <= 0.0:
+            return
+        if self._in_critical_peak(timestamp) or float(action["tes_set"]) <= 0.0:
+            return
+        if action.get("safety_override") and "temperature" in str(action.get("safety_reason", "")):
+            return
+        action["tes_set"] = 0.0
+        action["peak_reserve_override"] = True
+
+    def _in_critical_peak(self, timestamp: datetime) -> bool:
+        hour = timestamp.hour + timestamp.minute / 60.0 + timestamp.second / 3600.0
+        for window in self.critical_peak_windows or []:
+            if len(window) != 2:
+                continue
+            start, end = float(window[0]), float(window[1])
+            if start <= hour < end:
+                return True
+        return False
+
+    def _apply_rate_limit(self, action: dict[str, Any]) -> None:
+        action["tes_set_before_rate_limit"] = float(action["tes_set"])
+        action["rate_limit_override"] = False
+        limit = max(0.0, float(self.max_signed_du))
+        if limit >= 1.0:
+            return
+        previous = float(self._last_tes_set)
+        requested = float(action["tes_set"])
+        delta = requested - previous
+        if abs(delta) <= limit + 1e-12:
+            return
+        action["tes_set"] = float(previous + np.sign(delta) * limit)
+        action["rate_limit_override"] = True
 
     def _set_hvac_controls(self, exchange, state, action: dict[str, Any]) -> None:
         for name in ("crah_fan_set", "crah_t_set", "chiller_t_set"):
@@ -398,9 +487,11 @@ class EnergyPlusMpcRunner:
         (case_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         (case_dir / "handle_map.json").write_text(json.dumps(self.handle_map, indent=2), encoding="utf-8")
         manifest = {
+            "scenario_id": self.scenario_id,
             "controller": self.controller,
             "max_steps": self.max_steps,
             "record_start_step": self.record_start_step,
+            "max_signed_du": self.max_signed_du,
             "raw_output_dir": str(self.raw_output_dir),
             "selected_output_dir": str(case_dir),
             "model": str(self.model),
@@ -409,6 +500,7 @@ class EnergyPlusMpcRunner:
             "mode_integrality": self.mode_integrality,
             "load_forecast": self.load_forecast,
             "exit_code": exit_code,
+            "case_metadata": self.case_metadata,
         }
         (case_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         err = self.raw_output_dir / "eplusout.err"
@@ -498,6 +590,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--horizon-steps", type=int, default=8)
     parser.add_argument("--mode-integrality", choices=["strict", "relaxed"], default="relaxed")
     parser.add_argument("--load-forecast", choices=["baseline", "persistence"], default="baseline")
+    parser.add_argument("--max-signed-du", type=float, default=1.0)
+    parser.add_argument("--tes-capacity-mwh-th", type=float, default=None)
+    parser.add_argument("--tes-q-abs-max-kw-th", type=float, default=None)
+    parser.add_argument("--scenario-id", default="")
+    parser.add_argument(
+        "--case-metadata-json",
+        default="{}",
+        help="JSON object copied into run_manifest.json for scenario-level provenance.",
+    )
     parser.add_argument(
         "--record-start-step",
         default="auto",
@@ -509,6 +610,9 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     raw = Path(args.raw_output_dir) if args.raw_output_dir else default_raw_output(args.controller)
+    metadata = json.loads(args.case_metadata_json)
+    if not isinstance(metadata, dict):
+        raise ValueError("--case-metadata-json must decode to a JSON object")
     runner = EnergyPlusMpcRunner(
         controller=args.controller,
         max_steps=args.max_steps,
@@ -525,6 +629,11 @@ def main(argv: list[str] | None = None) -> int:
         mode_integrality=args.mode_integrality,
         load_forecast=args.load_forecast,
         record_start_step=args.record_start_step,
+        max_signed_du=args.max_signed_du,
+        tes_capacity_mwh_th=args.tes_capacity_mwh_th,
+        tes_q_abs_max_kw_th=args.tes_q_abs_max_kw_th,
+        scenario_id=args.scenario_id,
+        case_metadata=metadata,
     )
     case_dir = runner.run()
     print(case_dir)

@@ -31,3 +31,6 @@ _archive/runtime/agent_comms/_new_task_for_codex.flag
 _archive/runtime/agent_comms/_last_seen_turn.txt
 results/**/_run_logs/
 results/phase3_pv_tes_sizing/**/runs/
+results/phase3_pv_tes_sizing/**/raw/
+results/phase3_pv_tes_sizing/**/models/
+results/phase3_pv_tes_sizing/**/inputs/

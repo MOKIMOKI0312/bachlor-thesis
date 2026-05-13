@@ -1,0 +1,2 @@
+scenario_id,location_id,pv_capacity_mwp,tes_capacity_mwh_th,critical_peak_uplift,critical_peak_window_set,controller,run_dir,status,engine
+phase3_nanjing_pv0mwp_tes9mwh_cp20,nanjing,0.0,9.0,0.2,evening,online_energyplus_mpc,results\phase3_pv_tes_sizing\online_smoke_nanjing_tes9_cp20_active_ramped\runs\phase3_nanjing_pv0mwp_tes9mwh_cp20,completed,mpc_energyplus_online

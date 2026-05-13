@@ -21,7 +21,7 @@
 
 ### Git
 
-- Commit: `677994c83ea01eb16018869132c3bf2f932624db`（在线 MPC+EP 耦合修复与 pilot）。
+- Commit: `2395378d9c5d2ba9538fb79a37de01c0a863ccae`（在线 MPC+EP 耦合修复与 pilot）。
 - 工作区：`C:\Users\18430\Desktop\毕业设计代码`。
 - 分支：`codex/phase3-online-mpc-ep-sizing`。
 - 分支或合并状态：本地开发中，尚未推送或合并。

@@ -11,16 +11,16 @@ def test_critical_peak_uplift_uses_explicit_window_only():
     assert list(price) == [100.0, 120.0, 120.0, 100.0]
 
 
-def test_critical_peak_suppression_ratio_from_cost_pairs():
+def test_critical_peak_suppression_ratio_uses_grid_energy_reduction():
     rows = [
         {"location_id": "nanjing", "pv_capacity_mwp": 0, "tes_capacity_mwh_th": 0, "critical_peak_uplift": 0.0, "total_cost": 90.0, "peak_grid_kw": 1.0, "critical_peak_grid_kwh": 1.0},
         {"location_id": "nanjing", "pv_capacity_mwp": 0, "tes_capacity_mwh_th": 0, "critical_peak_uplift": 0.2, "total_cost": 95.0, "peak_grid_kw": 1.0, "critical_peak_grid_kwh": 1.0},
         {"location_id": "nanjing", "pv_capacity_mwp": 20, "tes_capacity_mwh_th": 0, "critical_peak_uplift": 0.0, "total_cost": 100.0, "peak_grid_kw": 1.0, "critical_peak_grid_kwh": 1.0},
         {"location_id": "nanjing", "pv_capacity_mwp": 20, "tes_capacity_mwh_th": 0, "critical_peak_uplift": 0.2, "total_cost": 120.0, "peak_grid_kw": 1.0, "critical_peak_grid_kwh": 1.0},
         {"location_id": "nanjing", "pv_capacity_mwp": 20, "tes_capacity_mwh_th": 18, "critical_peak_uplift": 0.0, "total_cost": 100.0, "peak_grid_kw": 1.0, "critical_peak_grid_kwh": 1.0},
-        {"location_id": "nanjing", "pv_capacity_mwp": 20, "tes_capacity_mwh_th": 18, "critical_peak_uplift": 0.2, "total_cost": 110.0, "peak_grid_kw": 1.0, "critical_peak_grid_kwh": 0.5},
+        {"location_id": "nanjing", "pv_capacity_mwp": 20, "tes_capacity_mwh_th": 18, "critical_peak_uplift": 0.2, "total_cost": 130.0, "peak_grid_kw": 1.0, "critical_peak_grid_kwh": 0.5},
     ]
     out = add_relative_metrics(pd.DataFrame(rows))
     case = out[(out["pv_capacity_mwp"] == 20) & (out["tes_capacity_mwh_th"] == 18) & (out["critical_peak_uplift"] == 0.2)].iloc[0]
-    assert case["critical_peak_cost_impact"] == 10.0
+    assert case["critical_peak_cost_impact"] == 30.0
     assert case["critical_peak_suppression_ratio"] == 0.5

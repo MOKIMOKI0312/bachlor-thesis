@@ -1,0 +1,61 @@
+base_config: mpc_v2/config/base.yaml
+
+phase3:
+  name: pv_tes_technical_sizing_online_mpc_ep
+  model: online_mpc_energyplus
+  purpose: technical_capacity_recommendation_online_mpc_ep
+
+locations:
+  config: mpc_v2/config/phase3_locations.yaml
+
+price:
+  profile: Nanjing-DataCenter-TES-EnergyPlus/inputs/Jiangsu_TOU_2025_hourly.csv
+
+simulation:
+  dt_hours: 0.25
+  horizon_steps: 48
+  episode_days: 365
+  start_timestamp: "2025-01-01 00:00:00"
+  start_day_policy: full_year_2025
+  use_energyplus_online: true
+  use_energyplus_derived_profiles: false
+
+pv:
+  capacities_mwp: [0, 10, 20, 40, 60]
+  reference_mwp: 20
+  scale_method: linear_from_pvgis_profile
+  source_note: PVGIS_v5_3_seriescalc_20MWp_shifted_to_China_local_time
+
+tes:
+  capacities_mwh_th: [0, 9, 18, 36, 72]
+  reference_mwh_th: 18
+  keep_power_fixed: true
+  q_tes_abs_max_kw_th: 4500
+  soc_initial: 0.50
+  soc_min: 0.15
+  soc_max: 0.85
+  soc_target: 0.50
+  enforce_terminal_soc: true
+
+critical_peak:
+  uplift_values: [0.0, 0.2]
+  optional_stress_uplift_values: [0.5]
+  window_sets:
+    evening:
+      - [16, 20]
+  default_window_set: evening
+
+controller:
+  name: online_energyplus_mpc
+  reserve_tes_for_critical_peak: true
+  enforce_signed_ramp: true
+  max_signed_du: 0.25
+  mode_integrality: relaxed
+  report_mode_fractionality: true
+
+recommendation:
+  peak_reduction_threshold_fraction: 0.90
+  cp_suppression_threshold_fraction: 0.90
+  max_allowed_soc_abs_delta: 0.05
+  min_pv_self_consumption_ratio: 0.80
+  marginal_gain_threshold: 0.05

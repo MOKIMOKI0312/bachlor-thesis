@@ -1,5 +1,6 @@
 import importlib
 import json
+from datetime import datetime
 
 import pandas as pd
 
@@ -15,6 +16,29 @@ def test_tes_set_mapping_matches_energyplus_sign_convention():
     assert pkg.tes_set_from_q_tes_net(4500.0, 4500.0) == -1.0
     assert pkg.tes_set_from_q_tes_net(-4500.0, 4500.0) == 1.0
     assert pkg.tes_set_from_q_tes_net(0.0, 4500.0) == 0.0
+
+
+def test_hourly_external_inputs_expand_to_15min(tmp_path):
+    price = tmp_path / "price.csv"
+    pv = tmp_path / "pv.csv"
+    pd.DataFrame(
+        [
+            {"timestamp": "2025-01-01 00:00:00", "price_usd_per_mwh": 100.0},
+            {"timestamp": "2025-01-01 01:00:00", "price_usd_per_mwh": 200.0},
+        ]
+    ).to_csv(price, index=False)
+    pd.DataFrame(
+        [
+            {"timestamp": "2025-01-01 00:00:00", "pv_kw": 1000.0},
+            {"timestamp": "2025-01-01 01:00:00", "pv_kw": 2000.0},
+        ]
+    ).to_csv(pv, index=False)
+
+    external = pkg.load_external_series(price, pv)
+    times = [datetime(2025, 1, 1, 0, 15), datetime(2025, 1, 1, 1, 30)]
+
+    assert pkg.cyclic_lookup(external.price_per_kwh, times).tolist() == [0.1, 0.2]
+    assert pkg.cyclic_lookup(external.pv_kw, times).tolist() == [1000.0, 2000.0]
 
 
 def test_static_parameter_extraction_finds_existing_tes_interfaces():

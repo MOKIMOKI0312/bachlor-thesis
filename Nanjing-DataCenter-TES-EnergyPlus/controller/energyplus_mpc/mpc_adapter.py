@@ -60,6 +60,15 @@ def solve_energyplus_mpc_action(
     mode_integrality: str = "relaxed",
 ) -> dict[str, float | str]:
     cfg = build_kim_config(params, current_soc, len(forecast["timestamps"]))
+    tes_enabled = cfg.tes.capacity_kwh_th > 0.0 and cfg.tes.q_abs_max_kw_th > 0.0
+    if not tes_enabled:
+        return {
+            "tes_set": 0.0,
+            "q_tes_net_kw_th_pred": 0.0,
+            "q_chiller_kw_th_pred": float(np.asarray(forecast["q_load_kw_th"], dtype=float)[0]),
+            "solver_status": "no_tes_disabled",
+            "solver_time_s": 0.0,
+        }
     inputs = KimLiteInputs(
         timestamps=list(forecast["timestamps"]),
         q_load_kw_th=np.asarray(forecast["q_load_kw_th"], dtype=float),
@@ -69,11 +78,11 @@ def solve_energyplus_mpc_action(
         price_cny_per_kwh=np.asarray(forecast["price_per_kwh"], dtype=float),
         cp_flag=np.zeros(len(forecast["timestamps"]), dtype=int),
     )
-    solution = solve_paper_like_mpc(cfg, inputs, tes_enabled=True, mode_integrality=mode_integrality)
+    solution = solve_paper_like_mpc(cfg, inputs, tes_enabled=tes_enabled, mode_integrality=mode_integrality)
     q_net = float(solution.q_tes_net_kw_th[0])
     return {
         "tes_set": tes_set_from_q_tes_net(q_net, cfg.tes.q_abs_max_kw_th),
-        "q_tes_net_kw_th": q_net,
+        "q_tes_net_kw_th_pred": q_net,
         "q_chiller_kw_th_pred": float(solution.q_chiller_kw_th[0]),
         "solver_status": solution.status,
         "solver_time_s": float(solution.solver_time_s),

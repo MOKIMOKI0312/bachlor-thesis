@@ -1,0 +1,2 @@
+scenario_id,location_id,pv_capacity_mwp,tes_capacity_mwh_th,critical_peak_uplift,critical_peak_window_set,controller,run_dir,status,engine
+phase3_beijing_pv0mwp_tes0mwh_cp00,beijing,0.0,0.0,0.0,evening,online_energyplus_mpc,results\phase3_pv_tes_sizing\online_smoke_beijing_tes0\runs\phase3_beijing_pv0mwp_tes0mwh_cp00,completed,mpc_energyplus_online

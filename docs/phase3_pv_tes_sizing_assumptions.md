@@ -28,9 +28,28 @@ Kim-lite relaxed proxy
 + peak / self-consumption / CP suppression metrics
 ```
 
+For the corrected online MPC+EnergyPlus path, the plant-response boundary is:
+
+```text
+MPC forecast inputs:
+  EnergyPlus no-control annual boundary + PVGIS + Jiangsu TOU
+Plant response:
+  EnergyPlus Runtime API co-simulation
+  MPC writes TES_Set every 15 min
+  EnergyPlus returns zone temperature, TES heat transfer, chiller power, and facility power
+```
+
+The EnergyPlus-derived annual boundary is therefore a forecast/baseline input
+for the controller. It must not be described as the plant response for the
+corrected online MPC+EP sizing matrix.
+
 The phase does not include CAPEX, LCOE, NPV, workload scheduling, RL,
 data-driven thermal models, carbon trading, green certificates, EnergyPlus
 online economic validation, or strict binary chiller sequencing.
+
+The previous `full_matrix_real_ep_pvgis` result is an EnergyPlus-derived
+profile replay matrix. It is useful as a technical screening baseline, but it
+is not the final online MPC+EnergyPlus co-simulation matrix.
 
 ## PV Capacity Basis
 
@@ -237,8 +256,10 @@ The annual matrix uses 15 min control steps, so each scenario contains:
 365 days * 24 h/day * 4 steps/h = 35040 rows
 ```
 
-The Phase 3 matrix is EnergyPlus-derived rather than pure synthetic data:
-EnergyPlus supplies the annual weather/load boundary, PVGIS supplies PV output,
-and the MPC-style TES dispatch is replayed over those profiles. It is still a
-technical sizing matrix, not an EnergyPlus online economic optimization of all
-150 capacity cases.
+The completed `full_matrix_real_ep_pvgis` matrix is EnergyPlus-derived rather
+than pure synthetic data: EnergyPlus supplies the annual weather/load boundary,
+PVGIS supplies PV output, and the MPC-style TES dispatch is replayed over those
+profiles. It is still a technical screening matrix, not the corrected online
+MPC+EnergyPlus sizing matrix. The corrected online path uses the same 15 min
+annual horizon, but obtains plant response from EnergyPlus Runtime API
+co-simulation; the full 150-case online matrix is still pending.

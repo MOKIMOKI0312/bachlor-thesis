@@ -17,6 +17,79 @@
   - 是否影响论文
   - 已知限制
 
+## v0.7.1-phase3-online-mpc-ep-coupling-pilot - 2026-05-13
+
+### Git
+
+- Commit: `2395378d9c5d2ba9538fb79a37de01c0a863ccae`（在线 MPC+EP 耦合修复与 pilot）。
+- 工作区：`C:\Users\18430\Desktop\毕业设计代码`。
+- 分支：`codex/phase3-online-mpc-ep-sizing`。
+- 分支或合并状态：本地开发中，尚未推送或合并。
+
+### Scope
+
+将 Phase 3 主线从 EnergyPlus-derived profile replay 纠正为在线 MPC+EnergyPlus 耦合：MPC 每 15 min 通过 EnergyPlus Runtime API 写入 TES 控制动作，EnergyPlus 返回实际温度、冷机、蓄冷罐和全设施电功率响应。EnergyPlus-derived 年度边界只保留为 forecast/baseline，不再作为 plant response 替代。
+
+### Code, Data, and Docs Changes
+
+- 新增 `mpc_v2/scripts/run_phase3_online_mpc_ep_matrix.py`，支持三地点真实 EPW、PVGIS PV、江苏 TOU 电价、容量筛选、短窗口 smoke、年度在线矩阵入口和可恢复结果输出。
+- 新增 `mpc_v2/config/phase3_pv_tes_sizing_online.yaml`，明确 `use_energyplus_online: true`、`use_energyplus_derived_profiles: false`，保留 `3 locations × 5 PV × 5 TES × 2 CP uplift` 主扫描。
+- 新增 `mpc_v2/phase3_sizing/energyplus_online.py`，按 TES 容量写出场景 epJSON，更新蓄冷罐体积、名义冷量和 EMS 最大流量。
+- 更新 `Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/run_energyplus_mpc.py`：支持运行期 TES 容量/功率覆盖、场景元数据、阀位斜率限制、尖峰窗口冷量保留、no-TES 禁用 TES 动作，以及在线结果 manifest。
+- 更新 `Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/common.py`：小时级江苏 TOU/PVGIS 输入自动扩展到 15 min，避免非整点回落到错误 fallback。
+- 更新 `Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/mpc_adapter.py`：no-TES case 不再调用 TES MPC；修正预测动作诊断列。
+- 更新 `mpc_v2/phase3_sizing/metrics.py`：`critical_peak_suppression_ratio` 改为基于 CP 窗口电网电量削减，成本影响仍保留为 `critical_peak_cost_impact`。
+- 新增在线耦合测试 `tests/test_phase3_energyplus_online.py`，并扩展外部输入 15 min 对齐测试。
+- 更新 `.gitignore`，忽略在线矩阵的大体积 `runs/`、`raw/`、`models/`、`inputs/` 中间文件。
+
+### Validation
+
+Commands:
+
+```powershell
+python -m py_compile Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/run_energyplus_mpc.py Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/mpc_adapter.py Nanjing-DataCenter-TES-EnergyPlus/controller/energyplus_mpc/common.py mpc_v2/scripts/run_phase3_online_mpc_ep_matrix.py mpc_v2/phase3_sizing/energyplus_online.py mpc_v2/phase3_sizing/metrics.py
+python -m pytest -q tests/test_energyplus_mpc_coupling.py tests/test_phase3_energyplus_online.py tests/test_phase3_pv_scaling.py tests/test_phase3_tes_scaling.py tests/test_phase3_cp_metrics.py tests/test_phase3_recommendation.py tests/test_phase3_matrix_builder.py
+python -m mpc_v2.scripts.run_phase3_online_mpc_ep_matrix --config mpc_v2/config/phase3_pv_tes_sizing_online.yaml --locations mpc_v2/config/phase3_locations.yaml --location-filter nanjing --pv-capacity-filter 0 --tes-capacity-filter 0,9 --critical-peak-uplift-filter 0,0.2 --output-root results/phase3_pv_tes_sizing/online_pilot_nanjing_pv0_tes0_9_peakreserve_v2 --max-steps-override 80 --record-start-step auto
+python -m mpc_v2.scripts.audit_phase3_pv_tes_results --summary results/phase3_pv_tes_sizing/online_pilot_nanjing_pv0_tes0_9_peakreserve_v2/summary/phase3_summary.csv --output results/phase3_pv_tes_sizing/online_pilot_nanjing_pv0_tes0_9_peakreserve_v2/summary/audit_report.md
+python -m mpc_v2.scripts.run_phase3_online_mpc_ep_matrix --config mpc_v2/config/phase3_pv_tes_sizing_online.yaml --locations mpc_v2/config/phase3_locations.yaml --location-filter beijing --pv-capacity-filter 0 --tes-capacity-filter 0 --critical-peak-uplift-filter 0 --output-root results/phase3_pv_tes_sizing/online_smoke_beijing_tes0 --max-steps-override 4 --record-start-step 0
+python -m mpc_v2.scripts.run_phase3_online_mpc_ep_matrix --config mpc_v2/config/phase3_pv_tes_sizing_online.yaml --locations mpc_v2/config/phase3_locations.yaml --location-filter guangzhou --pv-capacity-filter 0 --tes-capacity-filter 0 --critical-peak-uplift-filter 0 --output-root results/phase3_pv_tes_sizing/online_smoke_guangzhou_tes0 --max-steps-override 4 --record-start-step 0
+```
+
+Result:
+
+```text
+py_compile -> passed
+pytest targeted suite -> 21 passed
+Nanjing online pilot 4 cases -> completed, audit P0=0, P1=1 (short-window SOC delta only)
+Nanjing TES=9/CP20 active smoke -> temp_violation_ratio_gt27c=0, signed_valve_violation_max≈0, CP grid reduction=47.75 kWh over the pilot window
+Beijing online smoke -> completed, energyplus_exit_code=0, temp_violation_ratio_gt27c=0
+Guangzhou online smoke -> completed, energyplus_exit_code=0, temp_violation_ratio_gt27c=0
+```
+
+### 运行结果位置
+
+- Nanjing online pilot: `results/phase3_pv_tes_sizing/online_pilot_nanjing_pv0_tes0_9_peakreserve_v2/`
+- Nanjing TES active smoke: `results/phase3_pv_tes_sizing/online_smoke_nanjing_tes9_cp20_active_ramped/`
+- Beijing online smoke: `results/phase3_pv_tes_sizing/online_smoke_beijing_tes0/`
+- Guangzhou online smoke: `results/phase3_pv_tes_sizing/online_smoke_guangzhou_tes0/`
+
+### 运行结果简述
+
+在线耦合已验证为真实 MPC+EP 闭环：runner manifest 记录 `engine=mpc_energyplus_online`，MPC 动作写入 `TES_Set`，`monitor.csv` 回读 EnergyPlus 物理侧 `tes_use_side_kw`、`zone_temp_c`、`facility_electricity_kw` 等响应。南京 4-case pilot 中所有 case 温度超限比例为 0；TES=9 MWh_th、CP=20% case 在 CP 窗口产生 1077.75 kWh_th 放冷，CP 电网电量相对 no-TES 减少 47.75 kWh，signed-valve 约束满足。北京和广州 4-step smoke 均完成并保持温度超限为 0。
+
+### Thesis Impact
+
+- 已更新 `docs/project_management/毕业设计论文/thesis_draft.tex`。
+- 未更新 `docs/project_management/毕业设计论文/references.bib`。
+- 原因：本次改变 Phase 3 结果边界，不能再把 v0.7.0 的 EnergyPlus-derived 150 case 写作最终 MPC+EP 主结果；在线 MPC+EP 当前只有 smoke/pilot，完整三地点年度在线矩阵尚未完成。未新增引用。
+
+### Known Limitations
+
+- 尚未完成 `3 locations × 5 PV × 5 TES × 2 CP uplift = 150` 个全年在线 MPC+EP case。
+- 当前 online pilot 为短窗口验证，不能替代年度 SOC 周期性结论；短窗口 P1 来自未覆盖完整回补期。
+- EnergyPlus 在线物理响应中 TES 实际放冷功率低于优化器 4500 kW_th 代理上限，后续年度矩阵前仍需进一步校准 TES plant response 或在论文中明确该物理边界。
+- 在线矩阵目前顺序执行；全量年度运行前应补充并行执行或分批恢复策略。
+
 ## v0.7.0-phase3-real-epw-pvgis-sizing-matrix - 2026-05-13
 
 ### Git
